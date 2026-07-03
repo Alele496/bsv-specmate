@@ -6,54 +6,57 @@
 
 > Your Bluespec coding mate.
 
-`specmate` 是一个 BSV（Bluespec SystemVerilog）编码辅助 MCP Server。内置错题本、规范文档、4,570 个官方用例，帮助 AI Agent 编写能一次编译通过的 BSV 代码。
+`specmate` is an MCP server for BSV (Bluespec SystemVerilog) development. It bundles an error knowledge base, language reference docs, 4,570 official test suite examples, and 7 MCP tools to help AI agents write BSV code that compiles on the first try.
 
-BSV 是冷门硬件描述语言，AI 训练数据停留在旧版本，编写代码很难一次编译成功。这个项目将编译错误经验积累为知识库，通过 MCP 协议让 Agent 在编写时就规避常见问题。
+BSV is a niche hardware description language. AI training data lags behind the latest compiler — outdated syntax, missing keywords, and subtle scheduling rules make first-try compilation rare. This project accumulates real compilation errors into a queryable knowledge base, so agents can avoid common pitfalls before they compile.
 
-| 特性 | 说明 | MCP 工具 |
-|------|------|----------|
-| **🚀 编码前速览** | 写代码前看一眼高频错误 + 设计警告，避免踩坑 | `preflight` |
-| **🔍 编译前静态检查** | 检测 rule/method 顺序、Bool 误用 `~`、SV 保留字冲突、寄存器重复写入 | `check_style` |
-| **📚 错题本** | 8 条真实编译错误，含现象、原因、解决方案；命中自动 +1 | `lookup_error` |
-| **📖 BSV 规范参考** | 模块语法、类型系统、常见模式与陷阱 | `lookup_ref` |
-| **🔎 官方用例搜索** | 4,570 个 BSC 测试套件 `.bsv`，按关键词搜索正确写法 | `lookup_example` |
-| **✍️ 错误自动追加** | 遇到新错误直接调工具入库，无需手写 Markdown | `add_error` |
-| **🎛️ 三级能力等级** | `silicon` / `wafer` / `tapeout` 控制返回信息量，适配不同开发场景 | `SPECMATE_LEVEL` |
-| **📦 零配置安装** | `npm install -g` 一行装好，配置一句 JSON | — |
-| **💾 数据持久化** | SQLite 知识库存 `~/.specmate/`，`SPECMATE_DATA` 自定义路径 | — |
+| Feature | Description | MCP Tool |
+|---------|-------------|----------|
+| **📋 Coding constraints** | SQLite-driven rules sorted by hit count, auto-evolve as errors accumulate | `coding_rules` |
+| **🚀 Pre-coding prep** | Scan high-frequency errors + design warnings before writing | `preflight` |
+| **🔍 Static check** | Regex-based detection: rule/method order, Bool misuse, SV reserved words, `vec()` trap, duplicate register writes | `check_style` |
+| **📚 Error KB** | 9 real compilation errors with phenomena, cause, and solution; auto-increment on hit | `lookup_error` |
+| **📖 BSV reference** | Module syntax, type system, common patterns and pitfalls | `lookup_ref` |
+| **🔎 Example search** | 4,570 `.bsv` files from BSC official test suite, keyword searchable | `lookup_example` |
+| **✍️ Error contribution** | One tool call to add new errors — no Markdown editing needed | `add_error` |
+| **🎛️ 3-tier levels** | `silicon` / `wafer` / `tapeout` control output detail for different dev scenarios | `SPECMATE_LEVEL` |
+| **📦 Zero config** | `npm install -g` + one line of JSON config | — |
+| **💾 Persistent data** | SQLite at `~/.specmate/`, configurable via `SPECMATE_DATA` | — |
 
-- 🚀 [快速开始](#-快速开始)
-- 🛠 [本地开发](#-本地开发)
-- 📖 [详细教程 → docs/TUTORIAL.md](./docs/TUTORIAL.md)
+- 🚀 [Quick Start](#-quick-start)
+- 🛠 [Local Development](#-local-development)
+- 📖 [Tutorial → docs/TUTORIAL.md](./docs/TUTORIAL.md)
+- 🇨🇳 [中文 → README.zh-CN.md](./README.zh-CN.md)
 
 ---
 
-## ⚡ 快速开始
+## 🧪 Controlled Experiment
 
-### 安装
+We ran an A/B test using OpenCode — two agents writing an identical Wishbone bus arbiter, one with specmate, one without.
+
+| Metric | Agent A (no specmate) | Agent B (with specmate) |
+|--------|----------------------|------------------------|
+| Fix rounds to compile | **2** | **1** |
+| Self-inflicted errors | `vec()` unbound (over-engineered Vector design) | None |
+| Design style | Vector + Wire (complex, risky) | Flat Reg (conservative, safe) |
+| Errors discovered | `priority` (SV reserved word) + `vec()` unbound | `priority` (SV reserved word) |
+| KB growth | 2 new errors added | 1 new error added |
+
+**Result**: specmate-guided agent compiled in 1 round. Unguided agent took 2 rounds due to self-inflicted complexity from an over-engineered design. Both newly discovered errors have since been added to the KB — the gap widens next time.
+
+---
+
+## ⚡ Quick Start
+
+### Install
 
 ```bash
 npm install -g specmate
 ```
 
-### 配置 Claude Code
+### Configure Claude Code
 
-在项目根目录创建 `.mcp.json` 或在全局配置中添加：
-
-```json
-{
-  "mcpServers": {
-    "specmate": {
-      "command": "npx",
-      "args": ["specmate"]
-    }
-  }
-}
-```
-
-### 配置 OpenCode
-
-在 `opencode.json` 中添加：
+Create `.mcp.json` in your project root:
 
 ```json
 {
@@ -66,13 +69,43 @@ npm install -g specmate
 }
 ```
 
-配置后重启 AI 客户端，Agent 会自动发现 5 个 MCP 工具：`check_style`、`lookup_error`、`lookup_ref`、`lookup_example`、`add_error`。
+### Configure OpenCode
+
+In `opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "specmate": {
+      "type": "local",
+      "command": ["node", "<absolute-path>/bin/server.mjs"],
+      "enabled": true,
+      "environment": {
+        "SPECMATE_LEVEL": "wafer"
+      }
+    }
+  }
+}
+```
+
+Restart your AI client. Agents will discover 7 MCP tools automatically.
 
 ---
 
-## 🛠 本地开发
+## 🎛️ Capability Levels
 
-### 环境要求
+| Level | Scenario | `coding_rules` | `preflight` | `check_style` | `lookup_example` |
+|-------|----------|---------------|-------------|---------------|------------------|
+| **`silicon`** | Quick edits | 5 rules | TOP 3 errors | errors only | 1 file / 15 lines |
+| **`wafer`** (default) | Daily dev | 8 rules | TOP 5 + 3 warnings | errors + warnings | 3 files / 30 lines |
+| **`tapeout`** | New modules | 20 rules | TOP 10 + all warnings + tips | all | 5 files / 50 lines |
+
+---
+
+## 🛠 Local Development
+
+### Requirements
 
 - [Node.js](https://nodejs.org/) >= 18
 
@@ -83,16 +116,16 @@ npm install
 node bin/server.mjs
 ```
 
-### IDE 开发配置
-
-直接指向本地路径，无需每次发布 npm：
+### IDE dev config
 
 ```json
 {
-  "mcpServers": {
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
     "specmate": {
-      "command": "node",
-      "args": ["<项目绝对路径>/bin/server.mjs"]
+      "type": "local",
+      "command": ["node", "<absolute-path>/bin/server.mjs"],
+      "enabled": true
     }
   }
 }
@@ -100,88 +133,83 @@ node bin/server.mjs
 
 ---
 
-## 📂 项目结构
+## 📂 Project Structure
 
 ```
 bsv-specmate/
-├── AGENTS.md              ← Agent 使用手册（独立/协作两种模式）
-├── README.md              ← 你正在读的文件
+├── AGENTS.md              ← Agent usage manual (solo + collaborative modes)
+├── README.md              ← English (you are here)
+├── README.zh-CN.md        ← 中文版
 ├── package.json
 ├── bin/
-│   └── server.mjs         ← MCP Server 入口，注册 5 个工具
+│   └── server.mjs         ← MCP Server entry point (7 tools)
 ├── src/
-│   ├── config.mjs         ← 路径解析 + 首次初始化
+│   ├── config.mjs         ← Path resolution + initialization
 │   ├── db/
-│   │   ├── schema.mjs     ← SQLite 表结构
+│   │   ├── schema.mjs     ← SQLite schema + queries
 │   │   ├── seed.mjs       ← Markdown → SQLite
 │   │   ├── export.mjs     ← SQLite → Markdown
-│   │   └── query.mjs      ← 数据库查询封装
+│   │   └── query.mjs      ← DB query wrapper
 │   └── tools/
-│       ├── check_style.mjs      ← 编译前静态检查
-│       ├── lookup_error.mjs     ← 错题本查询
-│       ├── lookup_ref.mjs       ← 规范文档查询
-│       ├── lookup_example.mjs   ← 官方用例搜索
-│       └── add_error.mjs        ← 追加新错误
+│       ├── coding_rules.mjs    ← Dynamic constraints (SQLite-driven)
+│       ├── preflight.mjs       ← Pre-coding error preview
+│       ├── check_style.mjs     ← Static style checker
+│       ├── lookup_error.mjs    ← Error KB lookup
+│       ├── lookup_ref.mjs      ← BSV reference docs
+│       ├── lookup_example.mjs  ← Official example search
+│       └── add_error.mjs       ← Contribute new errors
 ├── data/
-│   └── knowledge.db       ← 预置种子数据库 (8 条错误)
+│   └── knowledge.db       ← Seed DB (9 errors)
 ├── docs/
-│   ├── BSV-STYLE.md       ← BSV 编码规范总则
-│   ├── checklist.md       ← 编译前检查清单
-│   ├── TUTORIAL.md        ← 详细教程
-│   ├── errors/            ← 错误原文 (8 条)
-│   └── reference/         ← BSV 语法参考 (4 篇)
+│   ├── BSV-STYLE.md       ← BSV coding conventions
+│   ├── checklist.md       ← Pre-compilation checklist
+│   ├── TUTORIAL.md        ← Usage tutorial
+│   ├── errors/            ← Error docs (9 entries)
+│   └── reference/         ← BSV language reference (4 topics)
 └── examples/
-    ├── bsv/               ← BSC 官方测试套件 (4,570 .bsv)
-    └── bs/                ← Bluespec Classic 旧语法（仅供参考）
+    ├── bsv/               ← BSC official test suite (4,570 .bsv)
+    └── bs/                ← Bluespec Classic legacy (reference only)
 ```
 
 ---
 
-## 🔧 npm 脚本
+## 🔧 npm Scripts
 
-| 命令 | 说明 |
-|------|------|
-| `npm start` | 启动 MCP Server |
-| `npm run db:seed` | 从 `docs/errors/*.md` 重建 SQLite |
-| `npm run db:export` | 从 SQLite 导出 Markdown 到 `~/.specmate/docs/errors/` |
+| Command | Description |
+|---------|-------------|
+| `npm start` | Start MCP Server |
+| `npm run db:seed` | Rebuild SQLite from `docs/errors/*.md` |
+| `npm run db:export` | Export SQLite to Markdown at `~/.specmate/docs/errors/` |
 
 ---
 
-## 💾 数据存储
+## 💾 Data Storage
 
-首次启动自动创建 `~/.specmate/`：
+First run auto-creates `~/.specmate/`:
 
-| 路径 | 内容 |
-|------|------|
-| `data/knowledge.db` | SQLite 知识库 |
-| `docs/errors/*.md` | 导出的 Markdown 文档 |
+| Path | Content |
+|------|---------|
+| `data/knowledge.db` | SQLite knowledge base |
+| `docs/errors/*.md` | Exported Markdown docs |
 
-通过环境变量自定义路径：
+Custom path via environment variable:
 
 ```json
 {
-  "mcpServers": {
-    "specmate": {
-      "command": "npx",
-      "args": ["specmate"],
-      "env": {
-        "SPECMATE_DATA": "D:/my-bsv-data"
-      }
-    }
-  }
+  "env": { "SPECMATE_DATA": "D:/my-bsv-data" }
 }
 ```
 
 ---
 
-## 🤝 贡献
+## 🤝 Contributing
 
-1. 遇到新的 BSV 编译错误 → Agent 通过 `add_error` 工具入库
-2. `npm run db:export` 导出 Markdown
-3. 提交 PR 将新错误合并回主仓库
+1. Encounter a new BSV compilation error → agent calls `add_error` to store it
+2. Run `npm run db:export` to export Markdown
+3. Submit a PR to merge new errors back to main repo
 
 ---
 
-## 📄 许可证
+## 📄 License
 
 MIT
