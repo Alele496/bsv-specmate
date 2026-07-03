@@ -4,12 +4,18 @@
   "description": "BSV (Bluespec SystemVerilog) coding assistant — knowledge base, pre-compile checker, and error reference for AI agents",
   "keywords": ["bluespec", "bsv", "bsc", "hardware", "verilog", "mcp"],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Alele496/bsv-specmate"
+  },
   "type": "module",
   "bin": {
     "specmate": "./bin/server.mjs"
   },
   "files": [
     "AGENTS.md",
+    "README.md",
+    "README.en.md",
     "docs/",
     "examples/bsv/",
     "examples/bs/",
