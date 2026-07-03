@@ -95,6 +95,20 @@ Restart your AI client. Agents will discover 7 MCP tools automatically.
 
 ---
 
+## 🏗️ Project Templates
+
+Quick-start a BSV project:
+
+```bash
+cp examples/templates/AGENTS.md ./AGENTS.md
+cp examples/templates/opencode.json ./opencode.json
+```
+
+Edit `AGENTS.md` with your project description and module list. Update `<absolute-path>` in `opencode.json`.
+Details at `examples/templates/README.md`.
+
+---
+
 ## 🎛️ Capability Levels
 
 | Level | Scenario | `coding_rules` | `preflight` | `check_style` | `lookup_example` |

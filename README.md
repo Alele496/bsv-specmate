@@ -95,6 +95,20 @@ npm install -g specmate
 
 ---
 
+## 🏗️ 项目模板
+
+快速搭建 BSV 项目：
+
+```bash
+cp examples/templates/AGENTS.md ./AGENTS.md
+cp examples/templates/opencode.json ./opencode.json
+```
+
+编辑 `AGENTS.md` 填入项目描述和模块清单，`opencode.json` 中替换实际路径。
+详细说明见 `examples/templates/README.md`。
+
+---
+
 ## 🎛️ 能力等级
 
 | Level | 场景 | `coding_rules` | `preflight` | `check_style` | `lookup_example` |
