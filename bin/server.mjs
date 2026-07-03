@@ -1,0 +1,83 @@
+#!/usr/bin/env node
+
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+
+import { checkStyle } from "../src/tools/check_style.mjs";
+import { lookupError } from "../src/tools/lookup_error.mjs";
+import { lookupRef } from "../src/tools/lookup_ref.mjs";
+import { lookupExample } from "../src/tools/lookup_example.mjs";
+
+const server = new McpServer({
+    name: "bsv-agent",
+    version: "0.1.0",
+});
+
+server.tool(
+    "check_style",
+    "Pre-compilation static check for BSV files. Checks for common errors like method ordering, Bool operators, reserved keywords, and duplicate register writes.",
+    {
+        files: z.array(z.string()).describe("Paths to .bsv files to check"),
+    },
+    async ({ files }) => {
+        const results = checkStyle({ files });
+        if (results.length === 0) {
+            return {
+                content: [{ type: "text", text: "No issues found." }],
+            };
+        }
+        const text = results.map(r =>
+            `[${r.check}] ${r.file}:${r.line} — ${r.message}\n  建议: ${r.suggestion}`
+        ).join("\n\n");
+        return {
+            content: [{ type: "text", text: `Found ${results.length} issue(s):\n\n${text}` }],
+        };
+    }
+);
+
+server.tool(
+    "lookup_error",
+    "Look up a BSV compilation error by code. Returns the cause, solution, and reference. Call without arguments to list all known errors.",
+    {
+        code: z.string().optional().describe("Error code like P0005 or T0061. Omit to list all errors."),
+    },
+    async ({ code }) => {
+        const result = await lookupError({ code: code || "" });
+        return {
+            content: [{ type: "text", text: result }],
+        };
+    }
+);
+
+server.tool(
+    "lookup_ref",
+    "Look up BSV language reference documentation.",
+    {
+        topic: z.enum(["module", "types", "syntax", "examples"]).describe("Reference topic"),
+    },
+    async ({ topic }) => {
+        const result = lookupRef({ topic });
+        return {
+            content: [{ type: "text", text: result }],
+        };
+    }
+);
+
+server.tool(
+    "lookup_example",
+    "Search the BSC test suite (4,570 official .bsv files) for usage examples by keyword.",
+    {
+        keyword: z.string().describe("Keyword to search for, e.g. 'FIFO bypass' or 'descending_urgency'"),
+        directory: z.string().optional().describe("Subdirectory to limit search, e.g. 'bsc.scheduler'"),
+    },
+    async ({ keyword, directory }) => {
+        const result = lookupExample({ keyword, directory: directory || "" });
+        return {
+            content: [{ type: "text", text: result }],
+        };
+    }
+);
+
+const transport = new StdioServerTransport();
+await server.connect(transport);

@@ -1,0 +1,3 @@
+node_modules/
+*.db-journal
+data/knowledge.db-journal

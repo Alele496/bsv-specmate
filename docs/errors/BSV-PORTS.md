@@ -1,6 +1,6 @@
-# BSV Action 方法生成的 Verilog 端口名 (×1)
+# BSV-PORTS — Verilog 端口命名规则 (×1)
 
-**现象**：Vivado `get_ports uart_rx` 找不到端口。
+**bsc 输出**：Vivado `get_ports uart_rx` 找不到端口。
 
 **原因**：BSV 的 `method Action` 在合成 Verilog 时：
 - 数据端口用**参数名**（不是方法名）

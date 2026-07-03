@@ -4,18 +4,25 @@
   "description": "BSV (Bluespec SystemVerilog) coding assistant — knowledge base, pre-compile checker, and error reference for AI agents",
   "keywords": ["bluespec", "bsv", "bsc", "hardware", "verilog", "mcp"],
   "license": "MIT",
+  "type": "module",
+  "bin": {
+    "bsv-agent": "./bin/server.mjs"
+  },
   "files": [
     "AGENTS.md",
     "docs/",
     "examples/bsv/",
-    "examples/bs/"
+    "examples/bs/",
+    "bin/",
+    "src/"
   ],
   "scripts": {
-    "check": "echo 'To be implemented: MCP Server entry point'"
+    "start": "node bin/server.mjs",
+    "db:seed": "node src/db/seed.mjs"
   },
-  "repository": {
-    "type": "git",
-    "url": ""
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.9.0",
+    "sql.js": "^1.12.0"
   },
   "engines": {
     "node": ">=18"
