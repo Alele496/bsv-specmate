@@ -1,14 +1,22 @@
-import { readFileSync, readdirSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import initSqlJs from 'sql.js';
 import { initDB, insertError } from './schema.mjs';
+import { getDBPath, getUserErrorsDir, initDataDir, PKG_DOCS } from '../config.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dirname, '..', '..');
-const ERRORS_DIR = join(PROJECT_ROOT, 'docs', 'errors');
-const DB_DIR = join(PROJECT_ROOT, 'data');
-const DB_PATH = join(DB_DIR, 'knowledge.db');
+const DB_PATH = getDBPath();
+const USER_ERRORS_DIR = getUserErrorsDir();
+const PKG_ERRORS_DIR = join(PKG_DOCS, 'errors');
+
+function getErrorsDir() {
+    if (existsSync(USER_ERRORS_DIR)) {
+        const files = readdirSync(USER_ERRORS_DIR).filter(f => f.endsWith('.md') && f !== 'INDEX.md');
+        if (files.length > 0) return USER_ERRORS_DIR;
+    }
+    return PKG_ERRORS_DIR;
+}
 
 function parseErrorFile(content) {
     const lines = content.split('\n');
@@ -78,6 +86,7 @@ function parseErrorFile(content) {
 }
 
 async function main() {
+    initDataDir();
     const SQL = await initSqlJs();
 
     let db;
@@ -86,11 +95,19 @@ async function main() {
         db = new SQL.Database(buf);
         db.run('DROP TABLE IF EXISTS errors');
     } else {
-        if (!existsSync(DB_DIR)) mkdirSync(DB_DIR, { recursive: true });
+        mkdirSync(dirname(DB_PATH), { recursive: true });
         db = new SQL.Database();
     }
 
+    const ERRORS_DIR = getErrorsDir();
+
     initDB(db);
+
+    if (!existsSync(ERRORS_DIR)) {
+        console.log('No error files found in user dir or package dir.');
+        db.close();
+        return;
+    }
 
     const errorFiles = readdirSync(ERRORS_DIR)
         .filter(f => f.endsWith('.md') && f !== 'INDEX.md')

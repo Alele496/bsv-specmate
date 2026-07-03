@@ -1,9 +1,8 @@
 import { readFileSync, existsSync, readdirSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { resolve } from 'path';
+import { PKG_EXAMPLES } from '../config.mjs';
 
-const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const BSV_DIR = resolve(PROJECT_ROOT, 'examples', 'bsv');
+const BSV_DIR = resolve(PKG_EXAMPLES, 'bsv');
 const MAX_FILES = 5;
 const MAX_LINES = 40;
 

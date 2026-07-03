@@ -1,24 +1,25 @@
 import { readFileSync, existsSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 import initSqlJs from 'sql.js';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = join(__dirname, '..', '..', 'data', 'knowledge.db');
-
+import { initDataDir, getDBPath } from '../config.mjs';
 import { initDB, getError, getAllErrors, searchErrors, incrementCount } from './schema.mjs';
 
 let _db = null;
+let _dbPath = null;
 
-async function getDB() {
+async function ensureDB() {
     if (_db) return _db;
+
+    const { created } = initDataDir();
+    _dbPath = getDBPath();
     const SQL = await initSqlJs();
-    if (existsSync(DB_PATH)) {
-        const buf = readFileSync(DB_PATH);
+
+    if (existsSync(_dbPath)) {
+        const buf = readFileSync(_dbPath);
         _db = new SQL.Database(buf);
     } else {
-        if (!existsSync(dirname(DB_PATH))) {
-            mkdirSync(dirname(DB_PATH), { recursive: true });
+        if (!existsSync(dirname(_dbPath))) {
+            mkdirSync(dirname(_dbPath), { recursive: true });
         }
         _db = new SQL.Database();
         initDB(_db);
@@ -26,27 +27,32 @@ async function getDB() {
     return _db;
 }
 
+async function saveDB() {
+    if (!_db || !_dbPath) return;
+    const data = _db.export();
+    const { writeFileSync } = await import('fs');
+    writeFileSync(_dbPath, Buffer.from(data));
+}
+
 export async function queryError(code) {
-    const db = await getDB();
+    const db = await ensureDB();
     return getError(db, code);
 }
 
 export async function queryAllErrors() {
-    const db = await getDB();
+    const db = await ensureDB();
     return getAllErrors(db);
 }
 
 export async function querySearch(keyword) {
-    const db = await getDB();
+    const db = await ensureDB();
     return searchErrors(db, keyword);
 }
 
 export async function hitError(code) {
-    const db = await getDB();
+    const db = await ensureDB();
     incrementCount(db, code);
-    const data = db.export();
-    const { writeFileSync } = await import('fs');
-    writeFileSync(DB_PATH, Buffer.from(data));
+    await saveDB();
 }
 
 export function closeDB() {

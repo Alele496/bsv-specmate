@@ -1,12 +1,12 @@
 {
-  "name": "bsv-agent",
+  "name": "specmate",
   "version": "0.1.0",
   "description": "BSV (Bluespec SystemVerilog) coding assistant — knowledge base, pre-compile checker, and error reference for AI agents",
   "keywords": ["bluespec", "bsv", "bsc", "hardware", "verilog", "mcp"],
   "license": "MIT",
   "type": "module",
   "bin": {
-    "bsv-agent": "./bin/server.mjs"
+    "specmate": "./bin/server.mjs"
   },
   "files": [
     "AGENTS.md",
@@ -18,7 +18,8 @@
   ],
   "scripts": {
     "start": "node bin/server.mjs",
-    "db:seed": "node src/db/seed.mjs"
+    "db:seed": "node src/db/seed.mjs",
+    "db:export": "node src/db/export.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.9.0",

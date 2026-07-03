@@ -1,9 +1,8 @@
 import { readFileSync, existsSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { resolve } from 'path';
+import { PKG_DOCS } from '../config.mjs';
 
-const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const REF_DIR = resolve(PROJECT_ROOT, 'docs', 'reference');
+const REF_DIR = resolve(PKG_DOCS, 'reference');
 
 const VALID_TOPICS = ['module', 'types', 'syntax', 'examples'];
 

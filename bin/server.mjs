@@ -8,9 +8,10 @@ import { checkStyle } from "../src/tools/check_style.mjs";
 import { lookupError } from "../src/tools/lookup_error.mjs";
 import { lookupRef } from "../src/tools/lookup_ref.mjs";
 import { lookupExample } from "../src/tools/lookup_example.mjs";
+import { addError } from "../src/tools/add_error.mjs";
 
 const server = new McpServer({
-    name: "bsv-agent",
+    name: "specmate",
     version: "0.1.0",
 });
 
@@ -73,6 +74,25 @@ server.tool(
     },
     async ({ keyword, directory }) => {
         const result = lookupExample({ keyword, directory: directory || "" });
+        return {
+            content: [{ type: "text", text: result }],
+        };
+    }
+);
+
+server.tool(
+    "add_error",
+    "Add a new compilation error to the knowledge base. Use when lookup_error returns not found.",
+    {
+        code: z.string().describe("Error code, e.g. 'P0005' or 'G0010'"),
+        title: z.string().describe("Short title, e.g. 'Methods must be at end of block'"),
+        bsc_output: z.string().describe("Raw compiler error output from bsc"),
+        cause: z.string().describe("Root cause analysis of the error"),
+        solution: z.string().describe("How to fix the error, with code examples"),
+        rules: z.string().optional().describe("General rule to prevent this error"),
+    },
+    async ({ code, title, bsc_output, cause, solution, rules }) => {
+        const result = await addError({ code, title, bsc_output, cause, solution, rules: rules || "" });
         return {
             content: [{ type: "text", text: result }],
         };

@@ -1,55 +1,110 @@
 # BSV Agent — Bluespec 编码辅助工具
 
-> 目标：帮助 AI Agent 编写正确的 BSV (Bluespec SystemVerilog) 代码，减少编译错误。
+> 目标：帮助 AI Agent 编写正确的 BSV (Bluespec SystemVerilog) 代码。
 
-## 工作流
+## MCP 工具
 
-### 写代码前
+本 MCP Server 提供 5 个工具，Agent 通过 MCP 协议直接调用：
 
-1. **读 `docs/checklist.md`** — 编译前自检清单（高频错误浓缩，<50 行）
-2. 不确定语法用法 → 搜索 `examples/bsv/` 中的官方测试套件用例
+| 工具 | 作用 | 输入 | 输出 |
+|------|------|------|------|
+| `check_style` | 编译前静态检查 | 文件路径列表 | 问题列表 (错误码 + 行号 + 建议) |
+| `lookup_error` | 查错题本 | 错误码 (如 "P0005") | 现象 + 原因 + 方案 + 计数 |
+| `lookup_ref` | 查 BSV 规范 | "module"/"types"/"syntax"/"examples" | 对应文档全文 |
+| `lookup_example` | 搜官方用例 | 关键词 + 可选子目录 | 匹配的 .bsv 代码片段 (最多 5 个文件) |
+| `add_error` | 追加新错误 | code, title, bsc_output, cause, solution, rules | 确认信息 |
 
-### 编译报错后
+## 独立开发模式
 
-1. **查 `docs/errors/INDEX.md`** — 索引表找错误码
-2. 命中 → 读对应 `docs/errors/<CODE>.md` → 按方案修复 → 给条目次数 +1
-3. 未命中 → 修复后追加新条目
-4. 同类错误合并到同一条目，不拆多条
-
-### 不确定规范时
-
-- 读 `docs/reference/` 对应小节（模块语法、类型系统、常见模式等）
-- 搜 `examples/bsv/` 看官方用例怎么写
-
-## 文件结构
+一个 Agent 同时负责编写和检查：
 
 ```
-bsv-agent/
-├── AGENTS.md                  ← 你正在读的文件（路由入口）
-├── package.json               ← npm 包，AID 脚本
-├── docs/
-│   ├── BSV-STYLE.md           ← 编码规范（必读，短）
-│   ├── checklist.md           ← 编译前检查清单（必读，短）
-│   ├── errors/                ← 错题本（按需读）
-│   │   ├── INDEX.md           ← 索引表（错误码 → 文件名 → 次数）
-│   │   └── <CODE>.md          ← 单条错误详情
-│   └── reference/             ← BSV 规范摘录（按需读）
-│       ├── module.md          ← 模块/接口/rule/method 语法
-│       ├── types.md           ← 类型系统 (Bit, Bool, Int, enum, struct)
-│       ├── syntax.md          ← 常见语法模式与陷阱
-│       └── examples.md        ← 如何使用 examples/ 参考库
-└── examples/
-    ├── bsv/                   ← BSC 官方测试套件 (4,570 .bsv 文件)
-    └── bs/                    ← Bluespec Classic 旧语法（仅供参考，不推荐）
+编写 .bsv 代码
+    │
+    ├─ 不确定语法 → lookup_ref / lookup_example
+    │
+    ▼
+check_style 预检 → 按提示修复
+    │
+    ▼
+编译 (bsc)
+    │
+    ├─ 通过 → 完成
+    └─ 报错 → lookup_error(错误码)
+                │
+                ├─ 命中 → 按方案修复 → 重新编译
+                └─ 未命中 → add_error(新错误) → 重新编译
 ```
 
-## 编译命令
+## 协作开发模式
+
+Writer Agent 写代码，Reviewer Agent 审查：
+
+```
+Writer: 编写代码 ──────────────────────┐
+    │ 不确定时调 lookup_ref / lookup_example
+    │                                   │
+    ▼                                   ▼
+ 代码完成 ────────→ Reviewer: check_style 预检
+                                         │
+                    ┌── 通过 → 编译      │
+                    │                    │
+                    └── 问题 → Writer 修复
+                                         │
+                                         ▼
+                                   编译 (bsc)
+                                         │
+                    ┌── 通过 → 完成      │
+                    │                    │
+                    └── 报错 → Reviewer: lookup_error(错误码)
+                                        │
+                                    ┌─ 命中 → Writer 修复 → 重新编译
+                                    └─ 未命中 → Reviewer: add_error(新错误)
+```
+
+## 编译
+
+### 检测 bsc 是否可用
+
+```sh
+bsc --version
+```
+
+### 有 bsc 环境 (WSL / Linux / Docker)
 
 ```sh
 bsc -u -verilog -vdir verilog -bdir build bsv/Top.bsv
 ```
 
+参数说明：
+- `-u` — 只编译变更文件
+- `-verilog` — 生成 Verilog
+- `-vdir` — Verilog 输出目录
+- `-bdir` — 编译中间文件目录
+
+### 无 bsc 环境 (仅 Windows)
+
+跳过编译环节，只依赖 `check_style` 做静态预检。如需完整编译，先在 WSL 中安装 bsc 或使用 Docker。
+
+## 静态文档参考
+
+以下文档仍可直接阅读：
+
+| 文档 | 内容 | 何时读 |
+|------|------|--------|
+| `docs/BSV-STYLE.md` | 编码规范总则 | 首次使用 |
+| `docs/checklist.md` | 编译前检查清单 | `check_style` 已覆盖，备用 |
+| `docs/reference/` | BSV 语法参考 | `lookup_ref` 自动读，通常不需手动翻 |
+
+## 数据存储
+
+- **SQLite 知识库** → 位于 `~/.specmate/data/knowledge.db`
+  - 可通过 `SPECMATE_DATA` 环境变量自定义路径
+- **导出为文档** → `npm run db:export` 生成 `~/.specmate/docs/errors/*.md`
+- **从文档重建** → `npm run db:seed` 将 `~/.specmate/docs/errors/` 重新导入
+
 ## 环境
 
 - Bluespec Compiler version 2025.07
 - 测试套件来源：B-Lang-org/bsc
+- 用户数据默认路径：`~/.specmate/`
