@@ -226,6 +226,42 @@ Custom path via environment variable:
 
 ---
 
+## 💬 Tips: Getting Your Agent to Use specmate
+
+Let's be real — most AI agents won't proactively reach for specmate.
+They can write solid BSV code, but remembering "maybe I should check the reference" is a different story.
+
+We're actively exploring better ways to integrate specmate naturally:
+cross-references, scenario suggestions, the `suggest` tool… but we're not quite there yet 😅
+
+We deliberately avoid hardcoding "you MUST call check_style after every module"
+into AGENTS.md — today's experiment proved the point: when the template reads like
+a checklist, agents start reporting "P0005 ✓, P0032 ✓" alongside every output,
+polluting the conversation with self-review noise. Finding the sweet spot between
+"helpful enough" and "not annoying" is the real challenge — that's why we've been
+iterating on the template all day.
+
+**In the meantime**, if you notice your agent hasn't touched a single specmate tool,
+try dropping this in your conversation:
+
+```
+If you're unsure about any BSV syntax, feel free to try specmate's lookup_ref(topic="xxx") 🧠
+```
+
+(That's what we mean by "gentle nudge" — not a new prompt or system directive, just a friendly line in your ongoing chat. Agents sometimes forget what's in their toolbox.)
+
+Same approach works for specific situations:
+
+- Agent stuck on G0004 → "Maybe try lookup_ref(topic=\"schedule\") for scheduling annotations?"
+- Agent unsure about a standard library function → "Would lookup_ref(topic=\"stdlib\") help?"
+- Agent wrote code without review → "Want to run check_style on this?"
+
+One sentence. Potentially one fewer compilation error. 🤏
+
+(PRs welcome if you've discovered better nudging techniques 😄)
+
+---
+
 ## 📄 License
 
 MIT
