@@ -45,6 +45,19 @@ export function getAllErrors(db) {
     return results;
 }
 
+export function getTopRules(db, limit) {
+    const results = [];
+    const stmt = db.prepare(
+        'SELECT code, title, count, rules FROM errors WHERE rules IS NOT NULL AND rules != "" ORDER BY count DESC LIMIT ?'
+    );
+    stmt.bind([limit]);
+    while (stmt.step()) {
+        results.push(stmt.getAsObject());
+    }
+    stmt.free();
+    return results;
+}
+
 export function searchErrors(db, keyword) {
     const results = [];
     const stmt = db.prepare(

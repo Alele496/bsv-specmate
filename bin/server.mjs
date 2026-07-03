@@ -10,6 +10,7 @@ import { lookupRef } from "../src/tools/lookup_ref.mjs";
 import { lookupExample } from "../src/tools/lookup_example.mjs";
 import { addError } from "../src/tools/add_error.mjs";
 import { preflight } from "../src/tools/preflight.mjs";
+import { codingRules } from "../src/tools/coding_rules.mjs";
 
 const server = new McpServer({
     name: "specmate",
@@ -106,6 +107,18 @@ server.tool(
     {},
     async () => {
         const result = await preflight();
+        return {
+            content: [{ type: "text", text: result }],
+        };
+    }
+);
+
+server.tool(
+    "coding_rules",
+    "Returns BSV coding constraints derived from high-frequency compilation errors. Call at the start of each new task. Follow these rules silently while coding.",
+    {},
+    async () => {
+        const result = await codingRules();
         return {
             content: [{ type: "text", text: result }],
         };

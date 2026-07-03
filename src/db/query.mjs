@@ -2,7 +2,7 @@ import { readFileSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import initSqlJs from 'sql.js';
 import { initDataDir, getDBPath } from '../config.mjs';
-import { initDB, getError, getAllErrors, searchErrors, incrementCount } from './schema.mjs';
+import { initDB, getError, getAllErrors, getTopRules, searchErrors, incrementCount } from './schema.mjs';
 
 let _db = null;
 let _dbPath = null;
@@ -53,6 +53,11 @@ export async function hitError(code) {
     const db = await ensureDB();
     incrementCount(db, code);
     await saveDB();
+}
+
+export async function queryTopRules(limit) {
+    const db = await ensureDB();
+    return getTopRules(db, limit);
 }
 
 export function closeDB() {
