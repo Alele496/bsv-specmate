@@ -4,11 +4,11 @@
 [![npm](https://img.shields.io/badge/npm-specmate-red?style=flat-square&logo=npm)](https://www.npmjs.com/package/specmate)
 [![GitHub License](https://img.shields.io/github/license/Alele496/bsv-specmate?style=flat-square)](https://github.com/Alele496/bsv-specmate/blob/main/LICENSE)
 
-> Your Bluespec coding mate.
+> BSV Coding Knowledge Engine — Your Bluespec coding mate.
 
 [🇨🇳 中文版](./README.md)
 
-`specmate` is an MCP server for BSV (Bluespec SystemVerilog) development. It bundles an error knowledge base, language reference docs, 4,570 official test suite examples, and 7 MCP tools to help AI agents write BSV code that compiles on the first try.
+`specmate` is a **BSV Coding Knowledge Engine** — a domain knowledge layer for AI agents writing Bluespec SystemVerilog. It bundles an accumulated error KB (9 entries, auto-counting), language reference docs (8 topics), design patterns (7 production paradigms), and 4,570 official test suite examples. Helps agents write BSV code that compiles on the first try.
 
 BSV is a niche hardware description language. AI training data lags behind the latest compiler — outdated syntax, missing keywords, and subtle scheduling rules make first-try compilation rare. This project accumulates real compilation errors into a queryable knowledge base, so agents can avoid common pitfalls before they compile.
 

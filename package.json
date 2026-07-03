@@ -1,7 +1,7 @@
 {
   "name": "specmate",
   "version": "0.1.0",
-  "description": "BSV (Bluespec SystemVerilog) coding assistant — knowledge base, pre-compile checker, and error reference for AI agents",
+  "description": "BSV Coding Knowledge Engine — domain knowledge layer for AI agents writing Bluespec SystemVerilog",
   "keywords": ["bluespec", "bsv", "bsc", "hardware", "verilog", "mcp"],
   "license": "MIT",
   "repository": {

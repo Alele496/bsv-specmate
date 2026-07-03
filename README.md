@@ -4,11 +4,11 @@
 [![npm](https://img.shields.io/badge/npm-specmate-red?style=flat-square&logo=npm)](https://www.npmjs.com/package/specmate)
 [![GitHub License](https://img.shields.io/github/license/Alele496/bsv-specmate?style=flat-square)](https://github.com/Alele496/bsv-specmate/blob/main/LICENSE)
 
-> Your Bluespec coding mate. 你的 Bluespec 编码搭档。
+> BSV 编码知识引擎 — Your Bluespec coding mate.
 
 [🇬🇧 English Version](./README.en.md)
 
-`specmate` 是一个 BSV（Bluespec SystemVerilog）编码辅助 MCP Server。内置错题本、规范文档、4,570 个官方用例、7 个 MCP 工具，帮助 AI Agent 编写能一次编译通过的 BSV 代码。
+`specmate` 是一个 **BSV 编码知识引擎**——为 AI Agent 植入 Bluespec SystemVerilog 领域的知识层。内置错题本（9 条错误、自动计数）、规范文档（8 篇速查）、设计模式（7 个生产级范式）、4,570 个官方用例。帮助 Agent 写出一次编译通过的 BSV 代码。
 
 BSV 是冷门硬件描述语言，AI 训练数据停留在旧版本，编写代码很难一次编译成功。这个项目将编译错误经验积累为知识库，通过 MCP 协议让 Agent 在编写时就规避常见问题。
 
