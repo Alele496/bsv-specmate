@@ -65,6 +65,14 @@ export async function preflight() {
         lines.push('');
     }
 
+    if (level === 'tapeout') {
+        lines.push('---');
+        lines.push('');
+        lines.push('💡 `lookup_ref(topic)` 可查 BSV 语法规范/标准库/调度注解/设计模式。');
+        lines.push('💡 `lookup_example(keyword)` 可搜官方用例中的正确写法。');
+        lines.push('');
+    }
+
     if (level !== 'silicon') {
         lines.push('---');
         lines.push('');

@@ -66,32 +66,7 @@ check_style 预检 → 按提示修复
 
 ## 协作开发模式
 
-Writer Agent 写代码，Reviewer Agent 审查：
-
-```
-Writer: preflight() → 速览高频错误
-    │
-    ▼
-Writer: 编写代码 ──────────────────────┐
-    │ 不确定时调 lookup_ref / lookup_example
-    │                                   │
-    ▼                                   ▼
- 代码完成 ────────→ Reviewer: check_style 预检
-                                         │
-                    ┌── 通过 → 编译      │
-                    │                    │
-                    └── 问题 → Writer 修复
-                                         │
-                                         ▼
-                                   编译 (bsc)
-                                         │
-                    ┌── 通过 → 完成      │
-                    │                    │
-                    └── 报错 → Reviewer: lookup_error(错误码)
-                                        │
-                                    ┌─ 命中 → Writer 修复 → 重新编译
-                                    └─ 未命中 → Reviewer: add_error(新错误)
-```
+→ 详见 **[docs/collaboration.md](docs/collaboration.md)**
 
 ## 编译
 
