@@ -9,7 +9,7 @@
 | 3 | P0032 | rule/method 顺序 | 2 |
 | 4 | T0051 | literal 超出位宽 | 2 |
 | 5 | T0060 | bit-size mismatch / 寄存器宽度 | 1 |
-| 6 | T0061 | Bool 误用位操作符 | 1 |
+| 6 | T0061 | Bool/Bit 类型混淆、位拼接 | 2 |
 | 7 | G0004 | rule 内并行写冲突 | 1 |
 | 8 | BSV-PORTS | BSV 端口名 ≠ 方法名 + EN/RDY 端口 | 1 |
 | 9 | T0004 | Vector vec() 未绑定 / genWith | 1 |

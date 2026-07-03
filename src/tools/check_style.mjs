@@ -38,6 +38,7 @@ function checkFile(filename, content) {
     checkReservedWords(filename, lines, issues);
     checkRuleDoubleWrite(filename, content, issues);
     checkVecUsage(filename, lines, issues);
+    checkBoolBitMismatch(filename, lines, issues);
 
     return issues;
 }
@@ -172,6 +173,33 @@ function checkVecUsage(filename, lines, issues) {
                 message: '`vec()` 在 BSC 2025.07 标准库中不可用',
                 suggestion: '用 genWith(fromInteger) 或显式 genWith(fn) 替代'
             });
+        }
+    }
+}
+
+function checkBoolBitMismatch(filename, lines, issues) {
+    const linesJoined = lines.join('\n');
+    const boolRegs = [];
+    const regPattern = /Reg#\(Bool\)\s+(\w+)\s*<-/g;
+    let m;
+    while ((m = regPattern.exec(linesJoined)) !== null) {
+        boolRegs.push(m[1]);
+    }
+
+    for (const reg of boolRegs) {
+        for (let i = 0; i < lines.length; i++) {
+            const trimmed = lines[i].trim();
+            if (trimmed.startsWith('//')) continue;
+
+            if (new RegExp(`}=\\s*\\{.*\\b${reg}\\b.*\\}\\s*;`).test(trimmed) ||
+                new RegExp(`return\\s*\\{.*\\b${reg}\\b.*\\}`).test(trimmed)) {
+                issues.push({
+                    file: filename, line: i + 1, check: 'T0061',
+                    severity: 'warning',
+                    message: `Reg#(Bool) "${reg}" 用于位拼接 { } — Bool 不能拼入 Bit 表达式`,
+                    suggestion: `将 "${reg}" 改为 Reg#(Bit#(1))，或改用 Bool 逻辑而非位拼接`
+                });
+            }
         }
     }
 }

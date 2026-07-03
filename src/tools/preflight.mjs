@@ -33,6 +33,11 @@ const COMMON_WARNINGS = [
         ref: null,
     },
     {
+        title: 'Bool 与 Bit 类型切勿混淆',
+        detail: '`Bool` 和 `Bit#(1)` 是不同的类型。控制信号如需位拼接或从 Bus 中提取，优先用 `Reg#(Bit#(1))` 而非 `Reg#(Bool)`。Bool 不能用于 `{...}` 拼接，也不能直接用 `bit[0]` 赋值。',
+        ref: 'T0061',
+    },
+    {
         title: 'Vector 构造用 genWith',
         detail: 'BSC 2025.07 标准库不导出 `vec()` 函数。构造 Vector 用 `genWith(fromInteger)` 或显式 `genWith(fn)`。',
         ref: 'T0004',
@@ -98,7 +103,7 @@ function summarizeRule(code) {
         'G0004': '同一 rule 内每个寄存器只能被写入一次，检查 case default 分支。',
         'G0010': '跨 rule 数据用 FIFOF 传，跨模块互斥加 urgency 标注。',
         'T0060': '`{...}` 拼接总位宽 = 目标寄存器位宽，逐一核对。',
-        'T0061': 'Bool 用 `!`/`&&`/`||`，Bit#(n) 用 `~`/`&`/`|`。',
+        'T0061': 'Bool 用 `!`/`&&`/`||`，Bit#(n) 用 `~`/`&`/`|`。控制信号需位拼接时用 `Bit#(1)` 不用 `Bool`。',
         'T0051': '扩大寄存器位宽时，所有相关寄存器同步扩宽。',
         'BSV-PORTS': 'method Action 的 Verilog 端口名 = 参数名，非方法名。',
         'T0004': 'Vector 构造用 `genWith` 而非 `vec()`。',
