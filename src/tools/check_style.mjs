@@ -37,6 +37,7 @@ function checkFile(filename, content) {
     checkBoolOperators(filename, lines, issues);
     checkReservedWords(filename, lines, issues);
     checkRuleDoubleWrite(filename, content, issues);
+    checkVecUsage(filename, lines, issues);
 
     return issues;
 }
@@ -95,7 +96,7 @@ const SV_RESERVED = new Set([
     'input', 'output', 'inout', 'assign', 'always', 'initial',
     'posedge', 'negedge', 'case', 'default', 'endcase', 'begin', 'end',
     'function', 'task', 'class', 'interface', 'package', 'import',
-    'parameter', 'localparam', 'specify', 'primitive'
+    'parameter', 'localparam', 'specify', 'primitive', 'priority'
 ]);
 
 function checkReservedWords(filename, lines) {
@@ -153,6 +154,24 @@ function checkRuleDoubleWrite(filename, content) {
                 });
                 break;
             }
+        }
+    }
+}
+
+function checkVecUsage(filename, lines, issues) {
+    for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        if (trimmed.startsWith('//') || trimmed.startsWith('import ')) continue;
+        if ((/=\s*vec\s*\(/.test(trimmed) || /\bvec\s*\(\s*\d/.test(trimmed)) &&
+            !trimmed.includes('Vector')) {
+            issues.push({
+                file: filename,
+                line: i + 1,
+                check: 'T0004',
+                severity: 'warning',
+                message: '`vec()` 在 BSC 2025.07 标准库中不可用',
+                suggestion: '用 genWith(fromInteger) 或显式 genWith(fn) 替代'
+            });
         }
     }
 }

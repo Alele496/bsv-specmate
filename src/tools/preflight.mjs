@@ -32,6 +32,11 @@ const COMMON_WARNINGS = [
         detail: 'BSV 中跨时钟域数据需使用 `mkSyncFIFO` 或 `mkSyncBit05`，直接用普通寄存器会在综合时产生不确定行为。',
         ref: null,
     },
+    {
+        title: 'Vector 构造用 genWith',
+        detail: 'BSC 2025.07 标准库不导出 `vec()` 函数。构造 Vector 用 `genWith(fromInteger)` 或显式 `genWith(fn)`。',
+        ref: 'T0004',
+    },
 ];
 
 export async function preflight() {
@@ -89,13 +94,14 @@ export async function preflight() {
 function summarizeRule(code) {
     const rules = {
         'P0032': '所有 module/rule 必须在所有 method 之前。',
-        'P0005': '标识符不用 action/bit/byte/reg/wire/module/input/output 等 SV 保留字。',
+        'P0005': '标识符不用 action/bit/byte/reg/wire/module/input/output/priority 等 SV 保留字。',
         'G0004': '同一 rule 内每个寄存器只能被写入一次，检查 case default 分支。',
         'G0010': '跨 rule 数据用 FIFOF 传，跨模块互斥加 urgency 标注。',
         'T0060': '`{...}` 拼接总位宽 = 目标寄存器位宽，逐一核对。',
         'T0061': 'Bool 用 `!`/`&&`/`||`，Bit#(n) 用 `~`/`&`/`|`。',
         'T0051': '扩大寄存器位宽时，所有相关寄存器同步扩宽。',
         'BSV-PORTS': 'method Action 的 Verilog 端口名 = 参数名，非方法名。',
+        'T0004': 'Vector 构造用 `genWith` 而非 `vec()`。',
     };
     return rules[code] || '见 lookup_error 详情。';
 }
