@@ -1,0 +1,34 @@
+package State where
+
+-- State monad helper
+-- TODO: should this be a bsc library?
+data State s a = State (s -> (a, s))
+
+instance Functor (State s) where
+  fmap f (State g) = State $ \ s ->
+    case g s of
+      (x, s') -> (f x, s')
+
+instance Applicative (State s) where
+  pure x = State $ \ s -> (x, s)
+  liftA2 f (State g) (State h) = State $ \ s ->
+    case g s of
+      (x, s') ->
+        case h s' of
+          (y, s'') -> (f x y, s'')
+
+instance Monad (State s) where
+  bind (State f) g = State $ \ s1 ->
+    case f s1 of
+      (x, s2) ->
+        case g x of
+          State h -> h s2
+
+runState :: State s a -> s -> (a, s)
+runState (State f) = f
+
+get :: State s s
+get = State $ \ s -> (s, s)
+
+put :: s -> State s ()
+put s = State $ \ _ -> ((), s)
