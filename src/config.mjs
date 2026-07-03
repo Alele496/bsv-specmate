@@ -65,3 +65,16 @@ export function initDataDir(force = false) {
 
     return { created: false, root };
 }
+
+const LEVELS = ['silicon', 'wafer', 'tapeout'];
+
+export function getLevel() {
+    const raw = (process.env.SPECMATE_LEVEL || 'wafer').toLowerCase();
+    return LEVELS.includes(raw) ? raw : 'wafer';
+}
+
+export const LEVEL_LIMITS = {
+    silicon:  { errors: 3,  highlight: 'TOP 3' },
+    wafer:    { errors: 5,  highlight: 'TOP 5' },
+    tapeout:  { errors: 10, highlight: 'TOP 10' },
+};

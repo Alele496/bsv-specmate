@@ -1,6 +1,51 @@
 # specmate 详细教程
 
-## 1. MCP 工具详解
+## 1. 能力等级 (SPECMATE_LEVEL)
+
+通过环境变量控制所有 MCP 工具的返回信息量，适配不同开发场景：
+
+| Level | 场景 | `preflight` | `check_style` | `lookup_error` | `lookup_example` |
+|-------|------|-------------|---------------|----------------|------------------|
+| **`silicon`** | 轻量速览 / 小修改 | TOP 3 错误 | 仅 error 级 | 仅规则总结 | 1 文件 / 15 行 |
+| **`wafer`** (默认) | 日常开发 | TOP 5 + 3 警告 | error + warning | 完整详情 | 3 文件 / 30 行 |
+| **`tapeout`** | 深度审查 / 新模块 | TOP 10 + 全部警告 + 编码建议 | error + warning + hint | 完整详情 | 5 文件 / 50 行 |
+
+```json
+{
+  "mcpServers": {
+    "specmate": {
+      "command": "npx",
+      "args": ["specmate"],
+      "env": { "SPECMATE_LEVEL": "tapeout" }
+    }
+  }
+}
+```
+
+---
+
+## 2. MCP 工具详解
+
+### preflight — 编码前速览
+
+**调用时机**：每次编写 BSV 代码前调用，无需参数。
+
+```
+preflight()
+```
+
+**返回内容（随 level 变化）**：
+- `silicon` — TOP 3 高频错误一句话摘要
+- `wafer` — TOP 5 错误 + 3 条常见设计警告
+- `tapeout` — TOP 10 错误 + 全部警告 + 深度编码建议
+
+**内置警告清单**（后续可迁入 SQLite）：
+1. 跨 Rule 数据传递（PulseWire+Reg 陷阱）
+2. 跨模块调度标注（urgency 缺失）
+3. Verilog 端口命名（方法名 ≠ 端口名）
+4. Interface 导出歧义
+5. always_ready 判断
+6. Clock domain crossing
 
 ### check_style — 编译前静态检查
 
@@ -180,12 +225,14 @@ add_error(
 
 ---
 
-## 2. 工作流示例
+## 3. 工作流示例
 
 ### 独立开发模式
 
 ```
-Agent 编写 bs.v 代码
+preflight() → 速览高频错误 + 警告
+
+编写 .bsv 代码
     │
     ├─ 不确定语法 → lookup_ref / lookup_example
     │
@@ -228,7 +275,7 @@ Writer Agent                       Reviewer Agent
 
 ---
 
-## 3. 自定义与魔改
+## 4. 自定义与魔改
 
 ### 修改 check_style 检测规则
 
@@ -248,7 +295,7 @@ Writer Agent                       Reviewer Agent
 
 ---
 
-## 4. npm 脚本详解
+## 5. npm 脚本详解
 
 ### npm run db:seed
 
@@ -268,11 +315,12 @@ Writer Agent                       Reviewer Agent
 
 ---
 
-## 5. 环境变量
+## 6. 环境变量
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
 | `SPECMATE_DATA` | 用户数据根目录 | `~/.specmate/` |
+| `SPECMATE_LEVEL` | 能力等级 `silicon` / `wafer` / `tapeout` | `wafer` |
 
 ### 初始种子数据流程
 

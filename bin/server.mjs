@@ -9,6 +9,7 @@ import { lookupError } from "../src/tools/lookup_error.mjs";
 import { lookupRef } from "../src/tools/lookup_ref.mjs";
 import { lookupExample } from "../src/tools/lookup_example.mjs";
 import { addError } from "../src/tools/add_error.mjs";
+import { preflight } from "../src/tools/preflight.mjs";
 
 const server = new McpServer({
     name: "specmate",
@@ -93,6 +94,18 @@ server.tool(
     },
     async ({ code, title, bsc_output, cause, solution, rules }) => {
         const result = await addError({ code, title, bsc_output, cause, solution, rules: rules || "" });
+        return {
+            content: [{ type: "text", text: result }],
+        };
+    }
+);
+
+server.tool(
+    "preflight",
+    "Call BEFORE writing any BSV code. Returns the most common compilation errors and design warnings to avoid, tailored to SPECMATE_LEVEL (silicon/wafer/tapeout).",
+    {},
+    async () => {
+        const result = await preflight();
         return {
             content: [{ type: "text", text: result }],
         };

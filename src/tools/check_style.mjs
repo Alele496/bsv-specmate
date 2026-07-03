@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname, relative } from 'path';
 import { fileURLToPath } from 'url';
+import { getLevel } from '../config.mjs';
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -21,6 +22,10 @@ export function checkStyle(args) {
         results.push(...checkFile(relPath, content));
     }
 
+    const level = getLevel();
+    if (level === 'silicon') {
+        return results.filter(r => r.severity === 'error');
+    }
     return results;
 }
 

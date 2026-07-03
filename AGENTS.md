@@ -4,21 +4,48 @@
 
 ## MCP 工具
 
-本 MCP Server 提供 5 个工具，Agent 通过 MCP 协议直接调用：
+本 MCP Server 提供 6 个工具，Agent 通过 MCP 协议直接调用：
 
 | 工具 | 作用 | 输入 | 输出 |
 |------|------|------|------|
+| `preflight` | 编码前速览 | 无（自动读 level） | 高频错误速览 + 设计警告 + 编码建议 |
 | `check_style` | 编译前静态检查 | 文件路径列表 | 问题列表 (错误码 + 行号 + 建议) |
 | `lookup_error` | 查错题本 | 错误码 (如 "P0005") | 现象 + 原因 + 方案 + 计数 |
 | `lookup_ref` | 查 BSV 规范 | "module"/"types"/"syntax"/"examples" | 对应文档全文 |
-| `lookup_example` | 搜官方用例 | 关键词 + 可选子目录 | 匹配的 .bsv 代码片段 (最多 5 个文件) |
+| `lookup_example` | 搜官方用例 | 关键词 + 可选子目录 | 匹配的 .bsv 代码片段 |
 | `add_error` | 追加新错误 | code, title, bsc_output, cause, solution, rules | 确认信息 |
+
+## 能力等级 (SPECMATE_LEVEL)
+
+通过环境变量控制信息返回量，适配不同开发场景：
+
+| Level | 场景 | `preflight` | `check_style` | `lookup_error` | `lookup_example` |
+|-------|------|-------------|---------------|----------------|------------------|
+| **`silicon`** | 轻量速览 | TOP 3 错误 | 仅 error | 仅规则总结 | 1 文件 / 15 行 |
+| **`wafer`** (默认) | 日常开发 | TOP 5 + 3 警告 | error + warning | 完整详情 | 3 文件 / 30 行 |
+| **`tapeout`** | 深度审查 | TOP 10 + 全部警告 + 编码建议 | error + warning + hint | 完整详情 | 5 文件 / 50 行 |
+
+配置方式：
+
+```json
+{
+  "mcpServers": {
+    "specmate": {
+      "command": "npx",
+      "args": ["specmate"],
+      "env": { "SPECMATE_LEVEL": "tapeout" }
+    }
+  }
+}
+```
 
 ## 独立开发模式
 
 一个 Agent 同时负责编写和检查：
 
 ```
+preflight() → 速览高频错误 + 警告
+
 编写 .bsv 代码
     │
     ├─ 不确定语法 → lookup_ref / lookup_example
@@ -41,6 +68,9 @@ check_style 预检 → 按提示修复
 Writer Agent 写代码，Reviewer Agent 审查：
 
 ```
+Writer: preflight() → 速览高频错误
+    │
+    ▼
 Writer: 编写代码 ──────────────────────┐
     │ 不确定时调 lookup_ref / lookup_example
     │                                   │

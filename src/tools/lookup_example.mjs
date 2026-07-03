@@ -1,12 +1,18 @@
 import { readFileSync, existsSync, readdirSync } from 'fs';
 import { resolve } from 'path';
-import { PKG_EXAMPLES } from '../config.mjs';
+import { PKG_EXAMPLES, getLevel } from '../config.mjs';
 
 const BSV_DIR = resolve(PKG_EXAMPLES, 'bsv');
-const MAX_FILES = 5;
-const MAX_LINES = 40;
+
+const LEVEL_CONFIG = {
+    silicon:  { maxFiles: 1, maxLines: 15 },
+    wafer:    { maxFiles: 3, maxLines: 30 },
+    tapeout:  { maxFiles: 5, maxLines: 50 },
+};
 
 export function lookupExample(args) {
+    const level = getLevel();
+    const cfg = LEVEL_CONFIG[level];
     const keyword = (args.keyword || '').trim();
     const directory = (args.directory || '').trim();
 
@@ -28,7 +34,7 @@ export function lookupExample(args) {
     const kws = keyword.toLowerCase().split(/\s+/);
 
     for (const file of files) {
-        if (results.length >= MAX_FILES) break;
+        if (results.length >= cfg.maxFiles) break;
 
         try {
             const content = readFileSync(file, 'utf-8');
@@ -55,7 +61,7 @@ export function lookupExample(args) {
 
                 results.push({
                     file: relPath,
-                    content: uniqueSnippets.substring(0, MAX_LINES * 80) // limit snippet size
+                    content: uniqueSnippets.substring(0, cfg.maxLines * 80)
                 });
             }
         } catch {
