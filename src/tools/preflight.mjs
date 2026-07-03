@@ -115,6 +115,8 @@ function summarizeRule(code) {
         'T0051': '扩大寄存器位宽时，所有相关寄存器同步扩宽。',
         'BSV-PORTS': 'method Action 的 Verilog 端口名 = 参数名，非方法名。',
         'T0004': 'Vector 构造用 `genWith` 而非 `vec()`。',
+        'P0030': 'Value method 用 `= expr` 或 `? :` 三元链，不能用 if-return。',
+        'T0011': '寄存器名不要和方法名重名，寄存器加后缀 _reg 或 _r。',
     };
     return rules[code] || '见 lookup_error 详情。';
 }

@@ -39,6 +39,8 @@ function checkFile(filename, content) {
     checkRuleDoubleWrite(filename, content, issues);
     checkVecUsage(filename, lines, issues);
     checkBoolBitMismatch(filename, lines, issues);
+    checkValueMethodSyntax(filename, lines, issues);
+    checkMethodRegNaming(filename, content, issues);
 
     return issues;
 }
@@ -126,8 +128,15 @@ function checkReservedWords(filename, lines) {
                         message: `标识符 "${word}" 是 SystemVerilog/BSV 保留字，可能导致编译错误`,
                         suggestion: `改名避免冲突`
                     });
-                }
-            }
+    }
+}
+
+// Common variable names that are likely Bool (heuristic)
+const BOOL_LIKE = new Set([
+    'wave', 'flag', 'done', 'ready', 'valid', 'busy',
+    'start', 'enable', 'ack', 'hit', 'ok',
+    'notEmpty', 'notFull', 'idle', 'active'
+]);
         }
     }
 }
@@ -204,7 +213,40 @@ function checkBoolBitMismatch(filename, lines, issues) {
     }
 }
 
-// Common variable names that are likely Bool (heuristic)
+function checkValueMethodSyntax(filename, lines, issues) {
+    for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        if (trimmed.startsWith('//')) continue;
+        if (/^\s*method\s+(?!Action\b)\S+/.test(trimmed) && !trimmed.includes('=') && trimmed.endsWith(';')) {
+            const nextLines = lines.slice(i, i + 8).join('\n');
+            if (/\bif\b.*\breturn\b/.test(nextLines) || /\bcase\b.*\breturn\b/.test(nextLines)) {
+                issues.push({
+                    file: filename, line: i + 1, check: 'P0030',
+                    severity: 'warning',
+                    message: 'Value method 使用 if-return — BSV 要求用 = expr 或 ?: 三元链',
+                    suggestion: '改为 method Type name = (cond) ? a : b; 或提取 function'
+                });
+            }
+        }
+    }
+}
+
+function checkMethodRegNaming(filename, content, issues) {
+    const regNames = [...content.matchAll(/Reg#\(\w+\)\s+(\w+)\s*<-/g)].map(m => m[1]);
+    const methodNames = [...content.matchAll(/method\s+\S+\s+(\w+)\s*[=;]/g)].map(m => m[1]);
+    const overlapping = regNames.filter(r => methodNames.includes(r));
+    for (const name of overlapping) {
+        const i = content.split('\n').findIndex(l => l.includes(`method`) && l.includes(name));
+        if (i >= 0) {
+            issues.push({
+                file: filename, line: i + 1, check: 'T0011',
+                severity: 'warning',
+                message: `方法名 "${name}" 与寄存器重名，可能触发消歧义错误`,
+                suggestion: `寄存器改名为 ${name}_reg，方法保持不变`
+            });
+        }
+    }
+}
 const BOOL_LIKE = new Set([
     'wave', 'flag', 'done', 'ready', 'valid', 'busy',
     'start', 'enable', 'ack', 'hit', 'ok',
