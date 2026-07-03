@@ -47,7 +47,19 @@ function formatError(err, level) {
         '### 解决方案',
         err.solution || '(未记录)',
         err.rules ? `\n> **规则**: ${err.rules}` : '',
+        crossRef(err.code),
     ].join('\n');
+}
+
+function crossRef(code) {
+    const map = {
+        P0005: 'keywords', P0030: 'module', P0032: 'module',
+        T0060: 'types', T0061: 'types', T0051: 'types',
+        G0004: 'schedule', G0010: 'schedule',
+        T0004: 'stdlib', T0011: 'keywords',
+    };
+    const topic = map[code];
+    return topic ? `\n\n💡 相关: \`lookup_ref(topic="${topic}")\` 查看对应规范文档。` : '';
 }
 
 export async function hitAndLookup(code) {

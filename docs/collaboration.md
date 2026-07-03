@@ -24,7 +24,13 @@ Developer Agent 的工作目录下放置一个极简 AGENTS.md：
 
 代码写在 bsv/ 下。
 
-写完代码后建议运行静态检查。
+---
+
+编写过程中遇到以下情况可查 specmate 工具：
+- 编译报 G0004 / 规则调度问题 → `lookup_ref(topic="schedule")`
+- 不确定 BSV 语法或概念 → `lookup_ref(topic="tutorial")` 或 `suggest(context="xxx")`
+- 不确定 FIFO/Reg/Vector 用法 → `lookup_ref(topic="stdlib")`
+- 写完模块后建议运行静态检查
 ```
 
 同时放置 opencode.json 加载 specmate MCP。
