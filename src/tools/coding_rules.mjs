@@ -8,7 +8,7 @@ const INTRO = [
     '· `coding_rules()` — 高频编译错误衍生的编码约束（你正在看）',
     '· `lookup_ref(topic)` — BSV 语法 / 标准库 / 调度标注 / 设计模式',
     '· `lookup_example(keyword)` — 在 4,570 个官方用例中搜索正确写法',
-    '· `check_style(files)` — 编译前静态预检',
+    '· `check_style(files)` — 编译前静态预检（写完代码后可调用）',
     '· `lookup_error(code)` — 报错后查原因和方案',
     '',
     '视需要调用。',

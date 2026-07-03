@@ -23,6 +23,8 @@ Developer Agent 的工作目录下放置一个极简 AGENTS.md：
 {接口规范}
 
 代码写在 bsv/ 下。
+
+写完代码后建议运行静态检查。
 ```
 
 同时放置 opencode.json 加载 specmate MCP。
