@@ -46,7 +46,7 @@ server.tool(
         if (checks.includes('T0061') || checks.includes('T0060')) {
             hint += '\n💡 `lookup_ref(topic="types")` 查看 Bit/Bool 类型系统和位宽规则。';
         }
-        if (checks.includes('G0004') || checks.includes('G0010')) {
+        if (checks.includes('G0004') || checks.includes('G0004_FSM') || checks.includes('G0010')) {
             hint += '\n💡 `lookup_ref(topic="schedule")` 查看规则调度标注和 G0004 修复方案。';
         }
         if (checks.includes('T0004')) {

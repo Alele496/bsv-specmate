@@ -41,6 +41,7 @@ function checkFile(filename, content) {
     checkBoolBitMismatch(filename, lines, issues);
     checkValueMethodSyntax(filename, lines, issues);
     checkMethodRegNaming(filename, content, issues);
+    checkMultiSubmodule(filename, content, issues);
 
     return issues;
 }
@@ -137,6 +138,30 @@ const BOOL_LIKE = new Set([
     'start', 'enable', 'ack', 'hit', 'ok',
     'notEmpty', 'notFull', 'idle', 'active'
 ]);
+
+function checkMultiSubmodule(filename, content, issues) {
+    const blocks = content.match(/rule\s+\w+[\s\S]*?endrule/g) || [];
+    for (const block of blocks) {
+        const mods = new Set();
+        const matches = block.matchAll(/\b(\w+)\.(\w+)\s*\(/g);
+        const skip = new Set(['if', 'else', 'begin', 'end', 'case', 'endcase', 'return']);
+        for (const m of matches) {
+            if (!skip.has(m[1]) && !skip.has(m[2])) {
+                mods.add(m[1]);
+            }
+        }
+        if (mods.size >= 2) {
+            const ruleName = (block.match(/rule\s+(\w+)/) || [])[1] || 'unknown';
+            const lineEst = content.substring(0, content.indexOf(block)).split('\n').length + 1;
+            issues.push({
+                file: filename, line: lineEst, check: 'G0004_FSM',
+                severity: 'warning',
+                message: `Rule "${ruleName}" 内调用了 ${mods.size} 个子模块 (${[...mods].join(', ')}) — 可能触发 G0004`,
+                suggestion: '拆为独立规则，每个规则只调一个子模块。见 lookup_ref(topic="schedule")'
+            });
+        }
+    }
+}
         }
     }
 }
