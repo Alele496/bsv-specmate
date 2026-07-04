@@ -59,6 +59,7 @@ bsc 已经在本地了——Agent 直接调 shell 编译即可。编译器作为
 - 🚀 [快速开始](#-快速开始)
 - 🛠 [本地开发](#-本地开发)
 - 📖 [详细教程 → docs/TUTORIAL.md](./docs/TUTORIAL.md)
+- 🔧 [维护指南 → docs/MAINTAINER.md](./docs/MAINTAINER.md)
 - 🇬🇧 [English → README.en.md](./README.en.md)
 
 ---
