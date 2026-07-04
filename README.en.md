@@ -16,24 +16,28 @@ BSV is a niche hardware description language. AI training data lags behind the l
 > Core architecture = DKE (Domain Knowledge Engine) + Coding Memory + Constraint Chain + Role Activation.
 > See **[Kova Framework →](https://github.com/Alele496/kova)** and `docs/collaboration.md` for details.
 
-## 📖 Origin: From Error Log to Knowledge Engine
+## Why specmate
 
-It started as a simple BSV error log — the agent kept failing compilation,
-so I manually jotted down error codes and fixes under `docs/errors/`.
+AI agents write Python and JS just fine — abundant training data. But niche
+hardware languages like BSV are a different story: the model knows syntax
+but not domain traps. `vec()` was deprecated in the 2025 compiler. `priority`
+is an SV reserved word that triggers P0005. `Bool` values can't be spliced
+into `Bit` expressions. Calling methods from multiple submodules in a single
+rule triggers the dreaded G0004...
 
-Then I realized just writing them down wasn't enough — the agent never read them.
-So I added SQLite auto-sorting (high-frequency first), hit counting, and `coding_rules()`.
+Every compilation error is a one-off fix — no memory persists. Switch to a
+different agent, same mistakes all over again.
 
-Still not enough — the agent still didn't call the tools. Two experiments later,
-the key insight emerged: **give the agent a review role** (Supervisor).
-When "code quality review" became part of its job description, tool calls
-jumped from 0 to 10+.
+specmate changes this: compilation errors become a **Coding Memory** (SQLite-driven,
+auto-counting, high-frequency first). Reference docs become on-demand searchable
+**topics**. Code review becomes a **Supervisor role** that actively calls tools.
+The agent stops being an "intern learning BSV from scratch every session."
 
-What started as an error log had become a reusable domain knowledge engine
-architecture — the **Kova framework**. specmate is Kova's first complete
-domain instance (for BSV).
+The architecture turned out to be reusable — not just for BSV, but for any
+niche language or domain. That's the **Kova framework**. specmate is its
+first complete domain instance.
 
-> From error log to knowledge engine. More on the architecture → **[Kova Framework](https://github.com/Alele496/kova)**
+→ **[Kova Framework](https://github.com/Alele496/kova)**
 
 | Feature | Description | MCP Tool |
 |---------|-------------|----------|
