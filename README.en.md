@@ -4,58 +4,44 @@
 [![npm](https://img.shields.io/badge/npm-bsv--specmate-red?style=flat-square&logo=npm)](https://www.npmjs.com/package/bsv-specmate)
 [![GitHub License](https://img.shields.io/github/license/Alele496/bsv-specmate?style=flat-square)](https://github.com/Alele496/bsv-specmate/blob/main/LICENSE)
 
-> BSV Coding Knowledge Engine — Your Bluespec coding mate.
+> 🧠 Bluespec finally has a mate — a coding buddy that knows BSV, remembers your faceplants, and yells "watch your step" before you compile.
 
 [🇨🇳 中文版](./README.md)
 
-`specmate` is a **BSV Coding Knowledge Engine** — a domain knowledge layer for AI agents writing Bluespec SystemVerilog. It bundles a Coding Memory (12 entries, auto-counting), language reference docs (13 topics), design patterns (5 styles + 7 paradigms), and 4,570 official test suite examples. Helps agents write BSV code that compiles on the first try.
+AI writes Python like a champ. BSV? Compile it and your screen turns red. It's not the AI's fault — BSV is niche, the training data is stale. `vec()` is deprecated but the model keeps using it. `priority` is an SV reserved word and it happily turns it into a variable name. A `Bool` somehow lands inside a `Bit` expression...
 
-BSV is a niche hardware description language. AI training data lags behind the latest compiler — outdated syntax, missing keywords, and subtle scheduling rules make first-try compilation rare. This project accumulates real compilation errors into a Coding Memory, so agents can avoid common pitfalls before they compile.
+Worse: each compilation error is a one-off. Switch agents, same landmines, all over again.
 
-> **Architecture**: specmate is the first domain instance of **Kova** (Knowledge Vault), a domain knowledge engine framework.
-> Core architecture = DKE (Domain Knowledge Engine) + Coding Memory + Constraint Chain + Role Activation.
-> See **[Kova Framework →](https://github.com/Alele496/kova)** and `docs/collaboration.md` for details.
+**specmate fixes this.** It doesn't compile your code — it catches the potholes before you drive over them. 12 Coding Memory entries (SQLite, auto-increment on hit, high-frequency first), 13 language reference topics, 18 static check rules, 5 coding styles, 4,570 official test suite examples. It sits behind your AI agent via MCP and whispers "hey, remember G0010? The last agent tripped on this three times."
 
-## Why specmate
+> specmate is the first domain instance of **Kova** (Knowledge Vault), a domain knowledge engine framework. Core architecture = DKE (Domain Knowledge Engine) + Coding Memory + Constraint Chain + Role Activation. See **[Kova →](https://github.com/Alele496/kova)** and `docs/collaboration.md`.
 
-AI agents write Python and JS just fine — abundant training data. But niche
-hardware languages like BSV are a different story: the model knows syntax
-but not domain traps. `vec()` was deprecated in the 2025 compiler. `priority`
-is an SV reserved word that triggers P0005. `Bool` values can't be spliced
-into `Bit` expressions. Calling methods from multiple submodules in a single
-rule triggers the dreaded G0004...
+## 🤔 Why specmate
 
-Every compilation error is a one-off fix — no memory persists. Switch to a
-different agent, same mistakes all over again.
+The BSV coding loop, as experienced by most: write code → compile → P0005 → fix → P0032 → fix → G0004 → fix → G0010... Round after round. You're not fixing logic bugs — you're fighting a language rules quiz you keep failing.
 
-specmate changes this: compilation errors become a **Coding Memory** (SQLite-driven,
-auto-counting, high-frequency first). Reference docs become on-demand searchable
-**topics**. Code review becomes a **Supervisor role** that actively calls tools.
-The agent stops being an "intern learning BSV from scratch every session."
+The problem isn't you or the AI. BSV's 2025.07 compiler differs significantly from older versions, and training data hasn't caught up. The agent knows syntax basics but not the new traps. And there's zero memory — the same G0004 can get a fresh agent three times.
 
-The architecture turned out to be reusable — not just for BSV, but for any
-niche language or domain. That's the **Kova framework**. specmate is its
-first complete domain instance.
-
-→ **[Kova Framework](https://github.com/Alele496/kova)**
+specmate's job: turn each faceplant into a Coding Memory. Next time an agent writes similar code, specmate warns it before it even asks — "You're building a FIFO pipeline? Heads up: G0010. Previous agent crashed here three times."
 
 ### Why not bundle the bsc compiler?
 
-specmate is a **pre-compilation quality layer** — its value is catching errors before compilation,
-not after. `check_style` detects 18 categories of common syntax/type errors without calling bsc.
+specmate is a **pre-compilation quality layer**. It catches 18 categories of common syntax and type errors without ever calling bsc.
 
-Bundling the compiler would require 200MB+ Docker images. For users with WSL/Linux, bsc is
-already installed locally — agents can call it directly. Compiler integration is planned as an
-optional plugin (Phase 3), not part of the core package.
+Bundling the compiler would mean 200MB+ Docker images. If you have WSL or Linux, bsc is already local — agents can call it directly. Compiler integration is a Phase 3 optional plugin, not part of core.
 
-| Feature | Description | MCP Tool |
-|---------|-------------|----------|
-| **🧠 Knowledge Guide** | 4 phases routing all queries: pre-code traps / error diagnosis / next-step / decision support | `specmate_guide` |
-| **🔍 Static Check** | 18 regex rules: method order, Bool misuse, reserved words, literal overflow, struct fields, arg count, etc. | `specmate_check` |
-| **✍️ Coding Memory** | 12 SQLite-driven errors, auto-increment on hit; agent calls specmate_learn for new errors | `specmate_learn` |
-| **🎛️ 3-tier Levels** | `silicon` / `wafer` / `tapeout` control intimacy depth | `SPECMATE_LEVEL` |
-| **📦 Zero Config** | `npm install -g` + one line of JSON | — |
-| **💾 Persistent Data** | SQLite at `~/.specmate/`, configurable via `SPECMATE_DATA` | — |
+## 🛠 What it does
+
+You write BSV → specmate checks what you're about to build, predicts the traps → you finish, it reviews → compilation barfs, it tells you why + how to fix → next time, it blocks the same pitfall before you step in. Like a grudge-holding code buddy.
+
+| Feature | Description | Tool |
+|---------|-------------|------|
+| **🧠 Knowledge Guide** | 4 phases. Agent describes the situation, specmate routes internally — Coding Memory, reference docs, domain knowledge graph | `specmate_guide` |
+| **🔍 Pre-compile Checkup** | 18 rules scanning .bsv: method order, Bool operator misuse, SV reserved word conflicts, literal overflow, argument count, struct field typos... No bsc, pure static analysis | `specmate_check` |
+| **✍️ Learning from Pain** | New errors auto-stored. Same error code = hit count +1. High frequency rises to the top. Agent trips once, specmate remembers forever | `specmate_learn` |
+| **🎛️ Three Intimacy Levels** | `silicon` (introvert) / `wafer` (the regular friend) / `tapeout` (the friend who won't stop checking in) | `SPECMATE_LEVEL` |
+| **📦 Zero Config** | `npm install -g` + three lines of JSON. Agent discovers 3 MCP tools automatically | — |
+| **💾 Persistence** | SQLite stores at `~/.specmate/`. Switch machines, switch agents — memory stays | — |
 
 - 🚀 [Quick Start](#-quick-start)
 - 🛠 [Local Development](#-local-development)
@@ -64,9 +50,11 @@ optional plugin (Phase 3), not part of the core package.
 
 ---
 
-## 🥊 SHOWDOWN: specmate vs. Bare-Metal AI
+## 🥊 SHOWDOWN: specmate vs. bare-metal AI
 
-Three experiments, same requirements, one variable: specmate.
+Three experiments. Same BSV projects. One variable: specmate. The third round went further — we pulled in a neutral agent for double-blind code review.
+
+specmate won every round. Faster. More stable. Better code.
 
 ### Round 1: RISC-V Peripherals (OpenCode)
 
@@ -83,42 +71,38 @@ Three experiments, same requirements, one variable: specmate.
 
 ### Round 3: CRC-32 Processor (CCB × Blind Review)
 
-First-ever **double-blind code review** — an anonymous agent scored both without knowing which was which:
+First-ever **double-blind code review** — the reviewing agent had no idea which code came from which camp:
 
 | | A (6 rules) | B (specmate) |
 |---|---|---|
 | Coding time | 19m47s | **9m27s (-52%)** |
-| Code quality (/25) | 19 | **22 (+16%)** |
+| Blind review (/25) | 19 | **22 (+16%)** |
 
 The reviewer's verdict: *"code-2 is the more engineered solution — explicit FSM, defensive provisos, parameterized FIFO. 63% more code, but worth it."*
 
-### 🎯 Conclusion
+### 🎯 The Takeaway
 
-Two experiments, one clear answer:
+Three experiments, one insight: **it's not about writing more rules. It's about giving the agent a review role.**
 
-**Collaboration (Supervisor + Developer) + proactive tool use**
+Round 1, Agent B never touched specmate — not once. Not because the tools were bad, but because it didn't know it had a mate. Round 2, we gave the agent a Supervisor role: "Your job is to review code quality." Suddenly it clicked — 10+ proactive calls.
 
-Don't just list tools in AGENTS.md — Round 1 proved that doesn't work (0 calls).
-Give the agent a **Supervisor review role**. When "code quality review" becomes
-part of its job description, it naturally reaches for check_style, preflight, lookup_ref.
-
-> Three lines of role description > six static coding rules > nothing at all.
+> Three lines of role description > six static rules > absolutely nothing.
 
 ---
 
 ## 📊 Usage Guide
 
-| Scenario | Recommended Mode | Template | Effect |
-|----------|-----------------|----------|--------|
-| **New module / large project** | 🤝 **Collaboration** (Supervisor + Developer) | [docs/collaboration.md](docs/collaboration.md) | Highest pass rate, -47% coding time, +23% tokens |
-| **Quick fix / small change** | 🔧 **Solo** (single agent) | [examples/templates/](examples/templates/) | Lightweight & fast, minimal AGENTS.md template |
+| Scenario | Best Mode | Template | Effect |
+|----------|-----------|----------|--------|
+| **New module / large project** | 🤝 **Collaboration** (Supervisor + Developer) | [docs/collaboration.md](docs/collaboration.md) | Highest pass rate, -47% coding time |
+| **Quick fix / small change** | 🔧 **Solo** (single agent) | [examples/templates/](examples/templates/) | Lightweight, minimal AGENTS.md |
 
-**How to choose**:
-- Starting a brand-new module → use the collaboration template, Supervisor will review
-- Just fixing a known bug → use the solo template, enough & saves tokens
-- Agent keeps forgetting specmate → gently nudge: "Try specmate_guide(phase=\"pre_code\", input=\"...\")"
+**How to pick**:
+- Building something new from scratch → collaboration template, Supervisor will review
+- Fixing a known bug → solo template, saves tokens
+- Agent keeps forgetting specmate → nudge it: "Try specmate_guide(phase=\"pre_code\", input=\"...\")"
 
-→ **[📖 Complete Showdown Report](docs/SHOWDOWN.md)**
+→ **[📖 Full Showdown Report](docs/SHOWDOWN.md)**
 
 ---
 
@@ -132,10 +116,10 @@ npm install -g bsv-specmate
 
 ### Configure CCB / Claude Code
 
-Create `.mcp.json` in your project root:
+Drop a `.mcp.json` in your project root:
 
 ```json
-// npm version (Linux / WSL / Windows)
+// npm version
 {
   "mcpServers": {
     "bsv-specmate": { "command": "npx", "args": ["bsv-specmate"] }
@@ -156,7 +140,7 @@ Create `.mcp.json` in your project root:
 
 ### Configure OpenCode
 
-Create `opencode.json` in your project root:
+Drop an `opencode.json` in your project root:
 
 ```json
 // npm version
@@ -168,7 +152,7 @@ Create `opencode.json` in your project root:
   "mcp": { "bsv-specmate": { "type": "local", "command": ["node", "<absolute-path>/bin/server.mjs"], "enabled": true, "environment": { "SPECMATE_LEVEL": "wafer" } } } }
 ```
 
-Restart your AI client. Agents will discover 3 MCP tools automatically.
+Restart your AI client. Agent auto-discovers 3 MCP tools.
 
 ---
 
@@ -181,18 +165,19 @@ cp examples/templates/AGENTS.md ./AGENTS.md
 cp examples/templates/opencode.json ./opencode.json
 ```
 
-Edit `AGENTS.md` with your project description and module list. Update `<absolute-path>` in `opencode.json`.
-Details at `examples/templates/README.md`.
+Edit `AGENTS.md` with your project description and module list. Details at `examples/templates/README.md`.
 
 ---
 
-## 🎛️ Capability Levels
+## 🎛️ Intimacy Levels
 
-| Level | Name | Mode | Best for |
-|-------|------|------|----------|
-| **`silicon`** | Silent | Shows toolbox once, then passive response | Quick fixes, known bugs |
-| **`wafer`** (default) | Suggestive | Cross-references + scenario hints after each response | Daily development |
-| **`tapeout`** | Collaborative | Pre-coding checklist, ongoing guidance, post-error cascade scan. Stays in the loop | New modules, complex projects, quality-critical code |
+specmate has three personalities. Same tools, different levels of chattiness:
+
+| Level | Vibes | Personality | Best for |
+|-------|-------|------------|----------|
+| **`silicon`** | Introvert 😶 | I answer what you ask. Not a word more. No suggestions, no cross-references. | Bug fixes, known issues, when you're in the zone |
+| **`wafer`** (default) | The regular friend 💬 | I'll remind you, cross-reference, flag what matters. Just right. | **Default mode**, daily development |
+| **`tapeout`** | The friend who won't quit 📢 | I'll warn you before you write, nudge while you code, and after an error I'll ask "Fixed? Want me to check if you're about to hit this again?" | New modules, complex projects, when quality counts |
 
 ---
 
@@ -293,7 +278,7 @@ First run auto-creates `~/.specmate/`:
 | `data/knowledge.db` | SQLite knowledge base |
 | `docs/errors/*.md` | Exported Markdown docs |
 
-Custom path via environment variable:
+Custom path:
 
 ```json
 {
@@ -305,17 +290,19 @@ Custom path via environment variable:
 
 ## 🤝 Contributing
 
-1. Encounter a new BSV compilation error → agent calls `specmate_learn` to store it
+1. Agent hits a new compilation error → calls `specmate_learn` to store it
 2. Run `npm run db:export` to export Markdown
-3. Submit a PR to merge new errors back to main repo
+3. Submit a PR to merge new errors back to the main repo
 
 ---
 
-## 💬 Tips: Getting Your Agent to Use specmate
+## 💬 Agent not using specmate? You're not alone
 
-specmate is a pre-compilation quality layer — the agent leads, specmate quietly provides domain expertise.
+Round 1: Agent B called specmate **zero times**. Not because it didn't want to — it just didn't know it had a mate.
 
-**In day-to-day use**, when the agent needs guidance, just reference the 5 phases:
+We gave it a Supervisor role: "Your job is to review code quality." Boom. 10+ proactive calls.
+
+**So here's what you say:**
 
 ```
 Before coding: specmate_guide(phase="pre_code", input="brief task description")
@@ -325,10 +312,10 @@ Unsure:        specmate_guide(phase="decide", input="option A vs option B")
 Next step:     specmate_guide(phase="continue", input="next task")
 ```
 
-3 tools, 5 phases. No need to remember internal details. 🤏
+3 tools, 5 phases. One sentence. Potentially one fewer compilation error. Works every time. 🤏
 
 ---
 
-## 📄 License
-
-MIT
+> 📄 MIT License
+>
+> 👤 Built by [Alele496](https://github.com/Alele496). May your compiles have fewer errors — and when they don't, specmate's got your back. 🤙

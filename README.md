@@ -4,53 +4,44 @@
 [![npm](https://img.shields.io/badge/npm-bsv--specmate-red?style=flat-square&logo=npm)](https://www.npmjs.com/package/bsv-specmate)
 [![GitHub License](https://img.shields.io/github/license/Alele496/bsv-specmate?style=flat-square)](https://github.com/Alele496/bsv-specmate/blob/main/LICENSE)
 
-> BSV 编码知识引擎 — Your Bluespec coding mate.
+> 🧠 Bluepec 终于有个 mate 了——一个懂 BSV、记得住你的翻车现场、会在编译前喊你看路的编码助手。
 
 [🇬🇧 English Version](./README.en.md)
 
-`specmate` 是一个 **BSV 编码知识引擎**——为 AI Agent 植入 Bluespec SystemVerilog 领域的知识层。内置编码记忆（12 条错误、自动计数）、规范文档（13 篇速查）、设计模式（5 种风格 + 7 个范式）、4,570 个官方用例。帮助 Agent 写出一次编译通过的 BSV 代码。
+AI 写 Python 顺手得不得了。写 BSV？一编译，满屏红。不是 AI 笨——BSV 太冷门，训练数据全是老版本：`vec()` 已经被废弃了它照写，`priority` 是 SV 保留字它也敢拿来做变量名，Bool 居然试图拼进 Bit 表达式……编译器崩溃之前都不知道哪儿出错了。
 
-BSV 是冷门硬件描述语言，AI 训练数据停留在旧版本，编写代码很难一次编译成功。这个项目将编译错误经验积累为编码记忆，通过 MCP 协议让 Agent 在编写时就规避常见问题。
+更头疼的是：每次编译报错都是一次性消耗品。换个 Agent，从头踩同样的坑。
 
-> **架构说明**：specmate 是 **Kova**（Knowledge Vault，领域知识引擎框架）在 BSV 领域的首个实例。
-> 核心架构 = DKE（Domain Knowledge Engine）+ 编码记忆（Coding Memory）+ 约束链 + 角色激活。
-> 详见 **[Kova 框架 →](https://github.com/Alele496/kova)** 和 `docs/collaboration.md`。
+**specmate 就是填这个坑的。** 它不帮 Agent 编译——它在写代码之前先把坑指出来。12 条编码记忆（SQLite 驱动，命中自动 +1，高频排第一）、13 篇语言参考、18 条静态检查规则、5 种编码风格、4,570 个官方用例。通过 MCP 协议嵌进 AI Agent，让 Agent 写 BSV 的时候背后有个 mate 在耳边 bb。
 
-## 为什么需要 specmate
+> specmate 是 **Kova**（Knowledge Vault，领域知识引擎框架）在 BSV 领域的第一只 mate。核心架构 = DKE（Domain Knowledge Engine）+ 编码记忆 + 约束链 + 角色激活。详见 **[Kova →](https://github.com/Alele496/kova)** 和 `docs/collaboration.md`。
 
-AI Agent 写 Python/JS 还行——训练数据多。但写 BSV 这种冷门硬件语言时，
-模型知道基础语法却不懂领域陷阱：`vec()` 在 2025 版已废弃、`priority`
-是 SV 保留字会报 P0005、Bool 不能拼接进 Bit 表达式、规则内调多个子
-模块方法会 G0004……
+## 🤔 为什么需要 specmate
 
-每次编译报错都是一次性解决——不形成记忆。下次换个 Agent，还是同样的错。
+写 BSV 的日常是这样的：写完第一版，编译——P0005，改——P0032，再改——G0004，咬牙再改——G0010。一轮一轮，修的不是逻辑 bug，是"语言规则你记不住"。
 
-specmate 解决的就是这件事：把编译错误变成可累积的编码记忆（SQLite 驱动，
-命中自动 +1、高频排第一），把参考文档做成按需检索的 topic，把审查流程
-封装成 Supervisor 角色——让 Agent 不再是 "每次从头学 BSV 的实习生"。
+问题不在你也不在 AI。BSV 编译器 2025.07 版和旧版有显著差异，训练数据跟不上。Agent 掌握基础语法但不认识新版陷阱。更糟的是——没有记忆。同样一个 G0004，换个 Agent 能踩三遍。
 
-这套架构后来被证明可复用——不只是 BSV，任何冷门语言/领域都能用同样的
-模式建立自己的知识引擎。这就是 **Kova 框架**。specmate 是它的首个完整实例。
-
-→ **[Kova 框架](https://github.com/Alele496/kova)**
+specmate 做的事：把每次踩坑变成一条编码记忆。下次 Agent 写到类似场景时，specmate 在它问之前就把该注意的列出来——"你做 FIFO pipeline？注意 G0010，上一个 Agent 在这翻了三次。"
 
 ### 为什么不把 bsc 编译器打包进来？
 
-specmate 是一个**预编译质控层**——它的价值在"编译前拦截"而非"编译后修复"。
-`check_style` 能在不调用 bsc 的前提下检测 18 类常见语法/类型错误。
+因为不是摔倒后再扶——是走路前喊"看路"。specmate 是个预编译质控层：不调 bsc 就能检测 18 类常见语法和类型错误。
 
-加上编译器意味着 200MB+ 的 Docker 镜像。对于有 WSL/Linux 的用户，
-bsc 已经在本地了——Agent 直接调 shell 编译即可。编译器作为可选插件（Phase 3），
-不纳入核心包。
+加上编译器意味着 200MB+ 的 Docker 镜像。对于有 WSL/Linux 的用户，bsc 本来就在本机——Agent 直接调 shell 编译就行。编译器作为可选 Phase 3 插件，不纳入核心。
 
-| 特性 | 说明 | MCP 工具 |
-|------|------|----------|
-| **🧠 知识导航** | 4 个 phase，内部路由所有知识查询：编码前陷阱预测 / 编译报错诊断 / 下一步指引 / 方案选择 | `specmate_guide` |
-| **🔍 静态检查** | 18 条正则规则，不调 bsc 检测方法顺序、Bool 误用、保留字、字面量溢出、结构体字段、参数个数等 | `specmate_check` |
-| **✍️ 编码记忆** | 12 条 SQLite 驱动错误，命中自动 +1，高频排第一；Agent 遇新错误调 specmate_learn 入库 | `specmate_learn` |
-| **🎛️ 三级干涉** | `silicon` (静默) / `wafer` (引导) / `tapeout` (全程协作) 控制 intimacy 深度，同一个工具上自然差异化 | `SPECMATE_LEVEL` |
-| **📦 零配置安装** | `npm install -g` 一行装好，配置一句 JSON | — |
-| **💾 数据持久化** | SQLite 知识库存 `~/.specmate/`，`SPECMATE_DATA` 自定义路径 | — |
+## 🛠 它能做什么
+
+你要写 BSV → specmate 先看看你要做啥，预测哪里容易翻车 → 你写完了它过一遍 → 编译报错了它告诉你为什么 + 怎么修 → 下次同一个坑它提前拦。像个记仇的 code buddy。
+
+| 特性 | 说明 | 调用方式 |
+|------|------|---------|
+| **🧠 知识导航** | 4 个 phase，Agent 只管描述当前处境，specmate 内部路由——翻编码记忆、查参考文档、匹配领域知识图谱 | `specmate_guide` |
+| **🔍 编译前体检** | 18 条规则扫 .bsv：方法顺序、Bool 运算符误用、SV 保留字冲突、字面量溢出、参数个数不匹配、结构体字段名错误……不调 bsc，纯静态 | `specmate_check` |
+| **✍️ 长记性** | 新错误自动入库，相同错误码命中 +1，高频自动排第一。Agent 碰一次，specmate 记一辈子 | `specmate_learn` |
+| **🎛️ 三级干涉** | `silicon` 社恐模式 / `wafer` 日常模式 / `tapeout` 话痨模式。同一个工具，话多少看你选哪档 | `SPECMATE_LEVEL` |
+| **📦 零配置** | `npm install -g` 一行装好，`.mcp.json` 三行配置。Agent 自动发现 3 个 MCP 工具 | — |
+| **💾 不丢数据** | SQLite 自动存 `~/.specmate/`，换电脑换 Agent 记忆还在 | — |
 
 - 🚀 [快速开始](#-快速开始)
 - 🛠 [本地开发](#-本地开发)
@@ -61,7 +52,9 @@ bsc 已经在本地了——Agent 直接调 shell 编译即可。编译器作为
 
 ## 🥊 SHOWDOWN：specmate vs 裸 Agent
 
-三场对照实验，相同需求，唯一变量是 specmate。
+我们做了三场对打——两个 Agent 完成同一个 BSV 项目，唯一区别是一个带了 specmate。第三场甚至拉了个不认识双方的 Agent 来做双盲评审。
+
+结果？带 specmate 的更快、更稳、代码质量更高。
 
 ### Round 1：RISC-V 外设 (OpenCode)
 
@@ -89,13 +82,9 @@ bsc 已经在本地了——Agent 直接调 shell 编译即可。编译器作为
 
 ### 🎯 结论
 
-两场实验下来，最有效的模式是：
+三场下来，最有效的不是"写更多的规则"，而是**给 Agent 一个审查角色**。
 
-**协作开发（Supervisor + Developer）+ 主动调用工具**
-
-不是把工具列表写到 AGENTS.md 就行——第一战中 Agent B 全程 0 次调用工具。
-第二战给 Agent 加了一个 **Supervisor 审查角色**，把"检查代码质量"变成它的职责，
-Agent 自然就去调了 check_style、preflight、lookup_ref。
+第一战里 Agent B 全程 0 次打开 specmate——不是工具不好，是它根本不知道自己有 mate。第二战给 Agent 加了 Supervisor 审查角色："你要检查代码质量。" 突然开窍了——10+ 次主动调用。
 
 > 三行角色描述 > 六条编码规则 > 什么都没有。
 
@@ -105,13 +94,13 @@ Agent 自然就去调了 check_style、preflight、lookup_ref。
 
 | 场景 | 推荐模式 | 模板 | 效果 |
 |------|---------|------|------|
-| **大项目 / 新模块开发** | 🤝 **协作开发** (Supervisor + Developer) | [docs/collaboration.md](docs/collaboration.md) | 最高通过率，编码时间 -47%，Token +23% |
+| **大项目 / 新模块开发** | 🤝 **协作开发** (Supervisor + Developer) | [docs/collaboration.md](docs/collaboration.md) | 最高通过率，编码时间 -47% |
 | **小改动 / 快速迭代** | 🔧 **独立开发** (solo Agent) | [examples/templates/](examples/templates/) | 轻量快速，AGENTS.md 极简模板 |
 
 **怎么选**：
-- 如果你在开发一个从未做过的模块 → 用协作模板，Supervisor 会帮你审查
-- 如果你只是在修复一个已知 bug → 用独立模板，够用且省 Token
-- 如果 Agent 多次忘了调 specmate → 在对话里轻轻戳一下 "specmate_guide(phase=\"pre_code\", input=\"...\")"
+- 从头开发一个你没做过的模块 → 协作模板，Supervisor 帮你审查
+- 修一个已知 bug → 独立模板就够了，省 Token
+- Agent 多次忘了调 specmate → 对话里戳一下 "specmate_guide(phase=\"pre_code\", input=\"...\")"
 
 → **[📖 完整争霸赛报告](docs/SHOWDOWN.md)**
 
@@ -127,10 +116,10 @@ npm install -g bsv-specmate
 
 ### 配置 CCB / Claude Code
 
-项目根目录创建 `.mcp.json`：
+项目根目录放一个 `.mcp.json`：
 
 ```json
-// npm 版 (Linux / WSL / Windows)
+// npm 版
 {
   "mcpServers": {
     "bsv-specmate": { "command": "npx", "args": ["bsv-specmate"] }
@@ -151,7 +140,7 @@ npm install -g bsv-specmate
 
 ### 配置 OpenCode
 
-项目根目录创建 `opencode.json`：
+项目根目录放一个 `opencode.json`：
 
 ```json
 // npm 版
@@ -163,31 +152,32 @@ npm install -g bsv-specmate
   "mcp": { "bsv-specmate": { "type": "local", "command": ["node", "<absolute-path>/bin/server.mjs"], "enabled": true, "environment": { "SPECMATE_LEVEL": "wafer" } } } }
 ```
 
-配置后重启 AI 客户端，Agent 会自动发现 3 个 MCP 工具。
+重启 AI 客户端，Agent 自动发现 3 个 MCP 工具。
 
 ---
 
 ## 🏗️ 项目模板
 
-快速搭建 BSV 项目：
+快速搭一个 BSV 项目：
 
 ```bash
 cp examples/templates/AGENTS.md ./AGENTS.md
 cp examples/templates/opencode.json ./opencode.json
 ```
 
-编辑 `AGENTS.md` 填入项目描述和模块清单，`opencode.json` 中替换实际路径。
-详细说明见 `examples/templates/README.md`。
+编辑 `AGENTS.md` 把你的项目描述和模块清单填进去。详见 `examples/templates/README.md`。
 
 ---
 
-## 🎛️ 能力等级
+## 🎛️ 三级干涉
 
-| Level | 名称 | 干涉方式 | 适用场景 |
-|-------|------|---------|---------|
-| **`silicon`** | 静默模式 | 首次告知工具箱，之后纯应答。不主动建议 | 小改动、已确 bug |
-| **`wafer`** (默认) | 引导模式 | 每次返回末尾带交叉引用和场景建议 | 日常开发 |
-| **`tapeout`** | 全程协作 | 编码前主动抛建议，编码中持续引导，报错后扫描级联问题。保持全程沟通 | 新模块、复杂项目、追求高质量代码 |
+specmate 有三级"话痨程度"，同一个工具，性格随你选：
+
+| Level | 叫什么 | 性格 | 适合谁 |
+|-------|-------|------|--------|
+| **`silicon`** | 社恐模式 😶 | 你问什么我答什么，绝不多说一句。不主动建议、不追加引用。 | 修 bug、已知问题、心情好想自己折腾 |
+| **`wafer`** (默认) | 日常模式 💬 | 该提醒的提醒，该引用的引用。不多不少。 | **默认模式**，日常开发用它 |
+| **`tapeout`** | 话痨模式 📢 | 写之前预警，写的时候提醒，报错了追着问"修好没？这边还有类似问题要不要也看一下？" | 新模块、复杂项目、追求高质量代码 |
 
 ---
 
@@ -300,17 +290,19 @@ bsv-specmate/
 
 ## 🤝 贡献
 
-1. 遇到新的 BSV 编译错误 → Agent 通过 `specmate_learn` 工具入库
+1. Agent 碰到新的编译错误 → 调 `specmate_learn` 入库
 2. `npm run db:export` 导出 Markdown
-3. 提交 PR 将新错误合并回主仓库
+3. 提 PR 把新错误 merge 回主仓库
 
 ---
 
-## 💬 小贴士：让 Agent 用起来
+## 💬 Agent 不听话？你不是第一个
 
-specmate 是预编译质控层 — Agent 主导方向，specmate 静默提供领域知识。
+第一场实验里，Agent B 全程 **0 次** 调 specmate。不是工具不好——是它压根不知道有这么个 mate。
 
-**日常使用中**，Agent 不知道该做什么的时候，轻轻戳一下 —— 引用这 5 个 phase 就行：
+直到给了 Agent 一个"审查者"角色——"你要检查代码质量哦。" 突然开窍了。10+ 次主动调用。
+
+**所以你只需要在对话里轻轻说一句：**
 
 ```
 写代码前:  specmate_guide(phase="pre_code", input="简短描述任务")
@@ -320,10 +312,10 @@ specmate 是预编译质控层 — Agent 主导方向，specmate 静默提供领
 下一步:    specmate_guide(phase="continue", input="后续任务")
 ```
 
-Agent 不需要记住内部细节 —— 3 个工具、5 个 phase，直截了当。🤏
+3 个工具，5 个 phase。就这一句话，少一轮编译报错。屡试不爽。🤏
 
 ---
 
-## 📄 许可证
-
-MIT
+> 📄 MIT License
+>
+> 👤 由 [Alele496](https://github.com/Alele496) 倾力打造。愿每次编译少一行 Error——实在不行，还有 specmate 兜底。🤙
