@@ -1,4 +1,5 @@
 import { queryTopRules } from '../db/query.mjs';
+import { queryHotTopics } from '../db/query.mjs';
 import { getLevel, LEVEL_LIMITS } from '../config.mjs';
 
 const SILICON_INTRO = [
@@ -94,6 +95,18 @@ export async function codingRules() {
         lines.push('编码中遇到不确定的 BSV 语法、风格选择、架构决策——随时问我。');
         lines.push('每完成一个模块后建议 `check_style(files)` 检查一下。');
         lines.push('我会陪你把整个项目写完。');
+    }
+
+    const hotTopics = await queryHotTopics(5);
+    if (hotTopics.length > 0) {
+        lines.push('');
+        lines.push('## 📊 热点知识');
+        lines.push('');
+        lines.push('以下参考文档近期被查阅最多（可能跟你的编码需求相关）：');
+        lines.push('');
+        for (const ht of hotTopics) {
+            lines.push(`· \`lookup_ref(topic="${ht.topic}")\` (×${ht.count})`);
+        }
     }
 
     return lines.join('\n');

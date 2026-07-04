@@ -10,6 +10,11 @@ CREATE TABLE IF NOT EXISTS errors (
     rules       TEXT,
     count       INTEGER DEFAULT 1
 );
+
+CREATE TABLE IF NOT EXISTS ref_hits (
+    topic       TEXT PRIMARY KEY,
+    count       INTEGER DEFAULT 1
+);
 `;
 
 export function initDB(db) {
@@ -22,6 +27,25 @@ export function insertError(db, { code, title, keywords, phenomena, cause, solut
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [code, title, keywords, phenomena, cause, solution, rules, count]
     );
+}
+
+export function incrementRefHit(db, topic) {
+    db.run(
+        `INSERT INTO ref_hits (topic, count) VALUES (?, 1)
+         ON CONFLICT(topic) DO UPDATE SET count = count + 1`,
+        [topic]
+    );
+}
+
+export function getHotTopics(db, limit = 5) {
+    const results = [];
+    const stmt = db.prepare('SELECT topic, count FROM ref_hits ORDER BY count DESC LIMIT ?');
+    stmt.bind([limit]);
+    while (stmt.step()) {
+        results.push(stmt.getAsObject());
+    }
+    stmt.free();
+    return results;
 }
 
 export function getError(db, code) {

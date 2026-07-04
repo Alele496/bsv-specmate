@@ -18,6 +18,9 @@ export function lookupRef(args) {
         return `Reference "${topic}" 不存在。`;
     }
 
+    // Track hit asynchronously (fire-and-forget)
+    import('../db/query.mjs').then(m => m.trackRefHit(topic)).catch(() => {});
+
     const content = readFileSync(filePath, 'utf-8');
     return content;
 }
