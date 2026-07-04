@@ -70,28 +70,33 @@ optional plugin (Phase 3), not part of the core package.
 
 ## 🥊 SHOWDOWN: specmate vs. Bare-Metal AI
 
-We ran two controlled experiments. Here's what we found.
+Three experiments, same requirements, one variable: specmate.
 
 ### Round 1: RISC-V Peripherals (OpenCode)
 
-| | Agent A (no specmate) | Agent B (specmate tapeout) |
+| | A (none) | B (specmate) |
 |---|---|---|
-| Fix rounds | **11** | **9 (-18%)** |
-| Token | 171.3K | **149.7K (-13%)** |
-| Design style | Hand-rolled ring buffer | Standard library FIFOF |
+| Fix rounds | 11 | **9 (-18%)** |
 
 ### Round 2: SD Card Controller (CCB × Collaboration)
 
-Switched to CCB `/goal` auto-loop, first validation of **Supervisor collaboration mode**.
-
-| | Agent A (6 static rules) | Agent B (Supervisor + specmate) |
+| | A (6 rules) | B (Supervisor + specmate) |
 |---|---|---|
-| Coding time | 33m 58s | **17m 50s (-47%)** |
-| Token | 15.7M | **12.1M (-23%)** |
-| specmate calls | 0 | **10+** |
-| Pass rate | 5/7 | **7/7 ✅** |
+| Coding time | 33m58s | **17m50s (-47%)** |
+| Pass rate | 5/7 | **7/7** |
 
-### 🎯 Conclusion: How to get the best out of specmate
+### Round 3: CRC-32 Processor (CCB × Blind Review)
+
+First-ever **double-blind code review** — an anonymous agent scored both without knowing which was which:
+
+| | A (6 rules) | B (specmate) |
+|---|---|---|
+| Coding time | 19m47s | **9m27s (-52%)** |
+| Code quality (/25) | 19 | **22 (+16%)** |
+
+The reviewer's verdict: *"code-2 is the more engineered solution — explicit FSM, defensive provisos, parameterized FIFO. 63% more code, but worth it."*
+
+### 🎯 Conclusion
 
 Two experiments, one clear answer:
 

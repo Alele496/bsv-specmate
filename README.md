@@ -65,28 +65,33 @@ bsc 已经在本地了——Agent 直接调 shell 编译即可。编译器作为
 
 ## 🥊 SHOWDOWN：specmate vs 裸 Agent
 
-我们跑了两场对照实验。以下是我们发现的。
+三场对照实验，相同需求，唯一变量是 specmate。
 
-### Round 1：RISC-V 外设子系统 (OpenCode)
+### Round 1：RISC-V 外设 (OpenCode)
 
-| | Agent A（无 specmate）| Agent B（specmate tapeout）|
+| | A（无） | B（specmate） |
 |---|---|---|
-| 修复轮数 | **11** | **9 (-18%)** |
-| Token | 171.3K | **149.7K (-13%)** |
-| 设计风格 | 手写环形缓冲区 | 标准库 FIFOF |
+| 修复轮数 | 11 | **9 (-18%)** |
 
-### Round 2：SD 卡控制器 (CCB × 协作开发)
+### Round 2：SD 卡控制器 (CCB × 协作)
 
-切换到 CCB 🔠/goal🔠 自动循环，首次验证 **Supervisor 协作模式**。
-
-| | Agent A（6条静态规则） | Agent B（Supervisor + specmate） |
+| | A（6条规则） | B（Supervisor + specmate） |
 |---|---|---|
-| 编码时间 | 33m 58s | **17m 50s (-47%)** |
-| Token | 15.7M | **12.1M (-23%)** |
-| specmate 调用 | 0 | **10+ 次** |
-| 通过率 | 5/7 | **7/7 ✅** |
+| 编码时间 | 33m58s | **17m50s (-47%)** |
+| 通过率 | 5/7 | **7/7** |
 
-### 🎯 结论：怎么用 specmate 效果最好
+### Round 3：CRC-32 处理器 (CCB × 盲审)
+
+首次引入**双盲代码评审**——匿名 Agent 不知道哪套代码是谁写的：
+
+| | A（6条规则） | B（specmate） |
+|---|---|---|
+| 编码时间 | 19m47s | **9m27s (-52%)** |
+| 代码质量 (盲审/25) | 19 | **22 (+16%)** |
+
+评审 Agent 的评语：*"code-2 是更工程化的答案——显式状态机、防御性 provisos、参数化 FIFO。代价是代码多 63%，但值得。"*
+
+### 🎯 结论
 
 两场实验下来，最有效的模式是：
 
