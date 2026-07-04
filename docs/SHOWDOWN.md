@@ -318,4 +318,4 @@ specmate 的核心价值不是"报错了帮你查"——是**改变编码决策*
 ---
 
 > **声明**：第一战 2026-07-03 OpenCode，第二战 2026-07-04 CCB。BSV 编译器版本 2025.07。
-> 原始数据见 `bsv-test/project-periph/` 和 `bsv-test/project-sdcard/`。
+> 原始数据见 `docs/experiments/periph/` 和 `docs/experiments/sdcard/`。

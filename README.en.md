@@ -34,13 +34,38 @@ BSV is a niche hardware description language. AI training data lags behind the l
 
 ## 🥊 SHOWDOWN: specmate vs. Bare-Metal AI
 
-We pitted two agents against each other on a RISC-V peripheral subsystem —
-7 modules, same requirements, one with specmate (tapeout), one without.
+We ran two controlled experiments. Here's what we found.
 
-Result: 🅱️ The specmate-guided agent needed **25% fewer compilation fix rounds** (9 vs 12)
-and **12.6% less tokens** (149.7K vs 171.3K). More interestingly — it was guided into
-safer design choices: standard library FIFOs over hand-rolled ring buffers,
-Bit#(1) over Bool for control signals, proactive scheduling annotations.
+### Round 1: RISC-V Peripherals (OpenCode)
+
+| | Agent A (no specmate) | Agent B (specmate tapeout) |
+|---|---|---|
+| Fix rounds | **11** | **9 (-18%)** |
+| Token | 171.3K | **149.7K (-13%)** |
+| Design style | Hand-rolled ring buffer | Standard library FIFOF |
+
+### Round 2: SD Card Controller (CCB × Collaboration)
+
+Switched to CCB `/goal` auto-loop, first validation of **Supervisor collaboration mode**.
+
+| | Agent A (6 static rules) | Agent B (Supervisor + specmate) |
+|---|---|---|
+| Coding time | 33m 58s | **17m 50s (-47%)** |
+| Token | 15.7M | **12.1M (-23%)** |
+| specmate calls | 0 | **10+** |
+| Pass rate | 5/7 | **7/7 ✅** |
+
+### 🎯 Conclusion: How to get the best out of specmate
+
+Two experiments, one clear answer:
+
+**Collaboration (Supervisor + Developer) + proactive tool use**
+
+Don't just list tools in AGENTS.md — Round 1 proved that doesn't work (0 calls).
+Give the agent a **Supervisor review role**. When "code quality review" becomes
+part of its job description, it naturally reaches for check_style, preflight, lookup_ref.
+
+> Three lines of role description > six static coding rules > nothing at all.
 
 Full blow-by-blow → **[📖 Complete Showdown Report](docs/SHOWDOWN.md)**
 
