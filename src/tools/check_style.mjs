@@ -46,7 +46,7 @@ function checkFile(filename, content) {
     return issues;
 }
 
-function checkMethodOrder(filename, lines) {
+function checkMethodOrder(filename, lines, issues) {
     let lastRuleLine = -1;
     let firstMethodLine = -1;
 
@@ -72,7 +72,7 @@ function checkMethodOrder(filename, lines) {
     }
 }
 
-function checkBoolOperators(filename, lines) {
+function checkBoolOperators(filename, lines, issues) {
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const trimmed = line.trim();
@@ -103,7 +103,7 @@ const SV_RESERVED = new Set([
     'parameter', 'localparam', 'specify', 'primitive', 'priority'
 ]);
 
-function checkReservedWords(filename, lines) {
+function checkReservedWords(filename, lines, issues) {
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const trimmed = line.trim();
