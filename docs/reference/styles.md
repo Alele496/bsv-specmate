@@ -94,12 +94,82 @@ endmodule
 
 ---
 
+## 风格 4：极简原型型 ✨新增
+
+**特征**：最小可行实现、不写多余代码、功能优先。能用默认值不用显式配置，能省略的 guard 就省略（安全边界由使用者负责）。
+
+**核心规则**：
+- 纯组合接口能省则省（`method val = reg` 而非 `method val; return reg; endmethod`）
+- FIFO 用默认深度 `mkFIFOF` 而非 `mkSizedFIFOF`
+- 控制信号直接 `Bool` 而非 `Bit#(1)`——简单场景下编译器能处理
+- 不写 `descending_urgency`，让编译器推断（除非编译报 warning）
+- 最小化 import 数量——只导入实际用到的包
+
+**示例**：
+
+```bsv
+import FIFOF::*;
+
+interface SimplePipe;
+    method Action put(Bit#(8) x);
+    method Bit#(8) get;
+endinterface
+
+module mkSimplePipe(SimplePipe);
+    FIFOF#(Bit#(8)) f <- mkFIFOF;
+
+    method Action put(Bit#(8) x) = f.enq(x);
+    method Bit#(8) get = f.first;
+endmodule
+```
+
+**适合场景**：快速原型验证、Hackathon、个人项目——功能先跑通，后续重构时换保守稳健型。
+
+---
+
+## 风格 5：实验探索型 ✨新增
+
+**特征**：不追求编译通过速度，而是探索 BSV 的语言能力——高阶函数、多态、typeclass、自定义 provisos。代码可能不稳定，但每一行都在测试 BSV 的极限。
+
+**核心规则**：
+- 用 `typeclass` + `instance` 做多态抽象（而非 `if-else` 分支）
+- 用 `Vector#(n, t)` + `fold/map/zipWith` 做函数式组合逻辑
+- 用 `Integer` + `for` 循环做编译期展开
+- 自定义 `provisos` 约束链（如 `Add#(a, b, c)`）
+- 不追求首次编译通过——每次实验都在积累"BSV 语言的边界"
+
+**示例**（蒸馏自 BSV 教程）：
+
+```bsv
+typeclass ToBits#(type t, numeric type n)
+    dependencies (t determines n);
+    function Bit#(n) pack(t x);
+    function t unpack(Bit#(n) x);
+endtypeclass
+
+instance ToBits#(Tuple3#(Bool, Bit#(8), Bit#(8)), 17);
+    function Bit#(17) pack(Tuple3#(Bool, Bit#(8), Bit#(8)) x);
+        match {.b, .h, .l} = x;
+        return {pack(b), h, l};
+    endfunction
+    function Tuple3#(Bool, Bit#(8), Bit#(8)) unpack(Bit#(17) x);
+        return tuple3(unpack(x[16]), x[15:8], x[7:0]);
+    endfunction
+endinstance
+```
+
+**适合场景**：学习 BSV 高级特性、写库代码、探索"BSV 能做什么"——不做生产，做实验。
+
+---
+
 ## 风格选择速查
 
 | 需求 | 推荐风格 |
 |------|---------|
+| 快速原型 / Hackathon | 极简原型型 |
 | 第一次写 BSV / 新模块 | 保守稳健型 |
 | 追求简洁 / 探索 BSV 表达力 | 精巧紧凑型 |
 | 生产级 FPGA / ASIC | 工程量产型 |
+| 学习 BSV 高级特性 / 写库 | 实验探索型 |
 
-三种风格不互斥——可以在同一个项目的不同模块用不同风格。
+五种风格不互斥——可以在同一个项目的不同模块用不同风格。

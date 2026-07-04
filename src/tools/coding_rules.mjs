@@ -1,12 +1,23 @@
 import { queryTopRules } from '../db/query.mjs';
-import { getLevel } from '../config.mjs';
+import { getLevel, LEVEL_LIMITS } from '../config.mjs';
 
-const INTRO = [
+const SILICON_INTRO = [
+    '## specmate — BSV 知识引擎（硅基模式）',
+    '',
+    '可用工具：`coding_rules()` `lookup_ref(topic)` `lookup_example(keyword)` `check_style(files)` `lookup_error(code)`',
+    '',
+    '需要时叫我。',
+    '',
+    '---',
+    '',
+].join('\n');
+
+const WAFER_INTRO = [
     '## specmate — BSV 知识引擎',
     '',
     '可用资源：',
     '· `coding_rules()` — 高频编译错误衍生的编码约束（你正在看）',
-    '· `lookup_ref(topic)` — BSV 语法 / 标准库 / 调度标注 (schedule) / 设计模式',
+    '· `lookup_ref(topic)` — BSV 语法 / 标准库 / 调度标注 / 设计模式',
     '· `lookup_example(keyword)` — 在 4,570 个官方用例中搜索正确写法',
     '· `check_style(files)` — 编译前静态预检（写完代码后可调用）',
     '· `lookup_error(code)` — 报错后查原因和方案',
@@ -23,18 +34,39 @@ const INTRO = [
     '',
 ].join('\n');
 
+const TAPEOUT_INTRO = [
+    '## 🤝 我是你的 BSV 编码搭档',
+    '',
+    '我会帮你盯着这些高频坑：命名冲突、Bool/Bit 混淆、多子模块调度、Vector 陷阱。',
+    '编码过程中遇到任何 BSV 语法不确定性——不管是接口怎么定义、FIFO 怎么用、',
+    '还是方案选哪个更好——随时来聊。我的价值不是你翻车后帮你修，',
+    '是陪你写的时候让你少翻车。',
+    '',
+    '工具箱：`coding_rules()` `lookup_ref(topic)` `lookup_example(keyword)` `check_style(files)` `lookup_error(code)` `suggest(context)`',
+    '',
+    '---',
+    '',
+].join('\n');
+
+function getIntro(level) {
+    if (level === 'silicon') return SILICON_INTRO;
+    if (level === 'wafer') return WAFER_INTRO;
+    return TAPEOUT_INTRO;
+}
+
 export async function codingRules() {
     const level = getLevel();
+    const cfg = LEVEL_LIMITS[level];
     const limit = level === 'silicon' ? 5 : level === 'wafer' ? 8 : 20;
 
     const rules = await queryTopRules(limit);
 
     if (rules.length === 0) {
-        return INTRO + '暂无编码规则。使用过程中遇到编译错误会自动积累。';
+        return getIntro(level) + '暂无编码规则。使用过程中遇到编译错误会自动积累。';
     }
 
     const lines = [];
-    lines.push(INTRO);
+    lines.push(getIntro(level));
     lines.push('## 编码硬约束');
     lines.push('');
     lines.push('以下规则来自高频编译错误统计（命中次数越高越需重视）：');
@@ -45,19 +77,23 @@ export async function codingRules() {
         lines.push(`${i + 1}. **${r.code}** (×${r.count}) — ${r.rules}`);
     }
 
-    if (level === 'tapeout') {
+    if (cfg.styleHint) {
         lines.push('');
-        lines.push('## 💡 本次可关注');
+        lines.push('## 🎨 编码风格建议');
         lines.push('');
-        lines.push('基于当前高频错误的编码建议：');
-        lines.push('· 多模块 Top 集成时提前查阅 `lookup_ref(topic="schedule")` 了解调度标注');
-        lines.push('· `lookup_ref(topic="styles")` 可查看 3 种 BSV 代码风格（保守/精巧/工程）');
-        lines.push('· 控制信号优先用 `Bit#(1)` 而非 `Bool`，避免拼接冲突');
-        lines.push('· 跨模块数据用标准库 FIFOF，不要手写环形缓冲区');
-        lines.push('· 枚举类型 case 省略 default，避免 G0004');
-        lines.push('· 写完每个模块后调用 `check_style(files)` 预检');
+        lines.push('推荐 `lookup_ref(topic="styles")` 查看 5 种代码风格，本项目可根据需求选择：');
+        lines.push('· **快速原型** → 极简型（最小代码量，功能优先）');
+        lines.push('· **日常开发** → 保守稳健型（Bit#(1), FIFOF, 显式调度）');
+        lines.push('· **生产流片** → 工程量产型（BVI import, pipeline checker）');
+    }
+
+    if (cfg.collabHint) {
         lines.push('');
-        lines.push('建议不强制，视需要采纳。');
+        lines.push('## 💬 保持沟通');
+        lines.push('');
+        lines.push('编码中遇到不确定的 BSV 语法、风格选择、架构决策——随时问我。');
+        lines.push('每完成一个模块后建议 `check_style(files)` 检查一下。');
+        lines.push('我会陪你把整个项目写完。');
     }
 
     return lines.join('\n');

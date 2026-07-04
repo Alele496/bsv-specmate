@@ -8,7 +8,7 @@
 
 [🇨🇳 中文版](./README.md)
 
-`specmate` is a **BSV Coding Knowledge Engine** — a domain knowledge layer for AI agents writing Bluespec SystemVerilog. It bundles a Coding Memory (11 entries, auto-counting), language reference docs (10 topics), design patterns (3 styles + 7 paradigms), and 4,570 official test suite examples. Helps agents write BSV code that compiles on the first try.
+`specmate` is a **BSV Coding Knowledge Engine** — a domain knowledge layer for AI agents writing Bluespec SystemVerilog. It bundles a Coding Memory (11 entries, auto-counting), language reference docs (10 topics), design patterns (5 styles + 7 paradigms), and 4,570 official test suite examples. Helps agents write BSV code that compiles on the first try.
 
 BSV is a niche hardware description language. AI training data lags behind the latest compiler — outdated syntax, missing keywords, and subtle scheduling rules make first-try compilation rare. This project accumulates real compilation errors into a Coding Memory, so agents can avoid common pitfalls before they compile.
 
@@ -184,11 +184,11 @@ Details at `examples/templates/README.md`.
 
 ## 🎛️ Capability Levels
 
-| Level | Scenario | `coding_rules` | `preflight` | `check_style` | `lookup_example` |
-|-------|----------|---------------|-------------|---------------|------------------|
-| **`silicon`** | Quick edits | 5 rules | TOP 3 errors | errors only | 1 file / 15 lines |
-| **`wafer`** (default) | Daily dev | 8 rules | TOP 5 + 3 warnings | errors + warnings | 3 files / 30 lines |
-| **`tapeout`** | New modules | 20 rules | TOP 10 + all warnings + tips | all | 5 files / 50 lines |
+| Level | Name | Mode | Best for |
+|-------|------|------|----------|
+| **`silicon`** | Silent | Shows toolbox once, then passive response | Quick fixes, known bugs |
+| **`wafer`** (default) | Suggestive | Cross-references + scenario hints after each response | Daily development |
+| **`tapeout`** | Collaborative | Pre-coding checklist, ongoing guidance, post-error cascade scan. Stays in the loop | New modules, complex projects, quality-critical code |
 
 ---
 

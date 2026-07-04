@@ -12,6 +12,7 @@ import { addError } from "../src/tools/add_error.mjs";
 import { preflight } from "../src/tools/preflight.mjs";
 import { codingRules } from "../src/tools/coding_rules.mjs";
 import { suggest } from "../src/tools/suggest.mjs";
+import { getLevel, LEVEL_LIMITS } from "../src/config.mjs";
 
 const server = new McpServer({
     name: "bsv-specmate",
@@ -25,37 +26,41 @@ server.tool(
         files: z.array(z.string()).describe("Paths to .bsv files to check"),
     },
     async ({ files }) => {
+        const level = getLevel();
+        const cfg = LEVEL_LIMITS[level];
         const results = checkStyle({ files });
         if (results.length === 0) {
-            return {
-                content: [{ type: "text", text: "No issues found." }],
-            };
+            const msg = cfg.collabHint ? "No issues found. 有需要我进一步检查的随时说。" : "No issues found.";
+            return { content: [{ type: "text", text: msg }] };
         }
         const text = results.map(r =>
             `[${r.check}] ${r.file}:${r.line} — ${r.message}\n  建议: ${r.suggestion}`
         ).join("\n\n");
 
-        const checks = [...new Set(results.map(r => r.check))];
         let hint = '';
-        if (checks.includes('P0032') || checks.includes('P0030')) {
-            hint += '\n💡 `lookup_ref(topic="module")` 查看正确的模块/method 语法。';
-        }
-        if (checks.includes('P0005') || checks.includes('T0011')) {
-            hint += '\n💡 `lookup_ref(topic="keywords")` 查看 BSV 关键字和 SV 保留字列表。';
-        }
-        if (checks.includes('T0061') || checks.includes('T0060')) {
-            hint += '\n💡 `lookup_ref(topic="types")` 查看 Bit/Bool 类型系统和位宽规则。';
-        }
-        if (checks.includes('G0004') || checks.includes('G0004_FSM') || checks.includes('G0010')) {
-            hint += '\n💡 `lookup_ref(topic="schedule")` 查看规则调度标注和 G0004 修复方案。';
-        }
-        if (checks.includes('T0004')) {
-            hint += '\n💡 `lookup_ref(topic="stdlib")` 查看 Vector 和 genWith 标准用法。';
+        if (cfg.crossRef) {
+            const checks = [...new Set(results.map(r => r.check))];
+            if (checks.includes('P0032') || checks.includes('P0030')) {
+                hint += '\n💡 `lookup_ref(topic="module")` 查看正确的模块/method 语法。';
+            }
+            if (checks.includes('P0005') || checks.includes('T0011')) {
+                hint += '\n💡 `lookup_ref(topic="keywords")` 查看 BSV 关键字和 SV 保留字列表。';
+            }
+            if (checks.includes('T0061') || checks.includes('T0060')) {
+                hint += '\n💡 `lookup_ref(topic="types")` 查看 Bit/Bool 类型系统和位宽规则。';
+            }
+            if (checks.includes('G0004') || checks.includes('G0004_FSM') || checks.includes('G0010')) {
+                hint += '\n💡 `lookup_ref(topic="schedule")` 查看规则调度标注和 G0004 修复方案。';
+            }
+            if (checks.includes('T0004')) {
+                hint += '\n💡 `lookup_ref(topic="stdlib")` 查看 Vector 和 genWith 标准用法。';
+            }
+            if (cfg.collabHint) {
+                hint += '\n\n💬 修完后我可以再查一遍。不确定怎么修的话，把具体问题描述给我。';
+            }
         }
 
-        return {
-            content: [{ type: "text", text: `Found ${results.length} issue(s):\n\n${text}${hint}` }],
-        };
+        return { content: [{ type: "text", text: `Found ${results.length} issue(s):\n\n${text}${hint}` }] };
     }
 );
 

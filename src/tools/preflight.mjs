@@ -46,8 +46,9 @@ const COMMON_WARNINGS = [
 
 export async function preflight() {
     const level = getLevel();
-    const limit = LEVEL_LIMITS[level].errors;
-    const highlight = LEVEL_LIMITS[level].highlight;
+    const cfg = LEVEL_LIMITS[level];
+    const limit = cfg.errors;
+    const highlight = cfg.highlight;
 
     const allErrors = await queryAllErrors();
     const topErrors = allErrors.slice(0, limit);
@@ -56,7 +57,7 @@ export async function preflight() {
 
     lines.push(`## 🔴 高频编译错误 (${highlight})`);
     lines.push('');
-    lines.push(`当前 Level: **${level}** — 如需更多/更少详情，设置环境变量 \`SPECMATE_LEVEL=silicon|wafer|tapeout\``);
+    lines.push(`当前模式: **${cfg.name}** — 设置 \`SPECMATE_LEVEL=silicon|wafer|tapeout\` 切换干涉强度`);
     lines.push('');
 
     for (const e of topErrors) {
@@ -65,20 +66,11 @@ export async function preflight() {
         lines.push('');
     }
 
-    if (level === 'tapeout') {
-        lines.push('---');
-        lines.push('');
-        lines.push('💡 `lookup_ref(topic)` 可查 BSV 语法规范/标准库/调度注解/设计模式。');
-        lines.push('💡 `lookup_example(keyword)` 可搜官方用例中的正确写法。');
-        lines.push('');
-    }
-
     if (level !== 'silicon') {
         lines.push('---');
         lines.push('');
         lines.push('## ⚠️ 常见设计警告');
         lines.push('');
-
         const warnCount = level === 'wafer' ? 3 : COMMON_WARNINGS.length;
         for (const w of COMMON_WARNINGS.slice(0, warnCount)) {
             lines.push(`### ${w.title}`);
@@ -88,17 +80,18 @@ export async function preflight() {
         }
     }
 
-    if (level === 'tapeout') {
+    if (cfg.collabHint) {
         lines.push('---');
         lines.push('');
-        lines.push('## 💡 深度编码建议');
+        lines.push('## 🤝 编码前检查');
         lines.push('');
-        lines.push('- 新模块优先用 `mkFIFOF` 而非裸 `Reg` 做接口握手');
-        lines.push('- `Vector` 和 `List` 用 `Integer` 做索引（编译期展开），运行时索引用 `UInt` 或 `Bit`');
-        lines.push('- `let` 右侧表达式需编译器可推断唯一类型，模糊时用显式类型声明');
-        lines.push('- `case` 匹配自枚举类型时省略 `default` 分支，避免 G0004 冲突');
-        lines.push('- 跨模块接口优先定义 `interface` 类型，避免裸 `Reg` 直接暴露');
-        lines.push('- 大模块拆分为 `mkSubA` + `mkSubB` 子模块，每个子模块独立 rule 调度域');
+        lines.push('作为你的编码搭档，我建议开始前做几件事：');
+        lines.push('· `lookup_ref(topic="styles")` 根据项目类型选择合适的代码风格');
+        lines.push('· 涉及多模块集成时 → `lookup_ref(topic="schedule")` 了解 G0004 修复模式');
+        lines.push('· 涉及 FSM 时 → 控制信号用 `Bit#(1)`，枚举类型 case 省略 default');
+        lines.push('· 复杂接口对齐时 → `lookup_example(keyword)` 搜官方用例参考');
+        lines.push('');
+        lines.push('编码过程中遇到任何 BSV 语法不确定性，随时来问。');
     }
 
     return lines.join('\n');

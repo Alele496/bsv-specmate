@@ -1,5 +1,5 @@
 import { queryError, queryAllErrors, querySearch, hitError } from '../db/query.mjs';
-import { getLevel } from '../config.mjs';
+import { getLevel, LEVEL_LIMITS } from '../config.mjs';
 
 export async function lookupError(args) {
     const code = args.code?.trim();
@@ -25,6 +25,7 @@ export async function lookupError(args) {
 }
 
 function formatError(err, level) {
+    const cfg = LEVEL_LIMITS[level];
     if (level === 'silicon') {
         return [
             `## ${err.code} — ${err.title} (×${err.count})`,
@@ -35,7 +36,7 @@ function formatError(err, level) {
         ].join('\n');
     }
 
-    return [
+    const base = [
         `## ${err.code} — ${err.title} (×${err.count})`,
         '',
         '### 现象 (bsc 输出)',
@@ -48,7 +49,15 @@ function formatError(err, level) {
         err.solution || '(未记录)',
         err.rules ? `\n> **规则**: ${err.rules}` : '',
         crossRef(err.code),
-    ].join('\n');
+    ];
+
+    if (cfg.scanSimilar) {
+        base.push('');
+        base.push('💬 我扫了一下——你的代码中可能存在类似模式。');
+        base.push(`建议对相关文件执行 check_style 检查，或 describe suggest(context="${err.code} 类似问题") 让我帮你定位。`);
+    }
+
+    return base.join('\n');
 }
 
 function crossRef(code) {
