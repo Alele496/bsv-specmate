@@ -7,6 +7,7 @@ import { z } from "zod";
 import { checkStyle } from "../src/tools/check_style.mjs";
 import { lookupError } from "../src/tools/lookup_error.mjs";
 import { lookupRef } from "../src/tools/lookup_ref.mjs";
+import { VALID_TOPICS } from "../src/tools/lookup_ref.mjs";
 import { lookupExample } from "../src/tools/lookup_example.mjs";
 import { addError } from "../src/tools/add_error.mjs";
 import { preflight } from "../src/tools/preflight.mjs";
@@ -82,7 +83,7 @@ server.tool(
     "lookup_ref",
     "Look up BSV language reference documentation.",
     {
-        topic: z.enum(["module", "types", "syntax", "examples"]).describe("Reference topic"),
+        topic: z.enum(VALID_TOPICS).describe("Reference topic"),
     },
     async ({ topic }) => {
         const result = lookupRef({ topic });
