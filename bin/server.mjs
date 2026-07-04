@@ -5,163 +5,97 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 import { checkStyle } from "../src/tools/check_style.mjs";
-import { lookupError } from "../src/tools/lookup_error.mjs";
-import { lookupRef } from "../src/tools/lookup_ref.mjs";
-import { VALID_TOPICS } from "../src/tools/lookup_ref.mjs";
-import { lookupExample } from "../src/tools/lookup_example.mjs";
-import { addError } from "../src/tools/add_error.mjs";
-import { preflight } from "../src/tools/preflight.mjs";
-import { codingRules } from "../src/tools/coding_rules.mjs";
-import { suggest } from "../src/tools/suggest.mjs";
+import { guide } from "../src/tools/specmate_guide.mjs";
+import { learn } from "../src/tools/specmate_learn.mjs";
 import { getLevel, LEVEL_LIMITS } from "../src/config.mjs";
 
 const server = new McpServer({
     name: "bsv-specmate",
-    version: "0.1.0",
+    version: "0.2.0-dev",
 });
 
 server.tool(
-    "check_style",
-    "Pre-compilation static check for BSV files. Checks for common errors like method ordering, Bool operators, reserved keywords, and duplicate register writes.",
+    "specmate_guide",
+    "Specmate 知识引擎入口。调用前告诉 specmate 你的当前阶段和情况。specmate 内部处理所有细节，返回针对性指导。",
     {
-        files: z.array(z.string()).describe("Paths to .bsv files to check"),
+        phase: z.enum(["pre_code", "on_error", "continue", "decide"])
+            .describe("当前阶段: pre_code(编码前预测) / on_error(编译报错诊断) / continue(下一步指引) / decide(方案选择)"),
+        input: z.string().describe("简短描述: 任务目标(pre_code) / 错误码或完整错误(on_error) / 下一步任务(continue) / 待选方案(decide)"),
+    },
+    async ({ phase, input }) => {
+        const result = await guide({ phase, input });
+        return { content: [{ type: "text", text: result }] };
+    }
+);
+
+server.tool(
+    "specmate_check",
+    "BSV 代码静态检查。写完 .bsv 文件后调用，检测 18 种常见错误 (方法顺序、保留字、Bool 运算符、并行写冲突、字面量溢出等)。",
+    {
+        files: z.array(z.string()).describe("要检查的 .bsv 文件路径列表"),
     },
     async ({ files }) => {
         const level = getLevel();
         const cfg = LEVEL_LIMITS[level];
         const results = checkStyle({ files });
+
         if (results.length === 0) {
-            const msg = cfg.collabHint ? "No issues found. 有需要我进一步检查的随时说。" : "No issues found.";
+            const msg = cfg.collabHint
+                ? "没有发现问题。写得好。继续的话调 specmate_guide(phase=\"continue\")。"
+                : "没有发现问题。";
             return { content: [{ type: "text", text: msg }] };
         }
+
         const text = results.map(r =>
             `[${r.check}] ${r.file}:${r.line} — ${r.message}\n  建议: ${r.suggestion}`
         ).join("\n\n");
 
-        let hint = '';
+        const parts = [`发现 ${results.length} 个问题:\n\n${text}`];
+
         if (cfg.crossRef) {
+            const hooks = [];
             const checks = [...new Set(results.map(r => r.check))];
-            if (checks.includes('P0032') || checks.includes('P0030')) {
-                hint += '\n💡 `lookup_ref(topic="module")` 查看正确的模块/method 语法。';
+            const topicHints = {
+                P0032: "module", P0030: "module", P0005: "keywords", T0011: "keywords",
+                T0061: "types", T0060: "types", T0051: "types", T0132: "types",
+                G0004: "schedule", G0004_FSM: "schedule", G0010: "schedule",
+                G0030: "schedule", G0040: "schedule",
+                T0004: "stdlib", T0016: "structs", P0073: "module",
+                P0085: "attributes", G0054: "attributes", T0080: "module",
+                T0144: "unions",
+            };
+            for (const c of checks) {
+                if (topicHints[c]) {
+                    hooks.push(`specmate_guide(phase="decide", input="${c} 怎么修")`);
+                }
             }
-            if (checks.includes('P0005') || checks.includes('T0011')) {
-                hint += '\n💡 `lookup_ref(topic="keywords")` 查看 BSV 关键字和 SV 保留字列表。';
-            }
-            if (checks.includes('T0061') || checks.includes('T0060')) {
-                hint += '\n💡 `lookup_ref(topic="types")` 查看 Bit/Bool 类型系统和位宽规则。';
-            }
-            if (checks.includes('G0004') || checks.includes('G0004_FSM') || checks.includes('G0010')) {
-                hint += '\n💡 `lookup_ref(topic="schedule")` 查看规则调度标注和 G0004 修复方案。';
-            }
-            if (checks.includes('T0004')) {
-                hint += '\n💡 `lookup_ref(topic="stdlib")` 查看 Vector 和 genWith 标准用法。';
-            }
-            if (cfg.collabHint) {
-                hint += '\n\n💬 修完后我可以再查一遍。不确定怎么修的话，把具体问题描述给我。';
+            if (hooks.length > 0) {
+                parts.push(`\n💡 不确定怎么修? 调 ${hooks[0]}`);
             }
         }
 
-        return { content: [{ type: "text", text: `Found ${results.length} issue(s):\n\n${text}${hint}` }] };
+        if (cfg.collabHint) {
+            parts.push("\n💬 修完后可以再检查一次。写下一部分时调 specmate_guide(phase=\"continue\")。");
+        }
+
+        return { content: [{ type: "text", text: parts.join("") }] };
     }
 );
 
 server.tool(
-    "lookup_error",
-    "Look up a BSV compilation error by code. Returns the cause, solution, and reference. Call without arguments to list all known errors.",
+    "specmate_learn",
+    "把新的编译错误加入 specmate 编码记忆。遇到 lookup_error 未收录的错误码时使用。",
     {
-        code: z.string().optional().describe("Error code like P0005 or T0061. Omit to list all errors."),
-    },
-    async ({ code }) => {
-        const result = await lookupError({ code: code || "" });
-        return {
-            content: [{ type: "text", text: result }],
-        };
-    }
-);
-
-server.tool(
-    "lookup_ref",
-    "Look up BSV language reference documentation.",
-    {
-        topic: z.enum(VALID_TOPICS).describe("Reference topic"),
-    },
-    async ({ topic }) => {
-        const result = lookupRef({ topic });
-        return {
-            content: [{ type: "text", text: result }],
-        };
-    }
-);
-
-server.tool(
-    "lookup_example",
-    "Search the BSC test suite (4,570 official .bsv files) for usage examples by keyword.",
-    {
-        keyword: z.string().describe("Keyword to search for, e.g. 'FIFO bypass' or 'descending_urgency'"),
-        directory: z.string().optional().describe("Subdirectory to limit search, e.g. 'bsc.scheduler'"),
-    },
-    async ({ keyword, directory }) => {
-        const result = lookupExample({ keyword, directory: directory || "" });
-        return {
-            content: [{ type: "text", text: result }],
-        };
-    }
-);
-
-server.tool(
-    "add_error",
-    "Add a new compilation error to the knowledge base. Use when lookup_error returns not found.",
-    {
-        code: z.string().describe("Error code, e.g. 'P0005' or 'G0010'"),
-        title: z.string().describe("Short title, e.g. 'Methods must be at end of block'"),
-        bsc_output: z.string().describe("Raw compiler error output from bsc"),
-        cause: z.string().describe("Root cause analysis of the error"),
-        solution: z.string().describe("How to fix the error, with code examples"),
-        rules: z.string().optional().describe("General rule to prevent this error"),
+        code: z.string().describe("错误码, 如 'P0005' 或 'G0010'"),
+        title: z.string().describe("简短标题, 如 'Methods must be at end of block'"),
+        bsc_output: z.string().describe("bsc 编译器原始错误输出"),
+        cause: z.string().describe("根因分析"),
+        solution: z.string().describe("修复方案, 含代码示例"),
+        rules: z.string().optional().describe("通用预防规则"),
     },
     async ({ code, title, bsc_output, cause, solution, rules }) => {
-        const result = await addError({ code, title, bsc_output, cause, solution, rules: rules || "" });
-        return {
-            content: [{ type: "text", text: result }],
-        };
-    }
-);
-
-server.tool(
-    "preflight",
-    "Call BEFORE writing any BSV code. Returns the most common compilation errors and design warnings to avoid, tailored to SPECMATE_LEVEL (silicon/wafer/tapeout).",
-    {},
-    async () => {
-        const result = await preflight();
-        return {
-            content: [{ type: "text", text: result }],
-        };
-    }
-);
-
-server.tool(
-    "coding_rules",
-    "Returns BSV coding constraints derived from high-frequency compilation errors. Call at the start of each new task. Follow these rules silently while coding.",
-    {},
-    async () => {
-        const result = await codingRules();
-        return {
-            content: [{ type: "text", text: result }],
-        };
-    }
-);
-
-server.tool(
-    "suggest",
-    "When unsure how to fix an error or what specmate tool to use next, describe your situation. Returns targeted tool suggestions.",
-    {
-        context: z.string().describe("Describe the error, concept, or situation you need help with"),
-    },
-    async ({ context }) => {
-        const result = suggest({ context });
-        return {
-            content: [{ type: "text", text: result }],
-        };
+        const result = await learn({ code, title, bsc_output, cause, solution, rules: rules || "" });
+        return { content: [{ type: "text", text: result }] };
     }
 );
 

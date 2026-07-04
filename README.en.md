@@ -8,7 +8,7 @@
 
 [🇨🇳 中文版](./README.md)
 
-`specmate` is a **BSV Coding Knowledge Engine** — a domain knowledge layer for AI agents writing Bluespec SystemVerilog. It bundles a Coding Memory (11 entries, auto-counting), language reference docs (10 topics), design patterns (5 styles + 7 paradigms), and 4,570 official test suite examples. Helps agents write BSV code that compiles on the first try.
+`specmate` is a **BSV Coding Knowledge Engine** — a domain knowledge layer for AI agents writing Bluespec SystemVerilog. It bundles a Coding Memory (12 entries, auto-counting), language reference docs (13 topics), design patterns (5 styles + 7 paradigms), and 4,570 official test suite examples. Helps agents write BSV code that compiles on the first try.
 
 BSV is a niche hardware description language. AI training data lags behind the latest compiler — outdated syntax, missing keywords, and subtle scheduling rules make first-try compilation rare. This project accumulates real compilation errors into a Coding Memory, so agents can avoid common pitfalls before they compile.
 
@@ -42,7 +42,7 @@ first complete domain instance.
 ### Why not bundle the bsc compiler?
 
 specmate is a **pre-compilation quality layer** — its value is catching errors before compilation,
-not after. `check_style` detects 8 categories of common syntax/type errors without calling bsc.
+not after. `check_style` detects 18 categories of common syntax/type errors without calling bsc.
 
 Bundling the compiler would require 200MB+ Docker images. For users with WSL/Linux, bsc is
 already installed locally — agents can call it directly. Compiler integration is planned as an
@@ -50,16 +50,12 @@ optional plugin (Phase 3), not part of the core package.
 
 | Feature | Description | MCP Tool |
 |---------|-------------|----------|
-| **📋 Coding constraints** | SQLite-driven rules sorted by hit count, auto-evolve as errors accumulate | `coding_rules` |
-| **🚀 Pre-coding prep** | Scan high-frequency errors + design warnings before writing | `preflight` |
-| **🔍 Static check** | Regex-based detection: rule/method order, Bool misuse, SV reserved words, `vec()` trap, duplicate register writes | `check_style` |
-| **📚 Coding Memory** | 11 real compilation errors with phenomena, cause, and solution; auto-increment on hit | `lookup_error` |
-| **📖 BSV reference** | Module syntax, type system, common patterns and pitfalls | `lookup_ref` |
-| **🔎 Example search** | 4,570 `.bsv` files from BSC official test suite, keyword searchable | `lookup_example` |
-| **✍️ Error contribution** | One tool call to add new errors — no Markdown editing needed | `add_error` |
-| **🎛️ 3-tier levels** | `silicon` / `wafer` / `tapeout` control output detail for different dev scenarios | `SPECMATE_LEVEL` |
-| **📦 Zero config** | `npm install -g` + one line of JSON config | — |
-| **💾 Persistent data** | SQLite at `~/.specmate/`, configurable via `SPECMATE_DATA` | — |
+| **🧠 Knowledge Guide** | 4 phases routing all queries: pre-code traps / error diagnosis / next-step / decision support | `specmate_guide` |
+| **🔍 Static Check** | 18 regex rules: method order, Bool misuse, reserved words, literal overflow, struct fields, arg count, etc. | `specmate_check` |
+| **✍️ Coding Memory** | 12 SQLite-driven errors, auto-increment on hit; agent calls specmate_learn for new errors | `specmate_learn` |
+| **🎛️ 3-tier Levels** | `silicon` / `wafer` / `tapeout` control intimacy depth | `SPECMATE_LEVEL` |
+| **📦 Zero Config** | `npm install -g` + one line of JSON | — |
+| **💾 Persistent Data** | SQLite at `~/.specmate/`, configurable via `SPECMATE_DATA` | — |
 
 - 🚀 [Quick Start](#-quick-start)
 - 🛠 [Local Development](#-local-development)
@@ -120,7 +116,7 @@ part of its job description, it naturally reaches for check_style, preflight, lo
 **How to choose**:
 - Starting a brand-new module → use the collaboration template, Supervisor will review
 - Just fixing a known bug → use the solo template, enough & saves tokens
-- Agent keeps forgetting specmate → gently nudge in chat: "Try lookup_ref(topic=\"schedule\")?"
+- Agent keeps forgetting specmate → gently nudge: "Try specmate_guide(phase=\"pre_code\", input=\"...\")"
 
 → **[📖 Complete Showdown Report](docs/SHOWDOWN.md)**
 
@@ -139,19 +135,19 @@ npm install -g bsv-specmate
 Create `.mcp.json` in your project root:
 
 ```json
-// npm version (Linux / WSL)
+// npm version (Linux / WSL / Windows)
 {
   "mcpServers": {
     "bsv-specmate": { "command": "npx", "args": ["bsv-specmate"] }
   }
 }
 
-// local dev (Windows — note cmd /c wrapper)
+// local dev
 {
   "mcpServers": {
     "bsv-specmate": {
-      "command": "cmd",
-      "args": ["/c", "node", "D:/Desktop/bsv-agent/bsv-agent-server/bin/server.mjs"],
+      "command": "node",
+      "args": ["<absolute-path>/bin/server.mjs"],
       "env": { "SPECMATE_LEVEL": "tapeout" }
     }
   }
@@ -167,12 +163,12 @@ Create `opencode.json` in your project root:
 { "$schema": "https://opencode.ai/config.json",
   "mcp": { "bsv-specmate": { "type": "local", "command": ["npx", "bsv-specmate"], "enabled": true } } }
 
-// local dev (Windows)
+// local dev
 { "$schema": "https://opencode.ai/config.json",
-  "mcp": { "bsv-specmate": { "type": "local", "command": ["node", "D:/Desktop/bsv-agent/bsv-agent-server/bin/server.mjs"], "enabled": true, "environment": { "SPECMATE_LEVEL": "wafer" } } } }
+  "mcp": { "bsv-specmate": { "type": "local", "command": ["node", "<absolute-path>/bin/server.mjs"], "enabled": true, "environment": { "SPECMATE_LEVEL": "wafer" } } } }
 ```
 
-Restart your AI client. Agents will discover 8 MCP tools automatically.
+Restart your AI client. Agents will discover 3 MCP tools automatically.
 
 ---
 
@@ -234,35 +230,43 @@ node bin/server.mjs
 
 ```
 bsv-specmate/
-├── AGENTS.md              ← Agent usage manual (solo + collaborative modes)
-├── README.md              ← English (you are here)
-├── README.zh-CN.md        ← 中文版
+├── AGENTS.md              ← Agent usage manual (3 tools + 4 phase workflow)
+├── README.md              ← 中文版
+├── README.en.md           ← English (you are here)
 ├── package.json
 ├── bin/
-│   └── server.mjs         ← MCP Server entry point (7 tools)
+│   └── server.mjs         ← MCP Server entry point (3 tools)
 ├── src/
-│   ├── config.mjs         ← Path resolution + initialization
+│   ├── config.mjs         ← Path resolution + LEVEL config
 │   ├── db/
 │   │   ├── schema.mjs     ← SQLite schema + queries
 │   │   ├── seed.mjs       ← Markdown → SQLite
 │   │   ├── export.mjs     ← SQLite → Markdown
 │   │   └── query.mjs      ← DB query wrapper
 │   └── tools/
-│       ├── coding_rules.mjs    ← Dynamic constraints (SQLite-driven)
-│       ├── preflight.mjs       ← Pre-coding error preview
-│       ├── check_style.mjs     ← Static style checker
-│       ├── lookup_error.mjs    ← Coding Memory lookup
-│       ├── lookup_ref.mjs      ← BSV reference docs
-│       ├── lookup_example.mjs  ← Official example search
-│       └── add_error.mjs       ← Contribute new errors
+│       ├── specmate_guide.mjs  ← Knowledge routing engine (4 phases)
+│       ├── _matcher.mjs        ← Knowledge graph (22 domain nodes)
+│       ├── specmate_learn.mjs   ← Coding memory entry
+│       ├── check_style.mjs     ← Static checker (18 rules)
+│       ├── lookup_error.mjs    ← Error lookup (internal)
+│       ├── lookup_ref.mjs      ← Reference docs (internal)
+│       ├── lookup_example.mjs  ← Example search (internal)
+│       ├── coding_rules.mjs    ← Coding constraints (internal)
+│       ├── preflight.mjs       ← Pre-coding preview (internal)
+│       ├── suggest.mjs         ← Tool suggestions (internal)
+│       └── add_error.mjs       ← Error contribution (internal)
+├── scripts/
+│   └── parse-testsuite.mjs ← BSC test suite error code extractor
 ├── data/
-│   └── knowledge.db       ← Seed DB (11 coding memories)
+│   ├── knowledge.db        ← Seed DB (12 coding memories)
+│   └── testsuite-errors.json ← Test suite error index (255 codes)
 ├── docs/
 │   ├── BSV-STYLE.md       ← BSV coding conventions
-│   ├── checklist.md       ← Pre-compilation checklist
+│   ├── collaboration.md   ← Collaboration model
 │   ├── TUTORIAL.md        ← Usage tutorial
-│   ├── errors/            ← Coding Memory docs (11 entries)
-│   └── reference/         ← BSV language reference (10 topics)
+│   ├── MAINTAINER.md      ← Maintenance guide
+│   ├── errors/            ← Coding Memory docs (12 entries)
+│   └── reference/         ← BSV language reference (13 topics)
 └── examples/
     ├── bsv/               ← BSC official test suite (4,570 .bsv)
     └── bs/                ← Bluespec Classic legacy (reference only)
@@ -301,7 +305,7 @@ Custom path via environment variable:
 
 ## 🤝 Contributing
 
-1. Encounter a new BSV compilation error → agent calls `add_error` to store it
+1. Encounter a new BSV compilation error → agent calls `specmate_learn` to store it
 2. Run `npm run db:export` to export Markdown
 3. Submit a PR to merge new errors back to main repo
 
@@ -309,28 +313,19 @@ Custom path via environment variable:
 
 ## 💬 Tips: Getting Your Agent to Use specmate
 
-Two experiments taught us: the most effective approach is **giving the agent a review role** (Supervisor).
-Tool calls jumped from 0 to 10+. See [SHOWDOWN](#-showdown-specmate-vs-bare-metal-ai).
+specmate is a pre-compilation quality layer — the agent leads, specmate quietly provides domain expertise.
 
-**In day-to-day use**, if your agent writes code without touching specmate, a gentle nudge works:
+**In day-to-day use**, when the agent needs guidance, just reference the 5 phases:
 
 ```
-If you're unsure about any BSV syntax, try lookup_ref(topic="xxx") 🧠
+Before coding: specmate_guide(phase="pre_code", input="brief task description")
+After coding:  specmate_check(files=["bsv/File.bsv"])
+On error:      specmate_guide(phase="on_error", input="error code")
+Unsure:        specmate_guide(phase="decide", input="option A vs option B")
+Next step:     specmate_guide(phase="continue", input="next task")
 ```
 
-Same for specific situations:
-
-- Agent stuck on G0004 → "Maybe try lookup_ref(topic=\"schedule\")?"
-- Agent unsure about standard library → "Would lookup_ref(topic=\"stdlib\") help?"
-- Agent wrote code without review → "Want to run check_style on this?"
-
-One sentence. Potentially one fewer compilation error. 🤏
-
-(PRs welcome if you've discovered better nudging techniques 😄)
-
-One sentence. Potentially one fewer compilation error. 🤏
-
-(PRs welcome if you've discovered better nudging techniques 😄)
+3 tools, 5 phases. No need to remember internal details. 🤏
 
 ---
 

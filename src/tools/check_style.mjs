@@ -42,6 +42,16 @@ function checkFile(filename, content) {
     checkValueMethodSyntax(filename, lines, issues);
     checkMethodRegNaming(filename, content, issues);
     checkMultiSubmodule(filename, content, issues);
+    checkLiteralOverflow(filename, lines, issues);
+    checkDupTypeParams(filename, lines, issues);
+    checkDupValueParams(filename, lines, issues);
+    checkDupInterfaceMembers(filename, content, issues);
+    checkDupAttr(filename, lines, issues);
+    checkUrgencyCycle(filename, content, issues);
+    checkAttrBadRule(filename, content, issues);
+    checkStructField(filename, content, issues);
+    checkArgCountMismatch(filename, lines, issues);
+    checkSizedLiteralZero(filename, lines, issues);
 
     return issues;
 }
@@ -120,7 +130,10 @@ function checkReservedWords(filename, lines, issues) {
                     trimmed.startsWith(`${word} `) ||
                     trimmed.includes(` ${word}`)
                 );
-                if (!isKeywordContext) {
+                const isBSVType = /#\s*\(/.test(
+                    trimmed.slice(trimmed.indexOf(word) + word.length)
+                );
+                if (!isKeywordContext && !isBSVType) {
                     issues.push({
                         file: filename,
                         line: i + 1,
@@ -129,6 +142,9 @@ function checkReservedWords(filename, lines, issues) {
                         message: `标识符 "${word}" 是 SystemVerilog/BSV 保留字，可能导致编译错误`,
                         suggestion: `改名避免冲突`
                     });
+                }
+            }
+        }
     }
 }
 
@@ -159,9 +175,6 @@ function checkMultiSubmodule(filename, content, issues) {
                 message: `Rule "${ruleName}" 内调用了 ${mods.size} 个子模块 (${[...mods].join(', ')}) — 可能触发 G0004`,
                 suggestion: '拆为独立规则，每个规则只调一个子模块。见 lookup_ref(topic="schedule")'
             });
-        }
-    }
-}
         }
     }
 }
@@ -272,8 +285,340 @@ function checkMethodRegNaming(filename, content, issues) {
         }
     }
 }
-const BOOL_LIKE = new Set([
-    'wave', 'flag', 'done', 'ready', 'valid', 'busy',
-    'start', 'enable', 'ack', 'hit', 'ok',
-    'notEmpty', 'notFull', 'idle', 'active'
-]);
+
+function checkLiteralOverflow(filename, lines, issues) {
+    const p = /\b(\d+)\s*'\s*([bdh])\s*([0-9a-fA-FxXzZ?_]+)\b/g;
+    for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        if (trimmed.startsWith('//')) continue;
+        const matches = [...trimmed.matchAll(p)];
+        for (const m of matches) {
+            const width = parseInt(m[1], 10);
+            const radix = m[2];
+            const rawVal = m[3].replace(/[xXzZ?_]/g, '0');
+            let val;
+            const isNeg = trimmed.charAt(m.index - 1) === '-' || /^-\s*'/.test(m[0]);
+            try {
+                if (radix === 'd') {
+                    val = BigInt(rawVal);
+                } else if (radix === 'h') {
+                    val = BigInt('0x' + rawVal);
+                } else {
+                    val = BigInt('0b' + rawVal);
+                }
+                if (isNeg) val = -val;
+            } catch (_) { continue; }
+
+            if (width === 0) continue;
+
+            const max = (BigInt(1) << BigInt(width)) - BigInt(1);
+            const min = -(BigInt(1) << BigInt(width - 1));
+            const msbOnly = BigInt(1) << BigInt(width - 1);
+            const negVal = val < 0n;
+
+            if (!negVal && val > max) {
+                const bitsNeeded = val.toString(2).length;
+                issues.push({
+                    file: filename, line: i + 1, check: 'T0132',
+                    severity: 'warning',
+                    message: `字面量 ${m[0]} 值 ${val} 需要 ${bitsNeeded} bits，但声明位宽仅 ${width} bits`,
+                    suggestion: `最大值 ${max}，减少字面量值或增到位宽 Bit#(${bitsNeeded})`
+                });
+            }
+            if (negVal && (val < min || val === -msbOnly)) {
+                issues.push({
+                    file: filename, line: i + 1, check: 'T0132',
+                    severity: 'warning',
+                    message: `负字面量 ${m[0]} 超出 ${width}-bit 有符号范围 [${min}, ${max}]`,
+                    suggestion: `扩大位宽或使用无符号字面量`
+                });
+            }
+        }
+    }
+}
+
+function checkDupTypeParams(filename, lines, issues) {
+    for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        if (trimmed.startsWith('//')) continue;
+
+        const hp = trimmed.match(/#\s*\(([^)]+)\)/);
+        if (!hp) continue;
+        const params = hp[1].match(/\btype\s+([a-zA-Z_]\w*)\b/g);
+        if (!params) continue;
+        const names = params.map(p => p.replace(/^type\s+/, ''));
+        const seen = new Map();
+        for (const n of names) {
+            seen.set(n, (seen.get(n) || 0) + 1);
+        }
+        for (const [n, c] of seen) {
+            if (c > 1) {
+                issues.push({
+                    file: filename, line: i + 1, check: 'P0073',
+                    severity: 'error',
+                    message: `类型参数 "${n}" 在 #(...) 中重复定义`,
+                    suggestion: `每个 type 参数必须唯一，删除重复的 "${n}"`
+                });
+                break;
+            }
+        }
+    }
+}
+
+function checkDupValueParams(filename, lines, issues) {
+    for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        if (trimmed.startsWith('//')) continue;
+
+        const fp = trimmed.match(/\bfunction\s+.*?\(([^)]*)\)/);
+        if (!fp) continue;
+        const args = fp[1];
+        if (!args) continue;
+        const names = [];
+        const parts = args.split(',');
+        for (const part of parts) {
+            const m = part.trim().match(/\b([a-zA-Z_]\w*)\s*$/);
+            if (m && m[1] !== 'provisos') names.push(m[1]);
+        }
+        const seen = new Map();
+        for (const n of names) { seen.set(n, (seen.get(n) || 0) + 1); }
+        for (const [n, c] of seen) {
+            if (c > 1) {
+                issues.push({
+                    file: filename, line: i + 1, check: 'P0073',
+                    severity: 'error',
+                    message: `函数参数 "${n}" 在 function 签名中重复`,
+                    suggestion: `每个参数名必须唯一，重命名其中一个 "${n}"`
+                });
+                break;
+            }
+        }
+    }
+}
+
+function checkDupInterfaceMembers(filename, content, issues) {
+    const ifcBlocks = content.match(/interface\s+\w+[\s\S]*?endinterface/g) || [];
+    for (const block of ifcBlocks) {
+        const methods = [...block.matchAll(/method\s+(?:\w+\s+)?(\w+)\s*[\(;]/g)].map(m => m[1]);
+        const seen = new Map();
+        for (const m of methods) { seen.set(m, (seen.get(m) || 0) + 1); }
+        for (const [m, c] of seen) {
+            if (c > 1) {
+                const lineEst = content.substring(0, content.indexOf(block)).split('\n').length + 1;
+                issues.push({
+                    file: filename, line: lineEst, check: 'P0073',
+                    severity: 'error',
+                    message: `接口方法 "${m}" 在同一个 interface 块中声明了 ${c} 次`,
+                    suggestion: `删除重复的 method 声明`
+                });
+                break;
+            }
+        }
+    }
+}
+
+function checkDupAttr(filename, lines, issues) {
+    for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        if (trimmed.startsWith('//')) continue;
+
+        const am = trimmed.match(/\(\*\s*([^)]+?)\s*\*\)/);
+        if (!am) continue;
+        const attrs = am[1].split(/\s*,\s*/g);
+        const keys = attrs.map(a => a.replace(/\s*=\s*\S+/, '').trim());
+        const seen = new Map();
+        for (const k of keys) {
+            if (!k) continue;
+            seen.set(k, (seen.get(k) || 0) + 1);
+        }
+        for (const [k, c] of seen) {
+            if (c > 1) {
+                issues.push({
+                    file: filename, line: i + 1, check: 'P0085',
+                    severity: 'error',
+                    message: `属性 "${k}" 在同一 (* *) 中重复`,
+                    suggestion: `删除重复的属性 "${k}"`
+                });
+                break;
+            }
+        }
+        if (/\bsynthesized\b/.test(am[1])) {
+            issues.push({
+                file: filename, line: i + 1, check: 'P0085',
+                severity: 'warning',
+                message: `属性 "synthesized" 是拼写错误，应为 "synthesize"`,
+                suggestion: `改为 (* synthesize *)`
+            });
+        }
+    }
+}
+
+function checkUrgencyCycle(filename, content, issues) {
+    const declarations = [];
+    const urgencyRe = /(?:descending_urgency|execution_order|preempts)\s*=\s*"([^"]+)"/g;
+    let um;
+    while ((um = urgencyRe.exec(content)) !== null) {
+        const rules = um[1].split(/\s*,\s*/).map(s => s.trim()).filter(Boolean);
+        declarations.push(rules);
+        for (const r of rules) {
+            if (rules.filter(x => x === r).length > 1) {
+                const lineEst = content.substring(0, um.index).split('\n').length + 1;
+                issues.push({
+                    file: filename, line: lineEst, check: 'G0030',
+                    severity: 'error',
+                    message: `urgency 声明中规则 "${r}" 在同一组内重复引用 — 形成自环 (G0040)`,
+                    suggestion: `从 descending_urgency 中移除重复的 "${r}"`
+                });
+                break;
+            }
+        }
+    }
+
+    const edges = new Map();
+    for (const rules of declarations) {
+        for (let j = 0; j < rules.length - 1; j++) {
+            const from = rules[j];
+            const to = rules[j + 1];
+            if (!edges.has(from)) edges.set(from, []);
+            edges.get(from).push(to);
+        }
+    }
+
+    function hasCycle(node, visited, stack) {
+        if (stack.has(node)) return true;
+        if (visited.has(node)) return false;
+        visited.add(node);
+        stack.add(node);
+        for (const next of (edges.get(node) || [])) {
+            if (hasCycle(next, visited, stack)) return true;
+        }
+        stack.delete(node);
+        return false;
+    }
+
+    const visited = new Set();
+    for (const node of edges.keys()) {
+        if (hasCycle(node, visited, new Set())) {
+            const idx = content.indexOf('descending_urgency');
+            const lineEst = idx >= 0 ? content.substring(0, idx).split('\n').length + 1 : 1;
+            issues.push({
+                file: filename, line: lineEst, check: 'G0030',
+                severity: 'error',
+                message: `descending_urgency 形成循环依赖，涉及规则 "${node}"`,
+                suggestion: `检查所有 descending_urgency 声明，消除循环`
+            });
+            break;
+        }
+    }
+}
+
+function checkAttrBadRule(filename, content, issues) {
+    const ruleNames = new Set([
+        ...content.matchAll(/\brule\s+(["\\].*?["\\]|\w+)/g)
+    ].map(m => m[1].replace(/["\\]/g, '')));
+
+    const urgencyRe = /(?:descending_urgency|execution_order|preempts)\s*=\s*"([^"]+)"/g;
+    let um;
+    while ((um = urgencyRe.exec(content)) !== null) {
+        const rules = um[1].split(/\s*,\s*/).map(s => s.trim()).filter(Boolean);
+        for (const r of rules) {
+            if (!ruleNames.has(r) && /^\w/.test(r)) {
+                const lineEst = content.substring(0, um.index).split('\n').length + 1;
+                issues.push({
+                    file: filename, line: lineEst, check: 'G0054',
+                    severity: 'error',
+                    message: `属性引用的规则 "${r}" 在文件中未定义`,
+                    suggestion: `检查规则名拼写，或确认该规则已在本模块中声明`
+                });
+            }
+        }
+    }
+}
+
+function checkStructField(filename, content, issues) {
+    const structDefs = new Map();
+    const defRe = /typedef\s+struct\s*\{([^}]*)\}\s+(\w+)/g;
+    let dm;
+    while ((dm = defRe.exec(content)) !== null) {
+        const body = dm[1];
+        const name = dm[2];
+        const fields = [...body.matchAll(/(?:\w+(?:#\([^)]*\))?\s+)+\b(\w+)\s*;/g)].map(m => m[1]);
+        if (fields.length > 0) structDefs.set(name, new Set(fields));
+    }
+
+    const litRe = /(\w+)\s*\{\s*([^}]+)\s*\}/g;
+    let lm;
+    while ((lm = litRe.exec(content)) !== null) {
+        const typeName = lm[1];
+        const body = lm[2];
+        if (!structDefs.has(typeName)) continue;
+        const validFields = structDefs.get(typeName);
+        const fieldNames = [...body.matchAll(/(?:^\s*|\s*,\s*)(\w+)\s*[:=]/g)].map(m => m[1]);
+        for (const f of fieldNames) {
+            if (!validFields.has(f)) {
+                const lineEst = content.substring(0, lm.index).split('\n').length + 1;
+                const near = [...validFields].slice(0, 5).join(', ');
+                issues.push({
+                    file: filename, line: lineEst, check: 'T0016',
+                    severity: 'error',
+                    message: `结构体 "${typeName}" 不存在字段 "${f}"，可用字段: ${near}`,
+                    suggestion: `检查字段名拼写，或使用正确的结构体类型`
+                });
+            }
+        }
+    }
+}
+
+function checkArgCountMismatch(filename, lines, issues) {
+    const funcDefs = new Map();
+    const defRe = /\bfunction\s+(?:\w+(?:#\([^)]*\))?\s+)?(\w+)\s*\(([^)]*)\)/g;
+    const joined = lines.join('\n');
+    let dm;
+    while ((dm = defRe.exec(joined)) !== null) {
+        const name = dm[1];
+        const params = dm[2].trim();
+        if (params === '') { funcDefs.set(name, 0); continue; }
+        funcDefs.set(name, params.split(',').length);
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        if (trimmed.startsWith('//') || trimmed.startsWith('function')) continue;
+
+        const callRe = /\b(\w+)\s*\(([^)]*)\)/g;
+        let cm;
+        while ((cm = callRe.exec(trimmed)) !== null) {
+            const name = cm[1];
+            const args = cm[2].trim();
+            if (!funcDefs.has(name)) continue;
+            const expected = funcDefs.get(name);
+            const actual = args === '' ? 0 : args.split(',').length;
+            if (actual !== expected && !trimmed.startsWith(name + ' ')) {
+                issues.push({
+                    file: filename, line: i + 1, check: 'T0080',
+                    severity: 'error',
+                    message: `函数 "${name}" 需要 ${expected} 个参数，但调用处传了 ${actual} 个`,
+                    suggestion: actual > expected
+                        ? `删除多余的参数`
+                        : `补充缺失的参数`
+                });
+            }
+        }
+    }
+}
+
+function checkSizedLiteralZero(filename, lines, issues) {
+    for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        if (trimmed.startsWith('//')) continue;
+        const m = trimmed.match(/\b0\s*'\s*[bdh]\s*\w+\b/);
+        if (m) {
+            issues.push({
+                file: filename, line: i + 1, check: 'T0132',
+                severity: 'warning',
+                message: `零位宽字面量 "${m[0].trim()}" — Bit#(0) 尺寸为 0，不能容纳任何值`,
+                suggestion: `使用非零位宽，或直接使用 ? 作为 don't-care`
+            });
+        }
+    }
+}
