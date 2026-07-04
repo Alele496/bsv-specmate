@@ -97,7 +97,7 @@ function checkMyRule(filename, lines, issues) {
 
 ---
 
-### lookup_error — 错题本查询
+### lookup_error — 编码记忆查询
 
 **无参数调用**（列出所有已知错误）：
 

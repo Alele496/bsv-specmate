@@ -8,16 +8,20 @@
 
 [🇬🇧 English Version](./README.en.md)
 
-`specmate` 是一个 **BSV 编码知识引擎**——为 AI Agent 植入 Bluespec SystemVerilog 领域的知识层。内置错题本（9 条错误、自动计数）、规范文档（8 篇速查）、设计模式（7 个生产级范式）、4,570 个官方用例。帮助 Agent 写出一次编译通过的 BSV 代码。
+`specmate` 是一个 **BSV 编码知识引擎**——为 AI Agent 植入 Bluespec SystemVerilog 领域的知识层。内置编码记忆（11 条错误、自动计数）、规范文档（10 篇速查）、设计模式（3 种风格 + 7 个生产级范式）、4,570 个官方用例。帮助 Agent 写出一次编译通过的 BSV 代码。
 
-BSV 是冷门硬件描述语言，AI 训练数据停留在旧版本，编写代码很难一次编译成功。这个项目将编译错误经验积累为知识库，通过 MCP 协议让 Agent 在编写时就规避常见问题。
+BSV 是冷门硬件描述语言，AI 训练数据停留在旧版本，编写代码很难一次编译成功。这个项目将编译错误经验积累为编码记忆，通过 MCP 协议让 Agent 在编写时就规避常见问题。
+
+> **架构说明**：specmate 是 **Kova**（Knowledge Vault，领域知识引擎框架）在 BSV 领域的首个实例。
+> 核心架构 = DKE（Domain Knowledge Engine）+ 编码记忆（Coding Memory）+ 约束链 + 角色激活。
+> 详见 [下文](#-项目结构)项目结构和 `docs/collaboration.md`。同时保留 `specmate` 作为特定于 BSV 的实例名称。
 
 | 特性 | 说明 | MCP 工具 |
 |------|------|----------|
 | **📋 编码硬约束** | SQLite 驱动，按命中次数排序的编码规则，随错误积累自动演进 | `coding_rules` |
 | **🚀 编码前速览** | 写代码前看一眼高频错误 + 设计警告，避免踩坑 | `preflight` |
 | **🔍 编译前静态检查** | 文本正则检测 rule/method 顺序、Bool 误用、SV 保留字冲突、`vec()` 陷阱、寄存器重复写入 | `check_style` |
-| **📚 错题本** | 9 条真实编译错误，含现象、原因、解决方案；命中自动 +1 | `lookup_error` |
+| **📚 编码记忆** | 11 条真实编译错误，含现象、原因、解决方案；命中自动 +1 | `lookup_error` |
 | **📖 BSV 规范参考** | 模块语法、类型系统、常见模式与陷阱 | `lookup_ref` |
 | **🔎 官方用例搜索** | 4,570 个 BSC 测试套件 `.bsv`，按关键词搜索正确写法 | `lookup_example` |
 | **✍️ 错误自动追加** | 遇到新错误直接调工具入库，无需手写 Markdown | `add_error` |
@@ -193,7 +197,7 @@ bsv-specmate/
 │       ├── coding_rules.mjs    ← 编码硬约束（SQLite 驱动）
 │       ├── preflight.mjs       ← 编码前速览
 │       ├── check_style.mjs     ← 编译前静态检查
-│       ├── lookup_error.mjs    ← 错题本查询
+│       ├── lookup_error.mjs    ← 编码记忆查询
 │       ├── lookup_ref.mjs      ← 规范文档查询
 │       ├── lookup_example.mjs  ← 官方用例搜索
 │       └── add_error.mjs       ← 追加新错误

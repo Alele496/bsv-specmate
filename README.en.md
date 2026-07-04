@@ -8,16 +8,20 @@
 
 [🇨🇳 中文版](./README.md)
 
-`specmate` is a **BSV Coding Knowledge Engine** — a domain knowledge layer for AI agents writing Bluespec SystemVerilog. It bundles an accumulated error KB (9 entries, auto-counting), language reference docs (8 topics), design patterns (7 production paradigms), and 4,570 official test suite examples. Helps agents write BSV code that compiles on the first try.
+`specmate` is a **BSV Coding Knowledge Engine** — a domain knowledge layer for AI agents writing Bluespec SystemVerilog. It bundles a Coding Memory (11 entries, auto-counting), language reference docs (10 topics), design patterns (3 styles + 7 paradigms), and 4,570 official test suite examples. Helps agents write BSV code that compiles on the first try.
 
-BSV is a niche hardware description language. AI training data lags behind the latest compiler — outdated syntax, missing keywords, and subtle scheduling rules make first-try compilation rare. This project accumulates real compilation errors into a queryable knowledge base, so agents can avoid common pitfalls before they compile.
+BSV is a niche hardware description language. AI training data lags behind the latest compiler — outdated syntax, missing keywords, and subtle scheduling rules make first-try compilation rare. This project accumulates real compilation errors into a Coding Memory, so agents can avoid common pitfalls before they compile.
+
+> **Architecture**: specmate is the first domain instance of **Kova** (Knowledge Vault), a domain knowledge engine framework.
+> Core architecture = DKE (Domain Knowledge Engine) + Coding Memory + Constraint Chain + Role Activation.
+> See [project structure](#-project-structure) below and `docs/collaboration.md` for details.
 
 | Feature | Description | MCP Tool |
 |---------|-------------|----------|
 | **📋 Coding constraints** | SQLite-driven rules sorted by hit count, auto-evolve as errors accumulate | `coding_rules` |
 | **🚀 Pre-coding prep** | Scan high-frequency errors + design warnings before writing | `preflight` |
 | **🔍 Static check** | Regex-based detection: rule/method order, Bool misuse, SV reserved words, `vec()` trap, duplicate register writes | `check_style` |
-| **📚 Error KB** | 9 real compilation errors with phenomena, cause, and solution; auto-increment on hit | `lookup_error` |
+| **📚 Coding Memory** | 11 real compilation errors with phenomena, cause, and solution; auto-increment on hit | `lookup_error` |
 | **📖 BSV reference** | Module syntax, type system, common patterns and pitfalls | `lookup_ref` |
 | **🔎 Example search** | 4,570 `.bsv` files from BSC official test suite, keyword searchable | `lookup_example` |
 | **✍️ Error contribution** | One tool call to add new errors — no Markdown editing needed | `add_error` |
@@ -193,7 +197,7 @@ bsv-specmate/
 │       ├── coding_rules.mjs    ← Dynamic constraints (SQLite-driven)
 │       ├── preflight.mjs       ← Pre-coding error preview
 │       ├── check_style.mjs     ← Static style checker
-│       ├── lookup_error.mjs    ← Error KB lookup
+│       ├── lookup_error.mjs    ← Coding Memory lookup
 │       ├── lookup_ref.mjs      ← BSV reference docs
 │       ├── lookup_example.mjs  ← Official example search
 │       └── add_error.mjs       ← Contribute new errors

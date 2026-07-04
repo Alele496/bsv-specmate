@@ -11,7 +11,7 @@
 | `coding_rules` | 编码硬约束 | 无（自动读 level） | 高频错误衍生的编码规则列表 |
 | `preflight` | 编码前速览 | 无（自动读 level） | 高频错误速览 + 设计警告 + 编码建议 |
 | `check_style` | 编译前静态检查 | 文件路径列表 | 问题列表 (错误码 + 行号 + 建议) |
-| `lookup_error` | 查错题本 | 错误码 (如 "P0005") | 现象 + 原因 + 方案 + 计数 |
+| `lookup_error` | 查编码记忆 | 错误码 (如 "P0005") | 现象 + 原因 + 方案 + 计数 |
 | `lookup_ref` | 查 BSV 规范 | "module"/"types"/"syntax"/"examples" | 对应文档全文 |
 | `lookup_example` | 搜官方用例 | 关键词 + 可选子目录 | 匹配的 .bsv 代码片段 |
 | `add_error` | 追加新错误 | code, title, bsc_output, cause, solution, rules | 确认信息 |
