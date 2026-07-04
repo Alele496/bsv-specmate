@@ -141,7 +141,7 @@ const BOOL_LIKE = new Set([
     }
 }
 
-function checkRuleDoubleWrite(filename, content) {
+function checkRuleDoubleWrite(filename, content, issues) {
     const ruleBlocks = content.match(/rule\s+\w+[\s\S]*?endrule/g) || [];
 
     for (const ruleBlock of ruleBlocks) {
