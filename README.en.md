@@ -14,7 +14,26 @@ BSV is a niche hardware description language. AI training data lags behind the l
 
 > **Architecture**: specmate is the first domain instance of **Kova** (Knowledge Vault), a domain knowledge engine framework.
 > Core architecture = DKE (Domain Knowledge Engine) + Coding Memory + Constraint Chain + Role Activation.
-> See [project structure](#-project-structure) below and `docs/collaboration.md` for details.
+> See **[Kova Framework →](https://github.com/Alele496/kova)** and `docs/collaboration.md` for details.
+
+## 📖 Origin: From Error Log to Knowledge Engine
+
+It started as a simple BSV error log — the agent kept failing compilation,
+so I manually jotted down error codes and fixes under `docs/errors/`.
+
+Then I realized just writing them down wasn't enough — the agent never read them.
+So I added SQLite auto-sorting (high-frequency first), hit counting, and `coding_rules()`.
+
+Still not enough — the agent still didn't call the tools. Two experiments later,
+the key insight emerged: **give the agent a review role** (Supervisor).
+When "code quality review" became part of its job description, tool calls
+jumped from 0 to 10+.
+
+What started as an error log had become a reusable domain knowledge engine
+architecture — the **Kova framework**. specmate is Kova's first complete
+domain instance (for BSV).
+
+> From error log to knowledge engine. More on the architecture → **[Kova Framework](https://github.com/Alele496/kova)**
 
 | Feature | Description | MCP Tool |
 |---------|-------------|----------|
@@ -71,7 +90,21 @@ part of its job description, it naturally reaches for check_style, preflight, lo
 
 > Three lines of role description > six static coding rules > nothing at all.
 
-Full blow-by-blow → **[📖 Complete Showdown Report](docs/SHOWDOWN.md)**
+---
+
+## 📊 Usage Guide
+
+| Scenario | Recommended Mode | Template | Effect |
+|----------|-----------------|----------|--------|
+| **New module / large project** | 🤝 **Collaboration** (Supervisor + Developer) | [docs/collaboration.md](docs/collaboration.md) | Highest pass rate, -47% coding time, +23% tokens |
+| **Quick fix / small change** | 🔧 **Solo** (single agent) | [examples/templates/](examples/templates/) | Lightweight & fast, minimal AGENTS.md template |
+
+**How to choose**:
+- Starting a brand-new module → use the collaboration template, Supervisor will review
+- Just fixing a known bug → use the solo template, enough & saves tokens
+- Agent keeps forgetting specmate → gently nudge in chat: "Try lookup_ref(topic=\"schedule\")?"
+
+→ **[📖 Complete Showdown Report](docs/SHOWDOWN.md)**
 
 ---
 
