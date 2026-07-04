@@ -45,5 +45,20 @@ export async function codingRules() {
         lines.push(`${i + 1}. **${r.code}** (×${r.count}) — ${r.rules}`);
     }
 
+    if (level === 'tapeout') {
+        lines.push('');
+        lines.push('## 💡 本次可关注');
+        lines.push('');
+        lines.push('基于当前高频错误的编码建议：');
+        lines.push('· 多模块 Top 集成时提前查阅 `lookup_ref(topic="schedule")` 了解调度标注');
+        lines.push('· `lookup_ref(topic="styles")` 可查看 3 种 BSV 代码风格（保守/精巧/工程）');
+        lines.push('· 控制信号优先用 `Bit#(1)` 而非 `Bool`，避免拼接冲突');
+        lines.push('· 跨模块数据用标准库 FIFOF，不要手写环形缓冲区');
+        lines.push('· 枚举类型 case 省略 default，避免 G0004');
+        lines.push('· 写完每个模块后调用 `check_style(files)` 预检');
+        lines.push('');
+        lines.push('建议不强制，视需要采纳。');
+    }
+
     return lines.join('\n');
 }

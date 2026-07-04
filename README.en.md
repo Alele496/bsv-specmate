@@ -32,19 +32,17 @@ BSV is a niche hardware description language. AI training data lags behind the l
 
 ---
 
-## 🧪 Controlled Experiment
+## 🥊 SHOWDOWN: specmate vs. Bare-Metal AI
 
-We ran an A/B test using OpenCode — two agents writing an identical Wishbone bus arbiter, one with specmate, one without.
+We pitted two agents against each other on a RISC-V peripheral subsystem —
+7 modules, same requirements, one with specmate (tapeout), one without.
 
-| Metric | Agent A (no specmate) | Agent B (with specmate) |
-|--------|----------------------|------------------------|
-| Fix rounds to compile | **2** | **1** |
-| Self-inflicted errors | `vec()` unbound (over-engineered Vector design) | None |
-| Design style | Vector + Wire (complex, risky) | Flat Reg (conservative, safe) |
-| Errors discovered | `priority` (SV reserved word) + `vec()` unbound | `priority` (SV reserved word) |
-| KB growth | 2 new errors added | 1 new error added |
+Result: 🅱️ The specmate-guided agent needed **25% fewer compilation fix rounds** (9 vs 12)
+and **12.6% less tokens** (149.7K vs 171.3K). More interestingly — it was guided into
+safer design choices: standard library FIFOs over hand-rolled ring buffers,
+Bit#(1) over Bool for control signals, proactive scheduling annotations.
 
-**Result**: specmate-guided agent compiled in 1 round. Unguided agent took 2 rounds due to self-inflicted complexity from an over-engineered design. Both newly discovered errors have since been added to the KB — the gap widens next time.
+Full blow-by-blow → **[📖 Complete Showdown Report](docs/SHOWDOWN.md)**
 
 ---
 
