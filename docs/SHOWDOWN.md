@@ -223,7 +223,34 @@ specmate 的核心价值不是"报错了帮你查"——是**改变编码决策*
 
 ## 🟡 第二战：SD 卡控制器 — CCB 上的 rematch
 
-第一战结束后，我们换了客户端（CCB goal 模式），换了项目（SD 卡 SPI 控制器），也换了对比变量：**对照组拿到 6 条硬编码的 BSV 编码建议**（AGENTS.md 中），实验组只有极简任务描述 + Supervisor 角色 + specmate。
+### 实验环境升级
+
+第一战在 OpenCode 上手動逐輪發提示詞，第二戰切换到 CCB 的 `/goal` 自动循环模式。
+
+| | 第一战 (RISC-V) | 第二战 (SD 卡) |
+|---|---|---|
+| 客户端 | OpenCode | **CCB** (Claude Code Best) |
+| 驱动模式 | 手动逐 Phase 发提示词 | **`/goal` 一次到底，自动循环** |
+| AI 深度 | deepseek-v4-pro | deepseek-v4-pro, **max thinking** |
+| 权限模式 | 手动确认 | **auto**（自动放行） |
+| 编译 | 人工 WSL | 人工 WSL（公平对比） |
+| contrast 变量 | specmate vs 无 specmate | **specmate + Supervisor vs 6 条静态规则** |
+
+### 协作开发模式验证
+
+第一战中 Agent B 全程 0 次工具调用——不是工具不好，是 Agent 没有角色驱动。第二战在 AGENTS.md 中加了 **Supervisor 审查角色**：
+
+| 角色 | 🅰️ 对照组 | 🅱️ 实验组 |
+|------|----------|----------|
+| 开发角色 | Agent 独自写 | Developer 角色写 |
+| 审查角色 | fork 子 Agent | **Supervisor 角色** + specmate 工具箱 |
+| 知识来源 | 6 条静态编码建议 | SQLite 约束 + 10 个参考文档 + 4,570 个用例 |
+| 审查方式 | Agent 纯推理 | Supervisor 主动调 check_style → lookup_ref → preflight |
+| 工具调用 | 0 | **10+ 次** ⚡ |
+
+角色驱动是这次实验最关键的设计改动——Agent 不再"被动有工具可用"，而是"被赋予审查职责后主动去找"。
+
+### 正面交锋
 
 | 指标 | 🅰️ A（对照 + 6 条规则） | 🅱️ B（specmate + Supervisor） |
 |------|---------------------|---------------------------|
@@ -231,35 +258,64 @@ specmate 的核心价值不是"报错了帮你查"——是**改变编码决策*
 | 编码 Token | 15.7M | **12.1M** (-23%) |
 | specmate 调用 | 0 | **10+ 次** |
 | 首次通过率 | 1/7 | 2/7 |
-| 最终通过率 | 5/7 (SdCtrl 卡住) | **7/7 ✅** |
-| SdCtrl G0004 | 7+ 轮未修复 | 7 轮修完 |
+| 最终通过率 | 5/7 (SdCtrl G0002 陷住) | **7/7 ✅** |
+| SdCtrl 瓶颈 | G0004→G0002 (7+ 轮) | G0004→split+wait (7 轮通过) |
+| AGENTS.md | 1256B (含 6 条规则) | 1301B (极简 + Supervisor) |
 
 ### 关键转折
 
-**编码阶段**：B 的 Supervisor 角色在开始写代码前就调了 `lookup_ref(module, syntax, types)` 三连查——这是上一个实验中完全没发生的行为。CCB goal 模式 + Supervisor 角色描述成功激活了工具调用。
+**编码阶段**：B 的 Supervisor 角色在开始写代码前就调了 `lookup_ref(module, syntax, types)` 三连查——这在上一实验完全没发生。CCB goal 模式 + 角色描述是激活工具调用的真正钥匙。
 
-**SdCtrl G0004**：双方都卡在同一个 BSV 架构约束——"复杂 FSM 中多子模块的方法不能在同一规则内调用"。B 最终在第 7 轮用 spi+wait 状态拆分通过。A 仍在 G0002 语法错误中挣扎。
+**SdCtrl G0004**：双方都卡在同一个 BSV 架构约束——"复杂 FSM 中多子模块的方法不能在同一规则内调用"。B 在第 7 轮用 spi+wait 状态拆分通过。A 被后续修复引入的 G0002 连锁语法错误困住——不是不会 BSV，是"修一个坑挖另一个坑"的典型大项目修复困境。
 
-**specmate 的累积效应**：RISC-V 实验中发现的 Top G0004 模式已写入 `schedule.md`，本轮 B 在修复时查了这个文档。SD 卡实验中新发现的 FSM 多子模块 G0004 也已入库——下次实验 Agent 可以直接查阅。
-
-### 对照组有 6 条规则但不如 specmate？
-
-对照组的 AGENTS.md 是精心设计的 6 条编码建议——这是任何独立 Agent 能拿到的"最好的静态帮助"。但：
-- 它没有动态 SQLite 约束排序（P0005 命中 6 次排在第一位）
-- 它没有交叉引用（报错 → 自动建议 lookup_ref topic）
-- 它没有 Supervisor 角色驱动审查流程
+**对照组有 6 条规则但不如 specmate？** 对照组的 AGENTS.md 是精心设计的——包含命名、位宽、FIFOF、urgency、Vector 共 6 条建议。这是独立 Agent 能拿到的"最好的静态帮助"。但它没有：
+- SQLite 驱动的命中次数排序（P0005 排第一因为它被触发了 6 次）
+- 交叉引用链（报错 → 自动建议下一个 lookup_ref topic）
+- Supervisor 审查角色（把"有工具"变成"用工具"）
 
 **结论**：动态知识引擎 > 静态规则，即使在 CCB 这样的 advanced client 上也成立。
 
 ---
 
-## 📝 后续行动
+## 📊 两战总览
 
-1. **验证新版 AGENTS.md**：重启 B 的 session 重读新文件，重新跑一个 Top 集成，看会不会调 check_style
-2. **Phase 4 G0004 经验补入 specmate**：Top 层 connect 规则拆为 _req/_resp 对 + `descending_urgency` 的最佳实践可写入 `docs/reference/schedule.md`
-3. **更多实验**：不同模块类型、不同复杂度，持续积累数据
+| | 🥇 第一战 (RISC-V) | 🥈 第二战 (SD 卡) |
+|---|---|---|
+| 🅱️ B 最终 | 9 轮 ✅ | 7 轮 (R0) + 7 轮修复 ✅ |
+| 🅰️ A 最终 | 11 轮 | 5/7 (G0002) |
+| B specmate 调用 | **0 次**（未激活） | **10+ 次**（Supervisor 角色激活） |
+| 核心发现 | `coding_rules` 隐式影响设计风格 | Supervisor 角色驱动主动工具调用 |
+| 知识库贡献 | 3 条新错误 | 1 条 FSM 多子模块隔离模式 |
+| 客户端教训 | OpenCode 手动逐轮效率低 | CCB goal 一次设定自动跑到底 |
 
 ---
 
-> **声明**：此实验于 2026 年 7 月 3 日进行。BSV 编译器版本 2025.07。
-> 原始数据和中间代码见 `bsv-test/project-periph/`。
+## 💭 我们怎么看
+
+**两场实验下来，specmate 的价值已经不需要证明。** 数字说话：-47% 编码时间，-23% Token，0 次到 10+ 次工具调用。
+
+但更有意思的是**数字背后的东西**：
+
+1. **不是 specmate 帮 Agent 修 Bug，是 specmate 让 Agent 少犯错。** 第一战 B 选 `Bit#(1)` 而非 `Bool` 做控制信号——这不是在报错后查的，是 `coding_rules()` 在编码前就植入了这个概念。第二战 Supervisor 角色在写代码前查了三个参考文档——比翻车后修复高效得多。
+
+2. **角色驱动是激活工具调用的真正钥匙。** 第一个实验 Agent B 全程 0 次调用工具——不是工具没用，是 Agent 没有被赋予"审查职责"。第二个实验只是在 AGENTS.md 中加了 3 行 Supervisor 角色描述，工具调用次数从 0 飙升到 10+。这不是技术难题，是产品设计问题。
+
+3. **G0004 几乎是 BSV 程序员的通行证。** 两场实验的 Top 层集成都卡在 G0004。这不是 Agent 蠢，是 BSV 的调度模型天然对"多个子模块在一个规则体内协调"不友好。我们已经把这个教训写入 `schedule.md`，也发现了唯一可靠的解决方案——spi+wait 状态拆分。
+
+4. **CCB 的 goal 模式是实验加速器。** 第一次实验我手动逐 Phase 发了 12 轮提示词。第二次 `/goal` 一次设定，CCB 自己循环了整个过程——从编写到审查到编译到修复。你需要的不只是好工具，还有好客户端。
+
+5. **知识引擎的累积效应刚开始。** 目前知识库只有 11 条错误、10 个参考文档、3 种代码风格、1 个 FSM 架构模式。随着每次实验反馈，这个引擎会越来越精准——这才是 specmate 真正的护城河。
+
+---
+
+## 📝 后续
+
+1. **让 Agent 自己补充知识** — `add_error` + `suggest` 闭环
+2. **OpenCode 插件化** — 系统级激活工具调用
+3. **更多实验** — 跨时钟域、AXI DSP pipeline 等新领域
+4. **npm 安装验证** — `npx bsv-specmate` 一键开箱
+
+---
+
+> **声明**：第一战 2026-07-03 OpenCode，第二战 2026-07-04 CCB。BSV 编译器版本 2025.07。
+> 原始数据见 `bsv-test/project-periph/` 和 `bsv-test/project-sdcard/`。
