@@ -1,5 +1,5 @@
 {
-  "name": "specmate",
+  "name": "bsv-specmate",
   "version": "0.1.0",
   "description": "BSV Coding Knowledge Engine — domain knowledge layer for AI agents writing Bluespec SystemVerilog",
   "keywords": ["bluespec", "bsv", "bsc", "hardware", "verilog", "mcp"],
@@ -10,7 +10,7 @@
   },
   "type": "module",
   "bin": {
-    "specmate": "./bin/server.mjs"
+    "bsv-specmate": "./bin/server.mjs"
   },
   "files": [
     "AGENTS.md",

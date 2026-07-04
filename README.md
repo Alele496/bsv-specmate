@@ -1,7 +1,7 @@
 # specmate
 
 [![Node.js](https://img.shields.io/badge/runtime-Node.js%20%3E%3D18-green?style=flat-square&logo=node.js)](https://nodejs.org/)
-[![npm](https://img.shields.io/badge/npm-specmate-red?style=flat-square&logo=npm)](https://www.npmjs.com/package/specmate)
+[![npm](https://img.shields.io/badge/npm-bsv--specmate-red?style=flat-square&logo=npm)](https://www.npmjs.com/package/bsv-specmate)
 [![GitHub License](https://img.shields.io/github/license/Alele496/bsv-specmate?style=flat-square)](https://github.com/Alele496/bsv-specmate/blob/main/LICENSE)
 
 > BSV 编码知识引擎 — Your Bluespec coding mate.
@@ -51,7 +51,7 @@ Bit#(1) 而非 Bool 做控制信号，主动标注调度关系。
 ### 安装
 
 ```bash
-npm install -g specmate
+npm install -g bsv-specmate
 ```
 
 ### 配置 Claude Code
@@ -63,7 +63,7 @@ npm install -g specmate
   "mcpServers": {
     "specmate": {
       "command": "npx",
-      "args": ["specmate"]
+      "args": ["bsv-specmate"]
     }
   }
 }

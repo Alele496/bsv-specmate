@@ -1,7 +1,7 @@
 # specmate
 
 [![Node.js](https://img.shields.io/badge/runtime-Node.js%20%3E%3D18-green?style=flat-square&logo=node.js)](https://nodejs.org/)
-[![npm](https://img.shields.io/badge/npm-specmate-red?style=flat-square&logo=npm)](https://www.npmjs.com/package/specmate)
+[![npm](https://img.shields.io/badge/npm-bsv--specmate-red?style=flat-square&logo=npm)](https://www.npmjs.com/package/bsv-specmate)
 [![GitHub License](https://img.shields.io/github/license/Alele496/bsv-specmate?style=flat-square)](https://github.com/Alele496/bsv-specmate/blob/main/LICENSE)
 
 > BSV Coding Knowledge Engine — Your Bluespec coding mate.
@@ -51,7 +51,7 @@ Full blow-by-blow → **[📖 Complete Showdown Report](docs/SHOWDOWN.md)**
 ### Install
 
 ```bash
-npm install -g specmate
+npm install -g bsv-specmate
 ```
 
 ### Configure Claude Code
@@ -63,7 +63,7 @@ Create `.mcp.json` in your project root:
   "mcpServers": {
     "specmate": {
       "command": "npx",
-      "args": ["specmate"]
+      "args": ["bsv-specmate"]
     }
   }
 }

@@ -14,7 +14,7 @@ import { codingRules } from "../src/tools/coding_rules.mjs";
 import { suggest } from "../src/tools/suggest.mjs";
 
 const server = new McpServer({
-    name: "specmate",
+    name: "bsv-specmate",
     version: "0.1.0",
 });
 

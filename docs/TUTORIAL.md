@@ -15,7 +15,7 @@
   "mcpServers": {
     "specmate": {
       "command": "npx",
-      "args": ["specmate"],
+      "args": ["bsv-specmate"],
       "env": { "SPECMATE_LEVEL": "tapeout" }
     }
   }

@@ -16,7 +16,7 @@
 - [ ] 在 npmjs.com 创建 Granular Access Token（权限：Read and write，勾选 bypass 2FA）
 - [ ] `npm set //registry.npmjs.org/:_authToken=<token>`
 - [ ] `npm publish --access public`
-- [ ] 验证：`npx specmate` 可正常启动
+- [ ] 验证：`npx bsv-specmate` 可正常启动
 
 ---
 
