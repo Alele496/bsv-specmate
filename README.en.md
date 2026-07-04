@@ -39,6 +39,15 @@ first complete domain instance.
 
 → **[Kova Framework](https://github.com/Alele496/kova)**
 
+### Why not bundle the bsc compiler?
+
+specmate is a **pre-compilation quality layer** — its value is catching errors before compilation,
+not after. `check_style` detects 8 categories of common syntax/type errors without calling bsc.
+
+Bundling the compiler would require 200MB+ Docker images. For users with WSL/Linux, bsc is
+already installed locally — agents can call it directly. Compiler integration is planned as an
+optional plugin (Phase 3), not part of the core package.
+
 | Feature | Description | MCP Tool |
 |---------|-------------|----------|
 | **📋 Coding constraints** | SQLite-driven rules sorted by hit count, auto-evolve as errors accumulate | `coding_rules` |
@@ -239,13 +248,13 @@ bsv-specmate/
 │       ├── lookup_example.mjs  ← Official example search
 │       └── add_error.mjs       ← Contribute new errors
 ├── data/
-│   └── knowledge.db       ← Seed DB (9 errors)
+│   └── knowledge.db       ← Seed DB (11 coding memories)
 ├── docs/
 │   ├── BSV-STYLE.md       ← BSV coding conventions
 │   ├── checklist.md       ← Pre-compilation checklist
 │   ├── TUTORIAL.md        ← Usage tutorial
-│   ├── errors/            ← Error docs (9 entries)
-│   └── reference/         ← BSV language reference (4 topics)
+│   ├── errors/            ← Coding Memory docs (11 entries)
+│   └── reference/         ← BSV language reference (10 topics)
 └── examples/
     ├── bsv/               ← BSC official test suite (4,570 .bsv)
     └── bs/                ← Bluespec Classic legacy (reference only)
@@ -292,33 +301,24 @@ Custom path via environment variable:
 
 ## 💬 Tips: Getting Your Agent to Use specmate
 
-Let's be real — most AI agents won't proactively reach for specmate.
-They can write solid BSV code, but remembering "maybe I should check the reference" is a different story.
+Two experiments taught us: the most effective approach is **giving the agent a review role** (Supervisor).
+Tool calls jumped from 0 to 10+. See [SHOWDOWN](#-showdown-specmate-vs-bare-metal-ai).
 
-We're actively exploring better ways to integrate specmate naturally:
-cross-references, scenario suggestions, the `suggest` tool… but we're not quite there yet 😅
-
-We deliberately avoid hardcoding "you MUST call check_style after every module"
-into AGENTS.md — today's experiment proved the point: when the template reads like
-a checklist, agents start reporting "P0005 ✓, P0032 ✓" alongside every output,
-polluting the conversation with self-review noise. Finding the sweet spot between
-"helpful enough" and "not annoying" is the real challenge — that's why we've been
-iterating on the template all day.
-
-**In the meantime**, if you notice your agent hasn't touched a single specmate tool,
-try dropping this in your conversation:
+**In day-to-day use**, if your agent writes code without touching specmate, a gentle nudge works:
 
 ```
-If you're unsure about any BSV syntax, feel free to try specmate's lookup_ref(topic="xxx") 🧠
+If you're unsure about any BSV syntax, try lookup_ref(topic="xxx") 🧠
 ```
 
-(That's what we mean by "gentle nudge" — not a new prompt or system directive, just a friendly line in your ongoing chat. Agents sometimes forget what's in their toolbox.)
+Same for specific situations:
 
-Same approach works for specific situations:
-
-- Agent stuck on G0004 → "Maybe try lookup_ref(topic=\"schedule\") for scheduling annotations?"
-- Agent unsure about a standard library function → "Would lookup_ref(topic=\"stdlib\") help?"
+- Agent stuck on G0004 → "Maybe try lookup_ref(topic=\"schedule\")?"
+- Agent unsure about standard library → "Would lookup_ref(topic=\"stdlib\") help?"
 - Agent wrote code without review → "Want to run check_style on this?"
+
+One sentence. Potentially one fewer compilation error. 🤏
+
+(PRs welcome if you've discovered better nudging techniques 😄)
 
 One sentence. Potentially one fewer compilation error. 🤏
 
