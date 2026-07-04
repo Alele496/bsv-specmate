@@ -200,3 +200,63 @@ endrule
 |------|------|------|
 | "treated as more urgent" | 外部 method 写入 + 内部 rule 读取 | `descending_urgency` |
 | "will appear to fire before" | 两条规则写同一寄存器 | 用 `descending_urgency` 排序 |
+
+---
+
+## FSM 内多子模块方法调用（G0004 变体）✨新增
+
+**问题**：复杂 FSM（如 SD 卡控制器）的 state case 规则中，不同分支调用了不同子模块的方法（spi + cmd + resp + dat），BSC 将规则体内的所有方法调用视为并行冲突 → G0004。
+
+**关键认知**：`descending_urgency` 和 `mutually_exclusive` 都**无法解决规则内部的 G0004**——它们只作用于规则之间。
+
+### 错误示例
+
+```bsv
+// ❌ G0004：一条规则调了 spi + cmd + resp 三个子模块
+rule do_fsm (state != ST_IDLE && spi.busy == 0);
+    case (state)
+        ST_INIT: begin
+            spi.start(8'hFF);          // spi 子模块
+            cmd.build(cmd_idx, arg);   // cmd 子模块
+            resp.select(T_R1);         // resp 子模块
+            state <= ST_CMD;
+        end
+        ST_DATA: begin
+            spi.start(val);
+            dat.wr_octet(idx, b);      // dat 子模块
+        end
+    endcase
+endrule
+```
+
+### 正确方案：引入 wait 状态
+
+每个子模块操作用独立规则，状态间用 wait 状态桥接：
+
+```bsv
+// ✅ 每个状态拆成两步：spi 操作 → wait → 其他子模块操作
+rule do_init_spi (state == ST_INIT_SPI && spi.busy == 0);
+    spi.start(8'hFF);
+    state <= ST_INIT_CMD_RESP;
+endrule
+
+rule do_init_cmd_resp (state == ST_INIT_CMD_RESP);
+    cmd.build(cmd_idx, arg);   // 只有 cmd + resp
+    resp.select(T_R1);
+    state <= ST_CMD;
+endrule
+```
+
+**架构模板**：
+
+```
+每个需要多子模块协调的状态 = 2 条规则：
+  Rule A (spi_only): spi.start() → 转 state_wait
+  Rule B (others_only): cmd/dat/resp 操作 → 转下一状态
+```
+
+> **规则**：BSC 不允许同一规则体内调用多个子模块的 Action 方法。FSM 设计时就要预留 wait 状态做子模块操作隔离。
+
+### 实验验证
+
+在 SD 卡控制器的实验中，对照组 FSM 中 `conflict_free` 和 `mutually_exclusive` 均不能解决此 G0004。最终将 FSM 中的每个"多子模块"状态拆为两条分别调 spi 和其他子模块的规则，每条规则内只保留一个子模块的方法调用。
