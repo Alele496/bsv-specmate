@@ -114,4 +114,3 @@ bsc -u -verilog -vdir verilog -bdir build bsv/Top.bsv
 - Bluespec Compiler version 2025.07
 - 测试套件来源：B-Lang-org/bsc
 - 用户数据默认路径：`~/.specmate/`
-- 维护本仓库前先读 [docs/MAINTAINER.md](docs/MAINTAINER.md)

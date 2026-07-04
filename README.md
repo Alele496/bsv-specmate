@@ -59,7 +59,6 @@ bsc 已经在本地了——Agent 直接调 shell 编译即可。编译器作为
 - 🚀 [快速开始](#-快速开始)
 - 🛠 [本地开发](#-本地开发)
 - 📖 [详细教程 → docs/TUTORIAL.md](./docs/TUTORIAL.md)
-- 🔧 [维护指南 → docs/MAINTAINER.md](./docs/MAINTAINER.md)
 - 🇬🇧 [English → README.en.md](./README.en.md)
 
 ---
@@ -120,8 +119,6 @@ Agent 自然就去调了 check_style、preflight、lookup_ref。
 
 → **[📖 完整争霸赛报告](docs/SHOWDOWN.md)**
 
-逐回合翻车现场和分析 → **[📖 完整争霸赛报告](docs/SHOWDOWN.md)**。
-
 ---
 
 ## ⚡ 快速开始
@@ -132,16 +129,25 @@ Agent 自然就去调了 check_style、preflight、lookup_ref。
 npm install -g bsv-specmate
 ```
 
-### 配置 Claude Code
+### 配置 CCB / Claude Code
 
 项目根目录创建 `.mcp.json`：
 
 ```json
+// npm 版 (Linux / WSL)
 {
   "mcpServers": {
-    "specmate": {
-      "command": "npx",
-      "args": ["bsv-specmate"]
+    "bsv-specmate": { "command": "npx", "args": ["bsv-specmate"] }
+  }
+}
+
+// 本地开发版 (Windows — 注意 cmd /c 包装)
+{
+  "mcpServers": {
+    "bsv-specmate": {
+      "command": "cmd",
+      "args": ["/c", "node", "D:/Desktop/bsv-agent/bsv-agent-server/bin/server.mjs"],
+      "env": { "SPECMATE_LEVEL": "tapeout" }
     }
   }
 }
@@ -149,25 +155,19 @@ npm install -g bsv-specmate
 
 ### 配置 OpenCode
 
-在 `opencode.json` 中添加：
+项目根目录创建 `opencode.json`：
 
 ```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "specmate": {
-      "type": "local",
-      "command": ["node", "<项目绝对路径>/bin/server.mjs"],
-      "enabled": true,
-      "environment": {
-        "SPECMATE_LEVEL": "wafer"
-      }
-    }
-  }
-}
+// npm 版
+{ "$schema": "https://opencode.ai/config.json",
+  "mcp": { "bsv-specmate": { "type": "local", "command": ["npx", "bsv-specmate"], "enabled": true } } }
+
+// 本地开发版 (Windows)
+{ "$schema": "https://opencode.ai/config.json",
+  "mcp": { "bsv-specmate": { "type": "local", "command": ["node", "D:/Desktop/bsv-agent/bsv-agent-server/bin/server.mjs"], "enabled": true, "environment": { "SPECMATE_LEVEL": "wafer" } } } }
 ```
 
-配置后重启 AI 客户端，Agent 会自动发现 7 个 MCP 工具。
+配置后重启 AI 客户端，Agent 会自动发现 8 个 MCP 工具。
 
 ---
 

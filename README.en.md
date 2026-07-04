@@ -134,16 +134,25 @@ part of its job description, it naturally reaches for check_style, preflight, lo
 npm install -g bsv-specmate
 ```
 
-### Configure Claude Code
+### Configure CCB / Claude Code
 
 Create `.mcp.json` in your project root:
 
 ```json
+// npm version (Linux / WSL)
 {
   "mcpServers": {
-    "specmate": {
-      "command": "npx",
-      "args": ["bsv-specmate"]
+    "bsv-specmate": { "command": "npx", "args": ["bsv-specmate"] }
+  }
+}
+
+// local dev (Windows — note cmd /c wrapper)
+{
+  "mcpServers": {
+    "bsv-specmate": {
+      "command": "cmd",
+      "args": ["/c", "node", "D:/Desktop/bsv-agent/bsv-agent-server/bin/server.mjs"],
+      "env": { "SPECMATE_LEVEL": "tapeout" }
     }
   }
 }
@@ -151,25 +160,19 @@ Create `.mcp.json` in your project root:
 
 ### Configure OpenCode
 
-In `opencode.json`:
+Create `opencode.json` in your project root:
 
 ```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "specmate": {
-      "type": "local",
-      "command": ["node", "<absolute-path>/bin/server.mjs"],
-      "enabled": true,
-      "environment": {
-        "SPECMATE_LEVEL": "wafer"
-      }
-    }
-  }
-}
+// npm version
+{ "$schema": "https://opencode.ai/config.json",
+  "mcp": { "bsv-specmate": { "type": "local", "command": ["npx", "bsv-specmate"], "enabled": true } } }
+
+// local dev (Windows)
+{ "$schema": "https://opencode.ai/config.json",
+  "mcp": { "bsv-specmate": { "type": "local", "command": ["node", "D:/Desktop/bsv-agent/bsv-agent-server/bin/server.mjs"], "enabled": true, "environment": { "SPECMATE_LEVEL": "wafer" } } } }
 ```
 
-Restart your AI client. Agents will discover 7 MCP tools automatically.
+Restart your AI client. Agents will discover 8 MCP tools automatically.
 
 ---
 
