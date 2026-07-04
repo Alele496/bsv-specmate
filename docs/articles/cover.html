@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>specmate cover</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 1200px; height: 630px;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif;
+  }
+
+  .card {
+    width: 1200px; height: 630px;
+    background: linear-gradient(135deg, #070b1a 0%, #0f1535 30%, #1a1035 60%, #0a0e20 100%);
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* subtle grid */
+  .grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(96,165,250,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(96,165,250,0.04) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+  }
+
+  /* glow orbs */
+  .orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.18;
+    pointer-events: none;
+  }
+  .orb-1 { width: 400px; height: 400px; top: -100px; right: -50px; background: #60a5fa; }
+  .orb-2 { width: 300px; height: 300px; bottom: -80px; left: 60px; background: #a78bfa; }
+  .orb-3 { width: 200px; height: 200px; top: 280px; right: 280px; background: #38bdf8; opacity: 0.10; }
+
+  /* accent line */
+  .accent {
+    position: absolute;
+    top: 0; left: 0; width: 1200px; height: 3px;
+    background: linear-gradient(90deg, #60a5fa, #a78bfa, #38bdf8);
+    pointer-events: none;
+  }
+
+  .content {
+    position: relative; z-index: 2;
+    padding: 80px 100px;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 6px 18px;
+    border-radius: 20px;
+    background: rgba(96,165,250,0.12);
+    border: 1px solid rgba(96,165,250,0.25);
+    color: #93c5fd;
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 1px;
+    margin-bottom: 32px;
+  }
+
+  .emoji { font-size: 52px; line-height: 1; margin-bottom: 28px; display: block; }
+
+  .title {
+    font-size: 72px;
+    font-weight: 800;
+    color: #f1f5f9;
+    letter-spacing: -1.5px;
+    line-height: 1;
+    margin-bottom: 16px;
+  }
+  .title span {
+    background: linear-gradient(135deg, #60a5fa, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .subtitle {
+    font-size: 24px;
+    font-weight: 400;
+    color: #94a3b8;
+    margin-bottom: 40px;
+  }
+
+  .divider {
+    width: 64px; height: 2px;
+    background: linear-gradient(90deg, #60a5fa, transparent);
+    margin-bottom: 36px;
+  }
+
+  .stats {
+    display: flex; gap: 48px;
+    margin-bottom: 36px;
+  }
+  .stat-value {
+    font-size: 36px; font-weight: 700;
+    background: linear-gradient(135deg, #e2e8f0, #94a3b8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .stat-label {
+    font-size: 14px; color: #64748b; margin-top: 2px;
+  }
+
+  .tagline {
+    font-size: 18px;
+    color: #64748b;
+    line-height: 1.8;
+    margin-bottom: 30px;
+  }
+  .tagline em { color: #93c5fd; font-style: normal; }
+
+  .footer {
+    font-size: 14px;
+    color: #475569;
+    letter-spacing: 0.5px;
+  }
+  .footer a { color: #60a5fa; text-decoration: none; }
+
+  /* code snippet decoration */
+  .terminal {
+    position: absolute; bottom: 60px; right: 80px; z-index: 1;
+    background: rgba(15,20,45,0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(96,165,250,0.12);
+    border-radius: 10px;
+    padding: 20px 28px;
+    font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+    font-size: 13px;
+    color: #94a3b8;
+    line-height: 1.7;
+    max-width: 420px;
+  }
+  .terminal .prompt { color: #60a5fa; }
+  .terminal .cmd { color: #e2e8f0; }
+  .terminal .comment { color: #475569; }
+  .terminal .highlight { color: #a78bfa; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="grid"></div>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+  <div class="accent"></div>
+
+  <div class="content">
+    <div class="badge">MCP  ·  BLUESPEC  ·  知识引擎</div>
+    <span class="emoji">🧠</span>
+    <div class="title"><span>specmate</span></div>
+    <div class="subtitle">BSV 编码知识引擎</div>
+
+    <div class="divider"></div>
+
+    <div class="stats">
+      <div>
+        <div class="stat-value">18</div>
+        <div class="stat-label">Rules</div>
+      </div>
+      <div>
+        <div class="stat-value">12</div>
+        <div class="stat-label">Memories</div>
+      </div>
+      <div>
+        <div class="stat-value">3</div>
+        <div class="stat-label">Fights</div>
+      </div>
+    </div>
+
+    <div class="tagline">
+      一个会 <em>记仇</em> 的 coding mate。<br>
+      蹲在 Agent 肩上，编译前喊你看路。
+    </div>
+
+    <div class="footer">
+      <a href="https://github.com/Alele496/bsv-specmate">github.com/Alele496/bsv-specmate</a>
+    </div>
+  </div>
+
+  <div class="terminal">
+    <span class="comment"># 给 AI Agent 装一层编码记忆</span><br>
+    <span class="prompt">$</span> <span class="cmd">npm install -g bsv-specmate</span><br>
+    <span class="prompt">$</span> <span class="cmd">specmate_guide</span> phase=<span class="highlight">"pre_code"</span><br>
+    <span class="comment"># 三场对照实验，全胜。</span>
+  </div>
+</div>
+</body>
+</html>
