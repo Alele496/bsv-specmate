@@ -1,29 +1,52 @@
-## 独立开发：Goal Prompt 模板
+# specmate 协作开发模板
 
-### 直接粘贴到 CCB goal 窗口
+## 三种使用方式
 
-```text
-Goal: {任务描述}。代码写在 bsv/ 下。
+### 方式 1：Claude Code 单人 + specmate
 
-用 specmate，按以下步骤：
-1. specmate_guide(phase="pre_code", input="简短描述任务") — 编码前查陷阱
-2. 写代码
-3. specmate_check(files=["bsv/每个.bsv"]) — 写完检查
-4. 编译报错 → specmate_guide(phase="on_error", input="错误码")
-5. 不确定 → specmate_guide(phase="decide", input="选项A vs 选项B")
+适合：小改动、简单模块、快速跑通。
 
-写完所有文件后告诉我——不要自编译。一次性写完。
+直接用 `AGENTS.md` 模板，嵌入 specmate 5 步工作流：
+`guide(pre_code) → 写代码 → check → 编译报错调 guide(on_error) → 修复`
+
+一行式 prompt：
 ```
-
-### 省 Token 版（一行式）
-
-```text
 Goal: {任务描述}。用 specmate。调 guide(pre_code)→写→check→编译报错调 guide(on_error)→修。不要自编译。
 ```
 
-### 独立开发 vs 协作开发 (Ultracode)
+### 方式 2：CCB/Ultracode 多 Agent 协作
 
-| 模式 | 什么时候用 | 怎么写提示词 |
-|------|----------|-----------|
-| **独立开发 (solo)** | 小改动、简单模块、只想快速跑通 | 用上面的 goal 模板，嵌入 5 步流程 |
-| **协作开发 (Ultracode)** | 大项目、新模块、追求代码质量 | 用 bsv-dev workflow（Coder + Reviewer 自动循环） |
+适合：大项目、新模块、追求代码质量。
+
+- **bsv-coder** — 只写 BSV，不知道 specmate
+- **bsv-reviewer** — 只审查，内置 specmate（check → decide → 反馈修复 → 重检循环）
+- **bsv-dev workflow** — 编排 Coder → Review → Fix 自动循环
+
+用户只需描述需求，Agent 们自动协作完成。
+
+### 方式 3：自定义组合
+
+按需选用以下模板：
+
+| 模板 | 文件 | 用途 |
+|------|------|------|
+| Coder 角色 | `agents/bsv-coder.md` | 专职 BSV 编码 |
+| Reviewer 角色 | `agents/bsv-reviewer.md` | specmate 审查 |
+| 协作工作流 | `workflows/bsv-dev.js` | Coder + Reviewer 自动循环 |
+| 用户提示词 | `user-prompts.md` | 硬件工程师参考 |
+| 顾问角色 | `agents/advisor.md` | 分析讨论 |
+
+### 文件清单
+
+```
+templates/ccb-ultracode/
+├── README.md              # 本文件
+├── user-prompts.md        # 用户提示词模板
+├── agents/
+│   ├── bsv-coder.md       # BSV 编码 Agent
+│   ├── bsv-reviewer.md    # BSV 审查 Agent（内置 specmate）
+│   └── advisor.md         # 顾问 Agent
+└── workflows/
+    ├── bsv-dev.js         # Coder + Reviewer 协作工作流
+    └── spec-orchestrator.js  # 执行总管路由
+```
