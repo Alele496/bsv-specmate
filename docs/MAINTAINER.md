@@ -61,7 +61,7 @@ Alele496/
 | **热点知识** Knowledge Heat | `lookup_ref` 每次调用 +1, coding_rules 末尾显示热门 topic | `src/db/schema.mjs:ref_hits`, `src/tools/lookup_ref.mjs` |
 | **Kova** Knowledge Vault | 领域知识引擎框架 (specmate 是其 BSV 实例) | `Alele496/Kova` 仓库 |
 | **DKE** Domain Knowledge Engine | Kova 的架构理论 (3 层: 存储/质检/接口) | `kova/docs/DKE.md` |
-| **SHOWDOWN** | 对照实验报告 (三战 + 盲审) | `docs/SHOWDOWN.md` |
+| **SHOWDOWN** | 对照实验报告 (四战 + 盲审) | `docs/SHOWDOWN.md` |
 | **bsvtest** | 实验自动化平台 (scaffold/compile/fix/record/chart) | `D:\Desktop\bsv-test\` |
 
 ---
@@ -91,7 +91,7 @@ Alele496/
 
 | 文件 | 作用 | 修改频率 | 注意事项 |
 |------|------|---------|---------|
-| `docs/SHOWDOWN.md` | 三场对照实验报告 | 每次实验后 | **每次实验后追加新章节** |
+| `docs/SHOWDOWN.md` | 四场对照实验报告 | 每次实验后 | **每次实验后追加新章节** |
 | `docs/TUTORIAL.md` | 工具详解 + 工作流示例 + 自定义魔改指南 | 低 | 加新工具后更新这里 |
 | `docs/BSV-STYLE.md` | BSV 编码规范总则 | 低 | 加新经验后更新 |
 | `docs/checklist.md` | 编译前检查清单 (Agent 备用) | 低 | |
@@ -146,6 +146,7 @@ Alele496/
 |------|------|-------------------|
 | `periph/` | RISC-V 外设: RECORD.md + PROMPTS.md | 第一战 |
 | `sdcard/` | SD 卡控制器: RECORD.md + PROMPTS.md | 第二战 |
+| `xclock/` | 跨时钟域 SoC: RECORD.md | 第四战 |
 
 CRC-32 实验数据在 `D:\bsv-test\projects\packet-crc/` (未上传)。
 
@@ -469,8 +470,8 @@ git push origin master
 | 参考文档 topic | 10 个 |
 | MCP 工具 | 8 个 |
 | 代码风格 | 5 种 |
-| 对照实验 | 3 场 |
-| 盲审 | 1 次 |
+| 对照实验 | 4 场 |
+| 盲审 | 2 次 |
 | npm 版本 | v0.1.0 |
 
 ### 11.2 已修复的关键 bug
@@ -498,8 +499,8 @@ git push origin master
 [ ] 修复 compile.sh 全量编译支持
 
 中:
-[ ] 第四场实验: 跨时钟域 / AXI Pipeline
-[ ] LEVEL 干涉强度完善
+[ ] 第五场实验: AXI Pipeline / Ultracode 多 Agent 编排
+[ ] LEVEL 干涉强度完善 (第四战已验证 silicon 最优)
 
 低:
 [ ] Kova 新领域实例 (rust-craft)
@@ -540,5 +541,5 @@ git push origin master
 
 ---
 
-> **最后更新**: 2026-07-04
+> **最后更新**: 2026-07-05
 > 本文件随项目演进持续更新。重大改动后请同步维护此文档。
