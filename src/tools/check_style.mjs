@@ -105,13 +105,50 @@ function checkBoolOperators(filename, lines, issues) {
     }
 }
 
-const SV_RESERVED = new Set([
-    'action', 'bit', 'byte', 'reg', 'wire', 'module',
-    'input', 'output', 'inout', 'assign', 'always', 'initial',
-    'posedge', 'negedge', 'case', 'default', 'endcase', 'begin', 'end',
-    'function', 'task', 'class', 'interface', 'package', 'import',
-    'parameter', 'localparam', 'specify', 'primitive', 'priority'
+// BSV language-structure keywords: these appear as identifiers only
+// when NOT at column 0. At line-start they are legitimate BSV syntax.
+const BSV_KEYWORDS = new Set([
+    'module', 'endmodule', 'interface', 'endinterface',
+    'rule', 'endrule', 'method', 'endmethod',
+    'function', 'endfunction', 'begin', 'end',
+    'case', 'endcase', 'default', 'import',
+    'endpackage', 'endclass'
 ]);
+
+// Pure SV reserved words — never valid as BSV identifiers.
+const SV_ONLY = new Set([
+    'input', 'output', 'inout', 'reg', 'wire',
+    'bit', 'byte', 'assign', 'always', 'initial',
+    'posedge', 'negedge', 'specify', 'primitive',
+    'priority', 'action', 'class', 'package',
+    'task', 'parameter', 'localparam'
+]);
+
+function emitIfReserved(word, idx, cleaned, filename, lineNum, issues) {
+    const lower = word.toLowerCase();
+
+    if (BSV_KEYWORDS.has(lower)) {
+        // At column 0 = legitimate BSV syntax (e.g. "module mkFoo")
+        if (idx === 0) return;
+    } else if (SV_ONLY.has(lower)) {
+        // SV-only word used as identifier — proceed to report
+    } else {
+        return;
+    }
+
+    // Skip if the word is used as a BSV type parameter (e.g. Bit in Bit#(8))
+    const after = cleaned.slice(idx + word.length);
+    if (/^\s*#\s*\(/.test(after)) return;
+
+    issues.push({
+        file: filename,
+        line: lineNum + 1,
+        check: 'P0005',
+        severity: 'warning',
+        message: `标识符 "${word}" 是 SystemVerilog/BSV 保留字，可能导致编译错误`,
+        suggestion: `改名避免冲突`
+    });
+}
 
 function checkReservedWords(filename, lines, issues) {
     for (let i = 0; i < lines.length; i++) {
@@ -121,27 +158,34 @@ function checkReservedWords(filename, lines, issues) {
         if (trimmed.startsWith('import ')) continue;
         if (trimmed.startsWith('*')) continue;
 
-        const words = trimmed.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g) || [];
-        for (const word of words) {
-            if (SV_RESERVED.has(word.toLowerCase()) &&
-                !/(endmodule|endpackage|endinterface|endfunction|endrule|endmethod|endclass)/.test(trimmed)) {
-                const isKeywordContext = (
-                    trimmed.includes(`\`${word}`) ||
-                    trimmed.startsWith(`${word} `) ||
-                    trimmed.includes(` ${word}`)
-                );
-                const isBSVType = /#\s*\(/.test(
-                    trimmed.slice(trimmed.indexOf(word) + word.length)
-                );
-                if (!isKeywordContext && !isBSVType) {
-                    issues.push({
-                        file: filename,
-                        line: i + 1,
-                        check: 'P0005',
-                        severity: 'warning',
-                        message: `标识符 "${word}" 是 SystemVerilog/BSV 保留字，可能导致编译错误`,
-                        suggestion: `改名避免冲突`
-                    });
+        // Strip inline comments and string literals to avoid false positives
+        const cleaned = trimmed
+            .replace(/\/\/.*$/, '')       // remove inline comments
+            .replace(/"([^"\\]|\\.)*"/g, '""'); // remove string literals
+
+        const wordRe = /\b[a-zA-Z_][a-zA-Z0-9_]*\b/g;
+        let m;
+        while ((m = wordRe.exec(cleaned)) !== null) {
+            const word = m[0];
+
+            // 1) Check the whole word
+            emitIfReserved(word, m.index, cleaned, filename, i, issues);
+
+            // 2) Also check underscore-delimited parts (e.g. "output_fifo" → "output")
+            const parts = word.split('_');
+            if (parts.length > 1) {
+                for (const part of parts) {
+                    const partLower = part.toLowerCase();
+                    if (SV_ONLY.has(partLower) || BSV_KEYWORDS.has(partLower)) {
+                        issues.push({
+                            file: filename,
+                            line: i + 1,
+                            check: 'P0005',
+                            severity: 'warning',
+                            message: `标识符 "${word}" 包含保留字片段 "${part}"，可能导致编译错误`,
+                            suggestion: `改名避免冲突`
+                        });
+                    }
                 }
             }
         }
