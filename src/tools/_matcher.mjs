@@ -142,6 +142,31 @@ const GRAPH = {
         pattern: 'interrupt',
         traps: ['IRQ 信号用 Bit#(n) 便于多中断检测', 'mask 位宽 vs pending 位宽对齐'],
     },
+    dma: {
+        errors: ['G0010', 'G0004'],
+        refs: ['patterns', 'schedule', 'stdlib'],
+        traps: ['DMA 描述符链用 FIFO 传递 — 不用 Wire', 'burst 传输注意地址对齐', 'DMA done 信号用 Bool 而非 Bit#(1)'],
+    },
+    encoder: {
+        errors: ['T0060', 'T0051'],
+        refs: ['types'],
+        traps: ['编码器输出位宽 = ceil(log2(input_width))', '优先编码器用 for 循环 + return', 'case 穷举而非 default 逻辑'],
+    },
+    decoder: {
+        errors: ['T0060', 'T0051'],
+        refs: ['types', 'patterns'],
+        traps: ['译码输出位宽 = 2^input_width', 'one-hot 输出注意位宽膨胀', '组合逻辑 decoder 用 function 而非 rule'],
+    },
+    timer: {
+        errors: ['T0060', 'T0051', 'G0004'],
+        refs: ['stdlib', 'types'],
+        traps: ['计数器位宽 = ceil(log2(max_count))', '预分频器用 Bit#(n) 分频', 'timer done 用 Bool 避免位拼接冲突'],
+    },
+    gpio: {
+        errors: ['T0061', 'BSV-PORTS'],
+        refs: ['module', 'types'],
+        traps: ['GPIO 方向寄存器用 Bool 还是 Bit#(1) — 建议 Bit#(1) 可拼总线', 'inout 信号用 Inout#(Bit#(1)) 包装', '输出端口在顶层模块直接接 method'],
+    },
     synthesize: {
         errors: ['T0030', 'P0085'],
         refs: ['module', 'attributes'],
