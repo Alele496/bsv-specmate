@@ -135,31 +135,50 @@
 
 ---
 
-## P0005 检测逻辑缺陷：`isKeywordContext` 过于宽松，真正的变量名冲突场景被漏掉，注释/字符串误报已修但检测精度需要重写
+## P0005 检测逻辑缺陷：95% 噪音率，实际使用中完全不可用 🔴
 
-**标签**：`bug` `static-check` `high-priority`
+**标签**：`bug` `static-check` `critical`
 
-**描述**：
+**实测数据**（2026-07-05，4 文件 175 个问题）：
+- P0005 占 **166/175（95%）**，全部是误报
+- 唯一真问题 T0011 被 BSC 编译器直接捕获
 
-`check_style.mjs` 中的 `P0005` 检测（变量名与 BSV 关键字冲突）存在根本性逻辑缺陷：
+**根因分析**：
 
-1. **`isKeywordContext` 过于宽松**：当前上下文判断逻辑使用简单的正则跳过注释和字符串，但判断"是否是真正的变量声明/使用上下文"的条件太宽泛。许多非变量名场景（如模块名、方法名中的关键字子串）被误认为合法上下文而放过。
-2. **真正的变量名冲突场景被漏掉**：由于上下文判断不精确，一些确实会导致编译错误的变量名冲突（如 `buf`、`priority`、`output` 等在特定语法位置的 SV/BSV 保留字）被跳过检测。
-3. **注释/字符串误报已修但不够**：之前修复了注释和字符串内的误报（P0005 不再触发于 `// comment` 和 `"string"` 内），但修复只是绕过而非根本解决——整个检测逻辑需要重写为基于 AST 或更精确的上下文分析，而非正则行匹配。
-4. **实际影响**：Phase 4 DMA 实验中，Agent B 的 `buf` 变量名冲突在第一轮编译才暴露（T0011 类错误），而 `check_style` 本应在编译前就拦截。这说明 P0005 检测规则在当前实现下对真实冲突场景的召回率不足。
+1. **下划线分词检测是致命缺陷**：`SEND_BIT` 切成 `SEND` + `BIT`，小写后 `bit` 匹配 SV_ONLY。BSV 大小写敏感，`BIT` ≠ `bit`。同样 `_reg`（`dac_reg`）、`input_data`、`output_fifo`、`bit_cnt` 全部误报。
 
-**待办**：
-- [ ] 重写 `checkP0005` 检测逻辑：从基于正则行匹配改为基于上下文 token 分析
-- [ ] 精确识别变量声明位置（`Reg#(...)` 左侧、`let` 绑定、`method` 参数、`interface` 定义等）
-- [ ] 区分"保留字作为变量名"（应报警）vs"保留字作为类型名/模块名的一部分"（不应报警）
-- [ ] 添加 SV 保留字黑名单的完整覆盖（`priority`、`output`、`input`、`buf`、`reg` 等）
-- [ ] 单元测试：构造 5 个应报警的场景 + 5 个不应报警的场景，验证召回率和精确率
-- [ ] 与 `checkReservedWords` 规则协调：避免重复检测或互相矛盾
+2. **大小写不敏感的匹配在 BSV 中是错误的**：`Action`（BSV 合法类型）小写后匹配 `action`（SV 保留字）。`Begin`、`End` 同样问题。
+
+3. **BSV 常用命名模式被当成错误**：`_reg` 后缀是 BSV 标准命名约定（寄存器加 `_reg` 区分 wire）；`op_read_input` 这种语义命名被拆出 `input` 片段。
+
+**修复方案**：
+- [ ] **紧急**：移除下划线分词检测（`checkReservedWords` 中 lines 174-189 的 underscore-split 逻辑）——这刀下去消掉 ~80% 噪音
+- [ ] **紧急**：为 `emitIfReserved` 添加大小写感知——`Action` ≠ `action`，`Begin` ≠ `begin`
+- [ ] 添加 BSV 合法标识符白名单：`Action`、`begin`（非列首时是合法语句块）、`end`（非列首时）
+- [ ] 改为只对确认为变量声明的 token 做检查（而非全文扫描）
+- [ ] 单元测试：真实 BSV 文件（含 `_reg`、`_bit` 后缀、`Action` 类型）零 P0005
 
 **关联**：
-- 受影响文件：`src/tools/check_style.mjs`（`checkReservedWords` / 相关 P0005 检测函数）
-- 关联 Issue：#3（增加 check_style 检测规则）
-- 历史上下文：P0005 是编码记忆库中命中次数最高的错误（×6），说明这是高频痛点，检测精度直接影响 specmate 的预编译拦截能力
+- 受影响文件：`src/tools/check_style.mjs`（`checkReservedWords`）
+- 实测数据来源：4 文件 175 问题全部误报，95% 来自 P0005
+
+---
+
+## #10 其他 check_style 误报（实测发现）
+
+**标签**：`bug` `static-check`
+
+**P0032** — 把 interface 声明里的 method 签名当成"method 在 rule 前"：
+- `interface` 块内 `method Action enq(...)` 是接口定义，不是实现，不应触发 P0032
+
+**G0004** — 未识别 if/else 互斥分支：
+- `if (cond) reg <= val1; else reg <= val2;` 是标准 BSV 写法，不存在并行写冲突
+
+**T0080** — 解析不了带类型参数的函数签名：
+- `function Bit#(32) build_frame(Bit#(2) chan, Bit#(10) data)` 只识别到 1 个参数
+
+**G0004_FSM** — 不同子模块的方法调用不应触发：
+- `start_dac.poll()` + `spi_master.send()` 是两个不同子模块，不存在冲突
 
 ---
 
