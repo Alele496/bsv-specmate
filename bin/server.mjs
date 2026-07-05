@@ -16,11 +16,11 @@ const server = new McpServer({
 
 server.tool(
     "specmate_guide",
-    "Specmate 知识引擎入口。调用前告诉 specmate 你的当前阶段和情况。specmate 内部处理所有细节，返回针对性指导。",
+    "Call BEFORE writing any BSV module (phase=pre_code) — like checking the weather before heading out. Returns traps, coding memories, and references for your task. Also call when: compilation fails (phase=on_error), unsure between two approaches (phase=decide), ready for the next module (phase=continue), or need a standard code skeleton (phase=pattern).",
     {
         phase: z.enum(["pre_code", "on_error", "continue", "decide", "pattern"])
-            .describe("当前阶段: pre_code(预测) / on_error(报错诊断) / continue(下一步) / decide(方案选择) / pattern(代码范式)"),
-        input: z.string().describe("简短描述: 任务目标(pre_code) / 错误码或完整错误(on_error) / 下一步任务(continue) / 待选方案(decide)"),
+            .describe("When you are: pre_code=about to write a module | on_error=compilation failed with error code | continue=writing next module | decide=choosing between two approaches | pattern=need a standard module skeleton"),
+        input: z.string().describe("Brief: task description (pre_code) | error code (on_error) | next task (continue) | two options (decide) | what module (pattern)"),
     },
     async ({ phase, input }) => {
         const result = await guide({ phase, input });
@@ -30,7 +30,7 @@ server.tool(
 
 server.tool(
     "specmate_check",
-    "BSV 代码静态检查。写完 .bsv 文件后调用，检测 18 种常见错误 (方法顺序、保留字、Bool 运算符、并行写冲突、字面量溢出等)。",
+    "ALWAYS call after writing .bsv files, before compiling with bsc. Runs 18 static checks — method order, Bool misuse, keyword conflicts, literal overflow, struct field typos, etc. No bsc needed, results in under a second. Catch errors here to avoid a full compile-fix cycle.",
     {
         files: z.array(z.string()).describe("要检查的 .bsv 文件路径列表"),
     },
@@ -84,7 +84,7 @@ server.tool(
 
 server.tool(
     "specmate_learn",
-    "把新的编译错误加入 specmate 编码记忆。遇到 lookup_error 未收录的错误码时使用。",
+    "Only when specmate_guide(phase=on_error) says an error code is not yet known. Stores it in SQLite so the same pitfall is blocked next time. You write it once, specmate remembers forever.",
     {
         code: z.string().describe("错误码, 如 'P0005' 或 'G0010'"),
         title: z.string().describe("简短标题, 如 'Methods must be at end of block'"),
