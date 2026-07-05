@@ -16,11 +16,12 @@
     "AGENTS.md",
     "README.md",
     "README.en.md",
-    "docs/",
-    "examples/bsv/",
-    "examples/bs/",
-    "examples/templates/",
     "bin/",
+    "data/",
+    "docs/",
+    "examples/bs/",
+    "examples/bsv/",
+    "examples/templates/",
     "src/"
   ],
   "scripts": {

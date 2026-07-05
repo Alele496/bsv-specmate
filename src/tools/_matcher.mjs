@@ -108,11 +108,6 @@ const GRAPH = {
         refs: ['stdlib', 'types'],
         traps: ['vec() 在 BSC 2025.07 不可用 — 用 genWith(fromInteger)', 'Vector 索引用 UInt 而非 Integer'],
     },
-    regfile: {
-        errors: ['G0002'],
-        refs: ['stdlib'],
-        traps: ['RegFile 最多 5 读端口 — 超出触发 G0002', 'mkRegFileFull vs mkRegFile 选型'],
-    },
     schedule: {
         errors: ['G0004', 'G0010', 'G0030', 'G0040', 'G0054'],
         refs: ['schedule'],
