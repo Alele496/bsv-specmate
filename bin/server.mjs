@@ -8,6 +8,7 @@ import { checkStyle } from "../src/tools/check_style.mjs";
 import { guide } from "../src/tools/specmate_guide.mjs";
 import { learn } from "../src/tools/specmate_learn.mjs";
 import { getLevel, LEVEL_LIMITS } from "../src/config.mjs";
+import { hitError } from "../src/db/query.mjs";
 
 const server = new McpServer({
     name: "bsv-specmate",
@@ -38,6 +39,9 @@ server.tool(
         const level = getLevel();
         const cfg = LEVEL_LIMITS[level];
         const results = checkStyle({ files });
+
+        // Auto-count: every check_style hit increments the error's count
+        [...new Set(results.map(r => r.check))].forEach(c => hitError(c).catch(() => {}));
 
         if (results.length === 0) {
             const msg = cfg.collabHint

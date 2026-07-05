@@ -138,12 +138,15 @@ const BSV_KEYWORDS = new Set([
 ]);
 
 // Pure SV reserved words — never valid as BSV identifiers.
+// See docs/reference/keywords.md for the canonical list.
 const SV_ONLY = new Set([
     'input', 'output', 'inout', 'reg', 'wire',
     'bit', 'byte', 'assign', 'always', 'initial',
     'posedge', 'negedge', 'specify', 'primitive',
     'priority', 'action', 'class', 'package',
-    'task', 'parameter', 'localparam'
+    'task', 'parameter', 'localparam',
+    'buf', 'bufif0', 'bufif1',      // SV gate primitives (P0005 #4)
+    'not', 'and', 'nand', 'or', 'nor', 'xor', 'xnor'
 ]);
 
 function emitIfReserved(word, idx, cleaned, filename, lineNum, issues) {
