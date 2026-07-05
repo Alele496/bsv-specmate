@@ -45,7 +45,7 @@ export async function addError({ code, title, bsc_output, cause, solution, rules
 
     if (exists) {
         db.run(
-            `UPDATE errors SET title = ?, phenomena = ?, cause = ?, solution = ?, rules = ?, keywords = ? WHERE code = ?`,
+            `UPDATE errors SET title = ?, phenomena = ?, cause = ?, solution = ?, rules = ?, keywords = ?, count = count + 1 WHERE code = ?`,
             [title, bsc_output, cause, solution, rules, `${code} ${title}`, code]
         );
         db.close();

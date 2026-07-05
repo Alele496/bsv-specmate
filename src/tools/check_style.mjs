@@ -82,25 +82,47 @@ function checkMethodOrder(filename, lines, issues) {
     }
 }
 
+function collectBoolNames(content) {
+    const names = new Set();
+    // Reg#(Bool) regName <-
+    for (const m of content.matchAll(/Reg#\(\s*Bool\s*\)\s+(\w+)\s*<-/g)) {
+        names.add(m[1]);
+    }
+    // Bool localName = or Bool localName;
+    for (const m of content.matchAll(/\bBool\s+(\w+)\s*[=;)]/g)) {
+        names.add(m[1]);
+    }
+    // function/method parameter: (Bool paramName
+    for (const m of content.matchAll(/\(\s*Bool\s+(\w+)/g)) {
+        names.add(m[1]);
+    }
+    return names;
+}
+
 function checkBoolOperators(filename, lines, issues) {
+    const content = lines.join('\n');
+    const boolNames = collectBoolNames(content);
+
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const trimmed = line.trim();
         if (trimmed.startsWith('//')) continue;
 
-        if (/~(\s*)(wave|flag|done|ready|valid|busy|start|enable|ack|hit|ok|empty|full|notEmpty|notFull|reg\w*|r\w*|b\w*)/
-            .test(trimmed)) {
-            issues.push({
-                file: filename,
-                line: i + 1,
-                check: 'T0061',
-                severity: 'warning',
-                message: `可能对 Bool 类型使用了位取反 ~，应改用逻辑取反 !`,
-                suggestion: `改为 !${trimmed.match(/~\s*(\w+)/)[1]}`
-            });
-        }
-        if (/(=&|!=&)/.test(trimmed)) {
-            // 不精确，跳过
+        const matches = [...trimmed.matchAll(/~\s*(\w+)/g)];
+        for (const match of matches) {
+            const varName = match[1];
+
+            // Only flag if we've confirmed this is a Bool variable
+            if (boolNames.has(varName)) {
+                issues.push({
+                    file: filename,
+                    line: i + 1,
+                    check: 'T0061',
+                    severity: 'warning',
+                    message: `对 Bool 变量 "${varName}" 使用了位取反 ~，应改用逻辑取反 !`,
+                    suggestion: `改为 !${varName}`
+                });
+            }
         }
     }
 }
@@ -191,13 +213,6 @@ function checkReservedWords(filename, lines, issues) {
         }
     }
 }
-
-// Common variable names that are likely Bool (heuristic)
-const BOOL_LIKE = new Set([
-    'wave', 'flag', 'done', 'ready', 'valid', 'busy',
-    'start', 'enable', 'ack', 'hit', 'ok',
-    'notEmpty', 'notFull', 'idle', 'active'
-]);
 
 function checkMultiSubmodule(filename, content, issues) {
     const blocks = content.match(/rule\s+\w+[\s\S]*?endrule/g) || [];

@@ -6,12 +6,11 @@
 
 适合：小改动、简单模块、快速跑通。
 
-直接用 `AGENTS.md` 模板，嵌入 specmate 5 步工作流：
-`guide(pre_code) → 写代码 → check → 编译报错调 guide(on_error) → 修复`
+直接用 `AGENTS.md` 模板——specmate 定位为"BSV 搭档"，Agent 拿不准的时候问它，不用每步都调。
 
 一行式 prompt：
 ```
-Goal: {任务描述}。用 specmate。调 guide(pre_code)→写→check→编译报错调 guide(on_error)→修。不要自编译。
+Goal: {任务描述}。BSV 编码，specmate 当搭档。不确定的 BSV 语法/调度/接口问题先查它再写。
 ```
 
 ### 方式 2：CCB/Ultracode 多 Agent 协作

@@ -94,6 +94,9 @@ async function onError(input, level, cfg) {
 
     const err = await queryError(code);
 
+    // Hit count: every time someone looks up this error, increment (fire-and-forget)
+    if (err) hitError(code).catch(() => {});
+
     if (!err) {
         if (level === 'silicon') {
             return `错误码 "${code}" 未收录。提升 SPECMATE_LEVEL 查看相似条目。`;
