@@ -17,6 +17,7 @@ phase="pre_code"  → 编码前陷阱预测 + 编码记忆 + 参考文档
 phase="on_error"  → 编译报错诊断 (原因 + 方案 + 交叉引用)
 phase="continue"  → 下一步陷阱预测 + 热点知识
 phase="decide"    → 方案对比 (FIFO/BRAM/Reg 等) + 推荐
+phase="pattern"   → 代码范式模板 (代码骨架 + 变体选择 + 陷阱)
 ```
 
 ## 典型工作流
