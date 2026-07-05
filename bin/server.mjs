@@ -18,8 +18,8 @@ server.tool(
     "specmate_guide",
     "Specmate 知识引擎入口。调用前告诉 specmate 你的当前阶段和情况。specmate 内部处理所有细节，返回针对性指导。",
     {
-        phase: z.enum(["pre_code", "on_error", "continue", "decide"])
-            .describe("当前阶段: pre_code(编码前预测) / on_error(编译报错诊断) / continue(下一步指引) / decide(方案选择)"),
+        phase: z.enum(["pre_code", "on_error", "continue", "decide", "pattern"])
+            .describe("当前阶段: pre_code(预测) / on_error(报错诊断) / continue(下一步) / decide(方案选择) / pattern(代码范式)"),
         input: z.string().describe("简短描述: 任务目标(pre_code) / 错误码或完整错误(on_error) / 下一步任务(continue) / 待选方案(decide)"),
     },
     async ({ phase, input }) => {

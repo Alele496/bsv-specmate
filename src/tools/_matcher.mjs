@@ -3,17 +3,20 @@ const GRAPH = {
         errors: ['G0010', 'G0004'],
         refs: ['stdlib', 'schedule'],
         style: 'engineering',
+        pattern: 'fifo',
         traps: ['mkFIFO vs mkBypassFIFO — BypassFIFO 允许同周期 enq/deq 但会触发 G0010'],
     },
     pipeline: {
         errors: ['G0004', 'G0010'],
         refs: ['patterns', 'schedule'],
         style: 'engineering',
+        pattern: 'pipeline',
         traps: ['级联模块间用 FIFO 传递 data，不要用 Wire + handshake'],
     },
     clock: {
         errors: ['BSV-PORTS'],
         refs: ['module', 'attributes'],
+        pattern: 'clock_cross',
         traps: ['Clock 类型需要 import Clocks::*', '跨时钟域用 mkSyncFIFO / mkSyncBRAMFIFO'],
     },
     reset: {
@@ -25,37 +28,44 @@ const GRAPH = {
         errors: ['BSV-PORTS', 'G0010'],
         refs: ['module', 'attributes', 'patterns'],
         style: 'engineering',
+        pattern: 'axi_stream',
         traps: ['AXI4 接口 port 名与 BSV method 名不一致 — 用 Verilog wrapper'],
     },
     bram: {
         errors: ['G0004', 'T0060'],
         refs: ['stdlib'],
+        pattern: 'bram',
         traps: ['BRAMCore: 读/写端口分离, BRAM: 单端口 — 选对类型', 'BRAM 数据位宽 vs 外部总线位宽对齐'],
     },
     fsm: {
         errors: ['G0004_FSM', 'P0030', 'G0010'],
         refs: ['patterns', 'module'],
         style: 'safe',
+        pattern: 'fsm',
         traps: ['StmtFSM 隐式并行写 — 避免同一 cycle 写同一 Reg', 'value method 不用 if-return，用 ?: 三元链'],
     },
     bvi: {
         errors: ['P0005', 'G0124'],
         refs: ['attributes'],
+        pattern: 'bvi',
         traps: ['default_clock / default_reset 必须写', 'parameter width = valueOf(sz_a) — 位宽参数模板'],
     },
     spi: {
         errors: ['T0051', 'T0060'],
         refs: ['stdlib'],
+        pattern: 'spi',
         traps: ['SPI 命令字 Bit#(8), 移位寄存器匹配', 'CS/SCK/MOSI/MISO 信号命名统一'],
     },
     crc: {
         errors: ['T0060', 'T0061'],
         refs: ['types'],
+        pattern: 'crc',
         traps: ['CRC 多项式位宽确认', 'Bool vs Bit#(1) 区分 — \'done\' 信号用 Bool'],
     },
     uart: {
         errors: ['T0051', 'T0060'],
         refs: ['stdlib'],
+        pattern: 'uart',
         traps: ['波特率分频用 Bit#(n) 而非 Integer', 'UART 帧格式 start + 8bit + stop'],
     },
     struct: {
@@ -108,6 +118,30 @@ const GRAPH = {
         refs: ['schedule'],
         traps: ['descending_urgency 不循环', 'execution_order 用于 SE 而非 SB'],
     },
+    regfile: {
+        errors: ['G0002'],
+        refs: ['stdlib'],
+        pattern: 'regfile',
+        traps: ['RegFile 最多 5 读端口 — 超出触发 G0002', 'mkRegFileFull vs mkRegFile 选型', '同 cycle 读写同地址 → G0004'],
+    },
+    arbiter: {
+        errors: ['G0002', 'G0004'],
+        refs: ['stdlib', 'patterns'],
+        pattern: 'arbiter',
+        traps: ['同一 cycle 超 5 读端口 → G0002', 'winner 丢失 → 需缓冲 FIFO'],
+    },
+    serialize: {
+        errors: ['T0051', 'T0060'],
+        refs: ['types'],
+        pattern: 'serialize',
+        traps: ['shift reg 位宽对齐', 'cnt = log2(data_width) 位宽计算'],
+    },
+    interrupt: {
+        errors: ['T0060', 'T0061'],
+        refs: ['types', 'patterns'],
+        pattern: 'interrupt',
+        traps: ['IRQ 信号用 Bit#(n) 便于多中断检测', 'mask 位宽 vs pending 位宽对齐'],
+    },
     synthesize: {
         errors: ['T0030', 'P0085'],
         refs: ['module', 'attributes'],
@@ -127,7 +161,7 @@ export function extractKeywords(text) {
 }
 
 export function match(keywords) {
-    const merged = { errors: new Set(), refs: new Set(), styles: new Set(), traps: [] };
+    const merged = { errors: new Set(), refs: new Set(), styles: new Set(), traps: [], patterns: [] };
     for (const kw of keywords) {
         if (!GRAPH[kw]) continue;
         const node = GRAPH[kw];
@@ -135,12 +169,14 @@ export function match(keywords) {
         for (const r of (node.refs || [])) merged.refs.add(r);
         if (node.style) merged.styles.add(node.style);
         if (node.traps) merged.traps.push(...node.traps);
+        if (node.pattern) merged.patterns.push(node.pattern);
     }
     return {
         errors: [...merged.errors],
         refs: [...merged.refs],
         styles: [...merged.styles],
         traps: [...new Set(merged.traps)],
+        patterns: [...new Set(merged.patterns)],
     };
 }
 

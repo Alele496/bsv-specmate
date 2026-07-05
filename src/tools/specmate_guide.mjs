@@ -1,4 +1,5 @@
 import { extractKeywords, match } from './_matcher.mjs';
+import { searchPatterns } from './_patterns.mjs';
 import { queryError, queryAllErrors, queryTopRules, queryHotTopics, hitError } from '../db/query.mjs';
 import { lookupRef } from './lookup_ref.mjs';
 import { getLevel, LEVEL_LIMITS } from '../config.mjs';
@@ -12,7 +13,8 @@ export async function guide({ phase, input }) {
         case 'on_error': return onError(input, level, cfg);
         case 'continue': return continue_(input, level, cfg);
         case 'decide': return decide(input, level, cfg);
-        default: return `Unknown phase "${phase}". Use: pre_code, on_error, continue, decide.`;
+        case 'pattern': return patternPhase(input, level, cfg);
+        default: return `Unknown phase "${phase}". Use: pre_code, on_error, continue, decide, pattern.`;
     }
 }
 
@@ -289,4 +291,54 @@ async function decide(input, level, cfg) {
     }
 
     return `没有匹配到方案选择规则。描述两个具体选项，比如 "mkFIFO vs mkBypassFIFO"。`;
+}
+
+function patternPhase(input, level, cfg) {
+    const keywords = extractKeywords(input);
+    const results = searchPatterns(keywords);
+
+    if (results.length === 0) {
+        if (level === 'silicon') return `没有匹配到 "${input.slice(0, 50)}" 的范式模板。`;
+        const av = searchPatterns(['fifo', 'bram', 'fsm']).map(p => '  ' + p.name).join('\n');
+        return `没找到匹配 "${input}" 的范式。已支持的范式:\n${av}\n\n用更具体的描述，如 "FIFO" / "AXI4 Stream" / "SPI Master"。`;
+    }
+
+    const top = results[0];
+    const lines = [
+        `## 🧩 ${top.name} — 代码范式`,
+        '',
+    ];
+
+    const variantCount = cfg === LEVEL_LIMITS.silicon ? 1 : cfg === LEVEL_LIMITS.wafer ? 3 : Object.keys(top.variants).length;
+    if (level !== 'silicon') {
+        lines.push('### 变体选择');
+        const keys = Object.keys(top.variants).slice(0, variantCount);
+        for (const k of keys) {
+            lines.push(`  • ${k}: ${top.variants[k]}`);
+        }
+        if (variantCount < Object.keys(top.variants).length) {
+            lines.push(`  → 提升 SPECMATE_LEVEL 查看全部 ${Object.keys(top.variants).length} 种变体`);
+        }
+        lines.push('');
+    }
+
+    lines.push('### 代码骨架');
+    lines.push('```bsv');
+    lines.push(top.skeleton);
+    lines.push('```');
+    lines.push('');
+
+    if (top.traps.length > 0 && level !== 'silicon') {
+        lines.push('### ⚠ 陷阱');
+        for (const t of top.traps) {
+            lines.push(`  • ${t}`);
+        }
+        lines.push('');
+    }
+
+    if (top.cross && top.cross.length > 0 && level !== 'silicon') {
+        lines.push(`### 📖 参考: ${top.cross.map(t => `lookup_ref(topic="${t}")`).join(', ')}`);
+    }
+
+    return lines.join('\n');
 }
