@@ -145,17 +145,21 @@ const SV_ONLY = new Set([
     'posedge', 'negedge', 'specify', 'primitive',
     'priority', 'action', 'class', 'package',
     'task', 'parameter', 'localparam',
-    'buf', 'bufif0', 'bufif1',      // SV gate primitives (P0005 #4)
+    // SV gate primitives
+    'buf', 'bufif0', 'bufif1',
     'not', 'and', 'nand', 'or', 'nor', 'xor', 'xnor'
 ]);
 
 function emitIfReserved(word, idx, cleaned, filename, lineNum, issues) {
-    const lower = word.toLowerCase();
+    // BSV is case-sensitive — PascalCase identifiers (Action, Bit, Reg) are valid
+    // types and must not be flagged as matching their lowercase keyword equivalents.
+    // Only flag words that are actually lowercase (matching the reserved word exactly).
+    if (word !== word.toLowerCase()) return;
 
-    if (BSV_KEYWORDS.has(lower)) {
+    if (BSV_KEYWORDS.has(word)) {
         // At column 0 = legitimate BSV syntax (e.g. "module mkFoo")
         if (idx === 0) return;
-    } else if (SV_ONLY.has(lower)) {
+    } else if (SV_ONLY.has(word)) {
         // SV-only word used as identifier — proceed to report
     } else {
         return;
@@ -193,26 +197,8 @@ function checkReservedWords(filename, lines, issues) {
         while ((m = wordRe.exec(cleaned)) !== null) {
             const word = m[0];
 
-            // 1) Check the whole word
+            // Check the whole word (case-sensitive — BSV is case-sensitive)
             emitIfReserved(word, m.index, cleaned, filename, i, issues);
-
-            // 2) Also check underscore-delimited parts (e.g. "output_fifo" → "output")
-            const parts = word.split('_');
-            if (parts.length > 1) {
-                for (const part of parts) {
-                    const partLower = part.toLowerCase();
-                    if (SV_ONLY.has(partLower) || BSV_KEYWORDS.has(partLower)) {
-                        issues.push({
-                            file: filename,
-                            line: i + 1,
-                            check: 'P0005',
-                            severity: 'warning',
-                            message: `标识符 "${word}" 包含保留字片段 "${part}"，可能导致编译错误`,
-                            suggestion: `改名避免冲突`
-                        });
-                    }
-                }
-            }
         }
     }
 }

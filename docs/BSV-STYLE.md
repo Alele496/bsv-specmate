@@ -33,7 +33,7 @@ endmodule
 
 所有标识符用小写或驼峰。**避免以下 SystemVerilog 保留字：**
 
-`action` `bit` `byte` `reg` `wire` `module` `input` `output` `inout` `assign` `always` `initial` `posedge` `negedge` `case` `default` `endcase` `end` `begin` `function` `task` `specify` `primitive`
+`action` `bit` `byte` `reg` `wire` `module` `input` `output` `inout` `assign` `always` `initial` `posedge` `negedge` `case` `default` `endcase` `end` `begin` `function` `task` `specify` `primitive` `buf` `bufif0` `bufif1` `not` `and` `nand` `or` `nor` `xor` `xnor`
 
 Package 常量也用小写驼峰，不用大写 `ACT_*`（BSV 视大写为类型名语义）。
 

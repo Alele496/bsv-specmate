@@ -58,10 +58,11 @@
 
 ```
 action   always   assign   begin   bit      byte
-case     class    default  end     endcase  function
-import   initial  inout    input   localparam
-module   negedge  output   package parameter posedge
-priority reg      specify  wire
+buf      bufif0   bufif1   case    class    default
+end      endcase  function import  initial  inout
+input    localparam module  nand    negedge  nor
+not      or       output   package parameter posedge
+priority reg      specify  wire    xnor     xor
 ```
 
 > 曾误用：`action`（struct 字段）、`bit`（方法参数）、`byte`（变量）、`priority`（寄存器）。详见 `lookup_error("P0005")`。
