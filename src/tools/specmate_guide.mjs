@@ -1,6 +1,6 @@
 import { extractKeywords, match } from './_matcher.mjs';
 import { searchPatterns } from './_patterns.mjs';
-import { queryError, queryAllErrors, queryTopRules, queryHotTopics, hitError } from '../db/query.mjs';
+import { queryError, queryAllErrors, queryTopRules, queryHotTopics, hitError, addCapture, queryRecentCaptures } from '../db/query.mjs';
 import { lookupRef } from './lookup_ref.mjs';
 import { getLevel, LEVEL_LIMITS } from '../config.mjs';
 
@@ -63,6 +63,23 @@ async function preCode(input, level, cfg) {
             lines.push(`🔮 相关知识热点: ${hot.map(h => `\`${h.topic}\` (×${h.count})`).join(', ')}`);
             lines.push('');
         }
+    }
+
+    // Project memory: show recent captures from this project
+    if (level !== 'silicon') {
+        const recentCaps = await queryRecentCaptures(5);
+        if (recentCaps.length > 0) {
+            lines.push('📝 本项目近期捕获的错误:');
+            for (const c of recentCaps) {
+                const icon = c.status === 'resolved' ? '✅' : '⏳';
+                const preview = (c.bsc_output || '').replace(/\n/g, ' ').substring(0, 80);
+                lines.push(`  ${icon} ${c.code} — ${preview}`);
+            }
+            lines.push('');
+        }
+    }
+
+    if (cfg.collabHint) {
         lines.push('💬 需要展开某个陷阱，或选方案时可以调 specmate_guide(phase="decide")。');
     }
 
@@ -96,6 +113,9 @@ async function onError(input, level, cfg) {
 
     // Hit count: every time someone looks up this error, increment (fire-and-forget)
     if (err) hitError(code).catch(() => {});
+
+    // Auto-capture: log every on_error query for project memory (fire-and-forget)
+    addCapture({ code, bsc_output: input, files: null }).catch(() => {});
 
     if (!err) {
         if (level === 'silicon') {

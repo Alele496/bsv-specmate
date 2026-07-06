@@ -7,6 +7,7 @@ const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..'
 
 export function checkStyle(args) {
     const files = Array.isArray(args.files) ? args.files : [args.files];
+    const full = args.full === true;
     const results = [];
 
     for (const relPath of files) {
@@ -19,7 +20,7 @@ export function checkStyle(args) {
             continue;
         }
         const content = readFileSync(absPath, 'utf-8');
-        results.push(...checkFile(relPath, content));
+        results.push(...checkFile(relPath, content, full));
     }
 
     const level = getLevel();
@@ -29,29 +30,34 @@ export function checkStyle(args) {
     return results;
 }
 
-function checkFile(filename, content) {
+function checkFile(filename, content, full = false) {
     const issues = [];
     const lines = content.split('\n');
 
-    checkMethodOrder(filename, lines, issues);
-    checkBoolOperators(filename, lines, issues);
-    checkReservedWords(filename, lines, issues);
-    checkRuleDoubleWrite(filename, content, issues);
-    checkVecUsage(filename, lines, issues);
-    checkBoolBitMismatch(filename, lines, issues);
-    checkValueMethodSyntax(filename, lines, issues);
-    checkMethodRegNaming(filename, content, issues);
-    checkMultiSubmodule(filename, content, issues);
+    // Always-on high-precision checks
     checkLiteralOverflow(filename, lines, issues);
-    checkDupTypeParams(filename, lines, issues);
-    checkDupValueParams(filename, lines, issues);
-    checkDupInterfaceMembers(filename, content, issues);
-    checkDupAttr(filename, lines, issues);
-    checkUrgencyCycle(filename, content, issues);
-    checkAttrBadRule(filename, content, issues);
-    checkStructField(filename, content, issues);
-    checkArgCountMismatch(filename, lines, issues);
     checkSizedLiteralZero(filename, lines, issues);
+    checkBoolOperators(filename, lines, issues);
+
+    // Full-scan checks — regex-based, higher false-positive rate
+    if (full) {
+        checkMethodOrder(filename, lines, issues);
+        checkReservedWords(filename, lines, issues);
+        checkRuleDoubleWrite(filename, content, issues);
+        checkVecUsage(filename, lines, issues);
+        checkBoolBitMismatch(filename, lines, issues);
+        checkValueMethodSyntax(filename, lines, issues);
+        checkMethodRegNaming(filename, content, issues);
+        checkMultiSubmodule(filename, content, issues);
+        checkDupTypeParams(filename, lines, issues);
+        checkDupValueParams(filename, lines, issues);
+        checkDupInterfaceMembers(filename, content, issues);
+        checkDupAttr(filename, lines, issues);
+        checkUrgencyCycle(filename, content, issues);
+        checkAttrBadRule(filename, content, issues);
+        checkStructField(filename, content, issues);
+        checkArgCountMismatch(filename, lines, issues);
+    }
 
     return issues;
 }

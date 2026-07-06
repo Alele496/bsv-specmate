@@ -15,6 +15,17 @@ CREATE TABLE IF NOT EXISTS ref_hits (
     topic       TEXT PRIMARY KEY,
     count       INTEGER DEFAULT 1
 );
+
+CREATE TABLE IF NOT EXISTS captures (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    code        TEXT NOT NULL,
+    timestamp   TEXT NOT NULL,
+    bsc_output  TEXT NOT NULL,
+    files       TEXT,
+    cause       TEXT,
+    solution    TEXT,
+    status      TEXT DEFAULT 'unresolved'
+);
 `;
 
 export function initDB(db) {
@@ -100,4 +111,62 @@ export function searchErrors(db, keyword) {
 
 export function incrementCount(db, code) {
     db.run('UPDATE errors SET count = count + 1 WHERE code = ?', [code]);
+}
+
+export function insertCapture(db, { code, timestamp, bsc_output, files, status = 'unresolved' }) {
+    db.run(
+        `INSERT INTO captures (code, timestamp, bsc_output, files, status)
+         VALUES (?, ?, ?, ?, ?)`,
+        [code, timestamp, bsc_output, files || null, status]
+    );
+}
+
+export function resolveCapture(db, id, { cause, solution }) {
+    db.run(
+        `UPDATE captures SET cause = ?, solution = ?, status = 'resolved' WHERE id = ?`,
+        [cause, solution, id]
+    );
+}
+
+export function getCapturesByCode(db, code, limit = 5) {
+    const results = [];
+    const stmt = db.prepare(
+        'SELECT * FROM captures WHERE code = ? ORDER BY id DESC LIMIT ?'
+    );
+    stmt.bind([code, limit]);
+    while (stmt.step()) results.push(stmt.getAsObject());
+    stmt.free();
+    return results;
+}
+
+export function getRecentCaptures(db, limit = 10) {
+    const results = [];
+    const stmt = db.prepare(
+        'SELECT * FROM captures ORDER BY id DESC LIMIT ?'
+    );
+    stmt.bind([limit]);
+    while (stmt.step()) results.push(stmt.getAsObject());
+    stmt.free();
+    return results;
+}
+
+export function getUnresolvedCaptures(db) {
+    const results = [];
+    const stmt = db.prepare(
+        "SELECT * FROM captures WHERE status = 'unresolved' ORDER BY id DESC"
+    );
+    while (stmt.step()) results.push(stmt.getAsObject());
+    stmt.free();
+    return results;
+}
+
+export function getLatestUnresolvedByCode(db, code) {
+    const stmt = db.prepare(
+        "SELECT * FROM captures WHERE code = ? AND status = 'unresolved' ORDER BY id DESC LIMIT 1"
+    );
+    stmt.bind([code]);
+    let row = null;
+    if (stmt.step()) row = stmt.getAsObject();
+    stmt.free();
+    return row;
 }
