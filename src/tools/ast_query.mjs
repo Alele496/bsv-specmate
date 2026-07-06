@@ -595,10 +595,25 @@ export function analyzeScheduling(tree, source, file) {
     const writes = extractRegWrites(tree, source, file);
     const calls = extractCalls(tree, source, file);
 
+    // Compute cross-rule conflicts for risk assessment
+    const allConflicts = analyzeRuleConflicts(tree, source, file).conflicts;
+
     return rules.map(rule => {
         const ruleWrites = writes.filter(w => w.ruleName === rule.name);
         const ruleCalls = calls.filter(c => c.ruleName === rule.name && c.isMethodCall);
         const targets = new Set(ruleCalls.map(c => c.target).filter(Boolean));
+
+        const myConflicts = allConflicts.filter(c => c.rule1 === rule.name || c.rule2 === rule.name);
+        const hasRAW = myConflicts.some(c => c.type === 'RAW');
+        const hasWAW = myConflicts.some(c => c.type === 'WAW');
+        const hasResource = myConflicts.some(c => c.type === 'resource');
+
+        let risk;
+        if (hasRAW) risk = 'critical';
+        else if (hasWAW) risk = 'high';
+        else if (hasResource && myConflicts.length >= 2) risk = 'medium';
+        else if (myConflicts.length === 1) risk = 'low';
+        else risk = 'none';
 
         return {
             rule: rule.name,
@@ -608,9 +623,183 @@ export function analyzeScheduling(tree, source, file) {
             methodCalls: ruleCalls.map(c => ({ target: c.target, method: c.method, line: c.line })),
             touchesSubmodules: targets.size,
             submodules: [...targets],
-            risk: targets.size >= 2 ? 'HIGH' : targets.size === 1 ? 'LOW' : 'NONE',
+            risk,
         };
     });
+}
+
+// ---------------------------------------------------------------------------
+// B1: Cross-rule conflict matrix
+// ---------------------------------------------------------------------------
+
+/**
+ * 跨 rule 冲突矩阵。
+ * 收集所有 rule 的 {reads, writes, methodCalls}，两两对比。
+ *
+ * @returns {{
+ *   rules: string[],
+ *   conflicts: { rule1, rule2, type, detail, severity }[]
+ * }}
+ *
+ * type: "RAW" | "WAW" | "resource"
+ * severity: "critical" | "high" | "medium" | "low"
+ *
+ * NOTE: 读集合的收集需要分析 `=` 赋值的 RHS 中引用的寄存器。
+ * 当前 tree-sitter 不支持这个，初期保守处理：只检测写写冲突（WAW）和资源共享冲突（resource），
+ * 读集合留空标注 TODO。
+ */
+export function analyzeRuleConflicts(tree, source, file) {
+    const rules = extractRules(tree, source, file);
+    const writes = extractRegWrites(tree, source, file);
+    const calls = extractCalls(tree, source, file);
+
+    // Build per-rule data
+    const ruleData = [];
+    for (const rule of rules) {
+        const ruleWrites = writes.filter(w => w.ruleName === rule.name);
+        const ruleCalls = calls.filter(c => c.ruleName === rule.name && c.isMethodCall);
+
+        ruleData.push({
+            name: rule.name,
+            line: rule.line,
+            // reads set: TODO — tree-sitter cannot distinguish register reads in
+            // block-assignment RHS from mere name references. Defer to future work.
+            reads: new Set(),
+            writes: new Set(ruleWrites.map(w => w.reg)),
+            methodCalls: ruleCalls.map(c => ({ target: c.target, method: c.method, line: c.line })),
+        });
+    }
+
+    const conflicts = [];
+
+    for (let i = 0; i < ruleData.length; i++) {
+        for (let j = i + 1; j < ruleData.length; j++) {
+            const a = ruleData[i];
+            const b = ruleData[j];
+
+            // WAW: write-write conflict
+            const waw = [...a.writes].filter(reg => b.writes.has(reg));
+            for (const reg of waw) {
+                conflicts.push({
+                    rule1: a.name,
+                    rule2: b.name,
+                    type: 'WAW',
+                    detail: `寄存器 "${reg}" 同时在 ${a.name}(行${a.line}) 和 ${b.name}(行${b.line}) 中写入`,
+                    severity: 'high',
+                });
+            }
+
+            // Resource: same target.method called in both rules
+            const aMethods = new Set(a.methodCalls.map(c => `${c.target}.${c.method}`));
+            const bMethods = new Set(b.methodCalls.map(c => `${c.target}.${c.method}`));
+            for (const m of aMethods) {
+                if (bMethods.has(m)) {
+                    conflicts.push({
+                        rule1: a.name,
+                        rule2: b.name,
+                        type: 'resource',
+                        detail: `子模块方法 "${m}" 在 ${a.name}(行${a.line}) 和 ${b.name}(行${b.line}) 中都被调用`,
+                        severity: 'medium',
+                    });
+                }
+            }
+        }
+    }
+
+    return {
+        rules: ruleData.map(r => r.name),
+        conflicts,
+    };
+}
+
+// ---------------------------------------------------------------------------
+// B2: Method order analysis (same target called multiple times in one rule)
+// ---------------------------------------------------------------------------
+
+/**
+ * 检测同 rule 内同一子模块被调用多次的情况。
+ * 例如：同一个 FIFO 的 enq 和 deq 在同一个 rule 内。
+ *
+ * @returns {{ rule, line, target, calls: {method, line}[] }[]}
+ */
+export function analyzeMethodOrder(tree, source, file) {
+    const rules = extractRules(tree, source, file);
+    const calls = extractCalls(tree, source, file);
+    const results = [];
+
+    for (const rule of rules) {
+        const ruleCalls = calls.filter(c => c.ruleName === rule.name && c.isMethodCall);
+
+        // Group by target
+        const byTarget = {};
+        for (const c of ruleCalls) {
+            const t = c.target;
+            if (!t) continue;
+            if (!byTarget[t]) byTarget[t] = [];
+            byTarget[t].push({ method: c.method, line: c.line });
+        }
+
+        for (const [target, mcalls] of Object.entries(byTarget)) {
+            if (mcalls.length >= 2) {
+                results.push({
+                    rule: rule.name,
+                    line: rule.line,
+                    target,
+                    calls: mcalls,
+                });
+            }
+        }
+    }
+
+    return results;
+}
+
+// ---------------------------------------------------------------------------
+// B3: Implicit Wire conflicts
+// ---------------------------------------------------------------------------
+
+/**
+ * 检测 Wire 被多个 rule 写入的隐式冲突。
+ * Wire 是组合逻辑，被谁写入取决于调度顺序。
+ *
+ * @returns {{ wire, line, writtenBy: string[], readBy: string[], risk: string }[]}
+ *
+ * NOTE: tree-sitter 不支持区分 `=` 和 `<=` 赋值中的 Wire 读写。
+ * 初期保守处理：检测 Wire 被多处写入（`<=`），读取留空。
+ */
+export function findImplicitConflicts(tree, source, file) {
+    const instances = extractSubmoduleInstances(tree, source, file);
+    const writes = extractRegWrites(tree, source, file);
+
+    // Identify Wire instances: moduleType contains "Wire" or "BypassWire"
+    const wireInstances = instances.filter(inst => {
+        const mt = inst.moduleType.toLowerCase();
+        return mt.includes('wire') || mt.includes('bypasswire');
+    });
+
+    const results = [];
+
+    for (const wire of wireInstances) {
+        // Find all nb_assignment writes to this wire name
+        const wireWrites = writes.filter(w => w.reg === wire.name);
+        const writers = [...new Set(wireWrites.map(w => w.ruleName || 'method'))];
+
+        // reads: TODO — Wire reads not detectable through tree-sitter
+        // (read references don't leave a specific AST trace for wires)
+        const readBy = [];
+
+        if (writers.length >= 2) {
+            results.push({
+                wire: wire.name,
+                line: wire.line,
+                writtenBy: writers,
+                readBy,
+                risk: writers.length >= 3 ? 'high' : 'medium',
+            });
+        }
+    }
+
+    return results;
 }
 
 // ---------------------------------------------------------------------------

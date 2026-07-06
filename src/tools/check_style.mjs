@@ -34,29 +34,24 @@ function checkFile(filename, content, full = false) {
     const issues = [];
     const lines = content.split('\n');
 
-    // Always-on high-precision checks
-    checkLiteralOverflow(filename, lines, issues);
-    checkSizedLiteralZero(filename, lines, issues);
-    checkBoolOperators(filename, lines, issues);
+    // Always-on: BSC 覆盖不到的语义规则
+    checkLiteralOverflow(filename, lines, issues);   // 位宽溢出 — BSC 可能不精确
+    checkSizedLiteralZero(filename, lines, issues);   // 零位宽 — 边界情况
+    checkBoolOperators(filename, lines, issues);      // Bool 位取反 — 语义错误
 
-    // Full-scan checks — regex-based, higher false-positive rate
+    // Full-scan: 仅在显式 full=true 时启用
     if (full) {
-        checkMethodOrder(filename, lines, issues);
-        checkReservedWords(filename, lines, issues);
-        checkRuleDoubleWrite(filename, content, issues);
-        checkVecUsage(filename, lines, issues);
-        checkBoolBitMismatch(filename, lines, issues);
-        checkValueMethodSyntax(filename, lines, issues);
-        checkMethodRegNaming(filename, content, issues);
-        checkMultiSubmodule(filename, content, issues);
+        checkRuleDoubleWrite(filename, content, issues);   // WAW — BSC 发现但不精确
         checkDupTypeParams(filename, lines, issues);
-        checkDupValueParams(filename, lines, issues);
-        checkDupInterfaceMembers(filename, content, issues);
         checkDupAttr(filename, lines, issues);
         checkUrgencyCycle(filename, content, issues);
         checkAttrBadRule(filename, content, issues);
-        checkStructField(filename, content, issues);
         checkArgCountMismatch(filename, lines, issues);
+        // 以下 BSC 100% 覆盖，不再默认：
+        // checkMethodOrder, checkReservedWords, checkVecUsage,
+        // checkBoolBitMismatch, checkValueMethodSyntax, checkMethodRegNaming,
+        // checkMultiSubmodule, checkDupValueParams, checkDupInterfaceMembers,
+        // checkStructField
     }
 
     return issues;

@@ -2,12 +2,12 @@ import { readFileSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import initSqlJs from 'sql.js';
 import { initDataDir, getDBPath } from '../config.mjs';
-import { initDB, getError, getAllErrors, getTopRules, searchErrors, incrementCount, getHotTopics, incrementRefHit, insertCapture, resolveCapture, getCapturesByCode, getRecentCaptures, getUnresolvedCaptures, getLatestUnresolvedByCode } from './schema.mjs';
+import { initDB, getError, getAllErrors, getTopRules, searchErrors, incrementCount, getHotTopics, incrementRefHit, insertCapture, resolveCapture, getCapturesByCode, getRecentCaptures, getUnresolvedCaptures, getLatestUnresolvedByCode, insertWarning, getWarningsBySnapshot, getLatestSnapshots } from './schema.mjs';
 
 let _db = null;
 let _dbPath = null;
 
-async function ensureDB() {
+export async function ensureDB() {
     if (_db) return _db;
 
     const { created } = initDataDir();
@@ -27,6 +27,16 @@ async function ensureDB() {
             cause       TEXT,
             solution    TEXT,
             status      TEXT DEFAULT 'unresolved'
+        )`);
+        _db.run(`CREATE TABLE IF NOT EXISTS warnings (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_id TEXT NOT NULL,
+            timestamp   TEXT NOT NULL,
+            file        TEXT NOT NULL,
+            line        INTEGER,
+            code        TEXT NOT NULL,
+            message     TEXT NOT NULL,
+            UNIQUE(snapshot_id, file, line, code)
         )`);
     } else {
         if (!existsSync(dirname(_dbPath))) {
@@ -113,6 +123,49 @@ export async function queryUnresolvedCaptures() {
 export async function getLatestCaptureByCode(code) {
     const db = await ensureDB();
     return getLatestUnresolvedByCode(db, code);
+}
+
+export async function saveWarningSnapshot(snapshot_id, warnings) {
+    const db = await ensureDB();
+    const timestamp = new Date().toISOString();
+    for (const w of warnings) {
+        insertWarning(db, {
+            snapshot_id,
+            timestamp,
+            file: w.file,
+            line: w.line || null,
+            code: w.code,
+            message: w.message,
+        });
+    }
+    await saveDB();
+}
+
+export async function getLatestSnapshotId() {
+    const db = await ensureDB();
+    const snapshots = getLatestSnapshots(db, 1);
+    return snapshots.length > 0 ? snapshots[0].snapshot_id : null;
+}
+
+export async function queryLatestSnapshots(limit = 2) {
+    const db = await ensureDB();
+    return getLatestSnapshots(db, limit);
+}
+
+export async function diffWarnings(snapshot_a, snapshot_b) {
+    const db = await ensureDB();
+    const prevWarnings = getWarningsBySnapshot(db, snapshot_a);
+    const currWarnings = getWarningsBySnapshot(db, snapshot_b);
+
+    const key = w => `${w.file}:${w.line}:${w.code}`;
+    const prevKeys = new Set(prevWarnings.map(key));
+    const currKeys = new Set(currWarnings.map(key));
+
+    return {
+        added: currWarnings.filter(w => !prevKeys.has(key(w))),
+        removed: prevWarnings.filter(w => !currKeys.has(key(w))),
+        persistent: currWarnings.filter(w => prevKeys.has(key(w))),
+    };
 }
 
 export function closeDB() {

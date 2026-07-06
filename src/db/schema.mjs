@@ -26,6 +26,17 @@ CREATE TABLE IF NOT EXISTS captures (
     solution    TEXT,
     status      TEXT DEFAULT 'unresolved'
 );
+
+CREATE TABLE IF NOT EXISTS warnings (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_id TEXT NOT NULL,
+    timestamp   TEXT NOT NULL,
+    file        TEXT NOT NULL,
+    line        INTEGER,
+    code        TEXT NOT NULL,
+    message     TEXT NOT NULL,
+    UNIQUE(snapshot_id, file, line, code)
+);
 `;
 
 export function initDB(db) {
@@ -169,4 +180,34 @@ export function getLatestUnresolvedByCode(db, code) {
     if (stmt.step()) row = stmt.getAsObject();
     stmt.free();
     return row;
+}
+
+export function insertWarning(db, { snapshot_id, timestamp, file, line, code, message }) {
+    db.run(
+        `INSERT OR IGNORE INTO warnings (snapshot_id, timestamp, file, line, code, message)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [snapshot_id, timestamp, file, line, code, message]
+    );
+}
+
+export function getWarningsBySnapshot(db, snapshot_id) {
+    const results = [];
+    const stmt = db.prepare(
+        'SELECT * FROM warnings WHERE snapshot_id = ? ORDER BY file, line'
+    );
+    stmt.bind([snapshot_id]);
+    while (stmt.step()) results.push(stmt.getAsObject());
+    stmt.free();
+    return results;
+}
+
+export function getLatestSnapshots(db, limit = 2) {
+    const results = [];
+    const stmt = db.prepare(
+        'SELECT DISTINCT snapshot_id, MIN(timestamp) as timestamp FROM warnings GROUP BY snapshot_id ORDER BY timestamp DESC LIMIT ?'
+    );
+    stmt.bind([limit]);
+    while (stmt.step()) results.push(stmt.getAsObject());
+    stmt.free();
+    return results;
 }

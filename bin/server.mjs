@@ -8,8 +8,9 @@ import { checkStyle } from "../src/tools/check_style.mjs";
 import { guide } from "../src/tools/specmate_guide.mjs";
 import { learn } from "../src/tools/specmate_learn.mjs";
 import { getLevel, LEVEL_LIMITS } from "../src/config.mjs";
-import { hitError, addCapture, getLatestCaptureByCode, resolveCaptureById } from "../src/db/query.mjs";
-import { parseFile, extractAll, analyzeScheduling, buildCallGraph, buildDependencyGraph, findConflictPairs, extractMethods, extractRegWrites, extractRegDeclarations, queryNodeAt } from "../src/tools/ast_query.mjs";
+import { hitError, addCapture, getLatestCaptureByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots } from "../src/db/query.mjs";
+import { parseBSCWarnings } from "../src/tools/warning_diff.mjs";
+import { parseFile, extractAll, analyzeScheduling, buildCallGraph, buildDependencyGraph, findConflictPairs, extractMethods, extractRegWrites, extractRegDeclarations, queryNodeAt, analyzeRuleConflicts, analyzeMethodOrder, findImplicitConflicts } from "../src/tools/ast_query.mjs";
 
 const server = new McpServer({
     name: "bsv-specmate",
@@ -202,7 +203,8 @@ server.tool(
                 lines.push('|------|----|---------|--------|------|');
                 for (const s of sched) {
                     const subs = s.submodules.join(', ') || '—';
-                    const riskIcon = s.risk === 'HIGH' ? '🔴 HIGH' : s.risk === 'LOW' ? '🟡 LOW' : '🟢 NONE';
+                    const riskIcons = { critical: '🔴 CRIT', high: '🟠 HIGH', medium: '🟡 MED', low: '🟢 LOW', none: '⚪ NONE' };
+                    const riskIcon = riskIcons[s.risk] || s.risk;
                     lines.push(`| ${s.rule} | ${s.line} | ${s.touchesSubmodules} | ${subs} | ${riskIcon} |`);
                 }
 
@@ -222,6 +224,79 @@ server.tool(
                         for (const mc of s.methodCalls) {
                             lines.push(`- \`${mc.target}.${mc.method}\` (行 ${mc.line})`);
                         }
+                    }
+                }
+                lines.push('');
+            }
+            return { content: [{ type: "text", text: lines.join('\n') }] };
+        }
+
+        // ── NEW B5 routes ──
+
+        // Cross-rule conflict matrix
+        if (/冲突矩阵|conflict.*matrix|cross.*rule/.test(q)) {
+            const lines = [];
+            for (const { file, result } of ok) {
+                const cr = analyzeRuleConflicts(result.tree, result.source, file);
+                if (cr.rules.length === 0) {
+                    lines.push(`**${file}**: 未发现 rule。`);
+                    continue;
+                }
+                lines.push(`## ${file} — 跨 Rule 冲突矩阵`);
+                lines.push(`Rules: ${cr.rules.join(', ')}`);
+                if (cr.conflicts.length === 0) {
+                    lines.push('');
+                    lines.push('未发现跨 rule 冲突。');
+                } else {
+                    lines.push('');
+                    lines.push('| Rule A | Rule B | 类型 | 严重度 | 详情 |');
+                    lines.push('|--------|--------|------|--------|------|');
+                    for (const c of cr.conflicts) {
+                        const sevIcons = { critical: '🔴', high: '🟠', medium: '🟡', low: '🟢' };
+                        const icon = sevIcons[c.severity] || '';
+                        lines.push(`| ${c.rule1} | ${c.rule2} | ${c.type} | ${icon} ${c.severity} | ${c.detail} |`);
+                    }
+                }
+                lines.push('');
+            }
+            return { content: [{ type: "text", text: lines.join('\n') }] };
+        }
+
+        // Method call order
+        if (/方法.*顺序|method.*order|enq.*deq|并发.*调用/.test(q)) {
+            const lines = [];
+            for (const { file, result } of ok) {
+                const mo = analyzeMethodOrder(result.tree, result.source, file);
+                if (mo.length === 0) {
+                    lines.push(`**${file}**: 未发现同一 rule 内同一子模块被多次调用。`);
+                } else {
+                    lines.push(`## ${file} — 方法调用顺序分析`);
+                    for (const item of mo) {
+                        lines.push(`- **${item.rule}** (行 ${item.line}): 子模块 \`${item.target}\` 被调用 ${item.calls.length} 次`);
+                        for (const c of item.calls) {
+                            lines.push(`  - \`${c.method}\` (行 ${c.line})`);
+                        }
+                    }
+                }
+                lines.push('');
+            }
+            return { content: [{ type: "text", text: lines.join('\n') }] };
+        }
+
+        // Implicit conflicts
+        if (/隐式|wire.*冲突|implicit|多写/.test(q)) {
+            const lines = [];
+            for (const { file, result } of ok) {
+                const ic = findImplicitConflicts(result.tree, result.source, file);
+                if (ic.length === 0) {
+                    lines.push(`**${file}**: 未发现 Wire 隐式冲突。`);
+                } else {
+                    lines.push(`## ${file} — Wire 隐式冲突`);
+                    lines.push('');
+                    lines.push('| Wire | 行 | 写入者 | 风险 |');
+                    lines.push('|------|----|--------|------|');
+                    for (const w of ic) {
+                        lines.push(`| ${w.wire} | ${w.line} | ${w.writtenBy.join(', ')} | ${w.risk} |`);
                     }
                 }
                 lines.push('');
@@ -367,6 +442,66 @@ server.tool(
         lines.push('---');
         lines.push('用 specmate_analyze(question="调度冲突分析" | "模块依赖图" | "调用图" | "寄存器分析" | "第N行") 获取详细分析。');
         return { content: [{ type: "text", text: lines.join('\n') }] };
+    }
+);
+
+server.tool(
+    "specmate_diff",
+    "追踪 BSC 编译 warning 变化。支持两种模式：1) 提交 BSC 输出来存储快照；2) 对比最近两次快照的 warning 差异。用于编译-修复迭代中追踪哪些 warning 是新增的、哪些已消除。",
+    {
+        bsc_output: z.string().optional().describe("BSC 编译的 stdout/stderr 输出"),
+        action: z.enum(["snapshot", "diff"]).describe("snapshot: 存储本次编译的 warning; diff: 对比最近两次快照"),
+    },
+    async ({ bsc_output, action }) => {
+        if (action === 'snapshot') {
+            if (!bsc_output) {
+                return { content: [{ type: "text", text: "snapshot 模式需要 bsc_output 参数。" }] };
+            }
+            const warnings = parseBSCWarnings(bsc_output);
+            if (warnings.length === 0) {
+                return { content: [{ type: "text", text: "未在 BSC 输出中解析到 warning/error。" }] };
+            }
+            const snapshotId = `snap_${Date.now()}`;
+            await saveWarningSnapshot(snapshotId, warnings);
+            return { content: [{ type: "text", text: `快照 ${snapshotId} 已存储，包含 ${warnings.length} 个 warning。` }] };
+        }
+        if (action === 'diff') {
+            const snapshots = await queryLatestSnapshots(2);
+            if (snapshots.length < 2) {
+                return { content: [{ type: "text", text: `仅有 ${snapshots.length} 个快照，需要至少 2 个才能对比。先用 action=snapshot 存储编译输出。` }] };
+            }
+            const [curr, prev] = snapshots;
+            const result = await diffWarnings(prev.snapshot_id, curr.snapshot_id);
+            const lines = [];
+            lines.push(`## Warning Diff: ${prev.snapshot_id} → ${curr.snapshot_id}`);
+            lines.push('');
+            lines.push(`- 新增: ${result.added.length}`);
+            lines.push(`- 消除: ${result.removed.length}`);
+            lines.push(`- 持续: ${result.persistent.length}`);
+            if (result.added.length > 0) {
+                lines.push('');
+                lines.push('### 新增');
+                for (const w of result.added) {
+                    lines.push(`- \`${w.code}\` ${w.file}:${w.line} — ${w.message}`);
+                }
+            }
+            if (result.removed.length > 0) {
+                lines.push('');
+                lines.push('### 已消除');
+                for (const w of result.removed) {
+                    lines.push(`- \`${w.code}\` ${w.file}:${w.line} — ${w.message}`);
+                }
+            }
+            if (result.persistent.length > 0) {
+                lines.push('');
+                lines.push('### 持续存在');
+                for (const w of result.persistent) {
+                    lines.push(`- \`${w.code}\` ${w.file}:${w.line} — ${w.message}`);
+                }
+            }
+            return { content: [{ type: "text", text: lines.join('\n') }] };
+        }
+        return { content: [{ type: "text", text: "未知 action。支持 snapshot 和 diff。" }] };
     }
 );
 
