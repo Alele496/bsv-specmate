@@ -3,6 +3,7 @@ import { searchPatterns } from './_patterns.mjs';
 import { queryError, queryAllErrors, queryTopRules, queryHotTopics, hitError, addCapture, queryRecentCaptures } from '../db/query.mjs';
 import { lookupRef } from './lookup_ref.mjs';
 import { getLevel, LEVEL_LIMITS } from '../config.mjs';
+import { parseFile, queryNodeAt } from './ast_query.mjs';
 
 export async function guide({ phase, input }) {
     const level = getLevel();
@@ -184,7 +185,49 @@ async function onError(input, level, cfg) {
         base.push('💬 修完后如果需要继续写其他部分，调 specmate_guide(phase="continue", input="简要描述下一步")。');
     }
 
+    // AST context: if the error input mentions a file + line, show AST context
+    const astCtx = getASTContext(input);
+    if (astCtx) {
+        base.push('');
+        base.push('### 🔬 AST 上下文');
+        base.push(`\`${astCtx.file}:${astCtx.line}\` — 错误位置所在节点: **${astCtx.nodeType}**`);
+        base.push('```bsv');
+        base.push(astCtx.nodeText);
+        base.push('```');
+        if (astCtx.ancestors.length > 0) {
+            base.push(`外围结构: ${astCtx.ancestors.map(a => `\`${a.type}\``).join(' → ')}`);
+        }
+    }
+
     return base.join('\n');
+}
+
+/**
+ * Extract file:line info from bsc error output and return AST context.
+ * BSC error format: "File.bsv", line 454, column 26: (T0011)
+ * Also handles Windows paths like D:\project\File.bsv
+ */
+function getASTContext(input) {
+    const m = input.match(/(["']?)([^\s,"']+\.bsv)\1[,\s]+line\s+(\d+)(?:[,\s]+column\s+(\d+))?/i);
+    if (!m) return null;
+
+    const filePath = m[2];
+    const line = parseInt(m[3], 10);
+    const col = m[4] ? parseInt(m[4], 10) : 1;
+
+    const parsed = parseFile(filePath);
+    if (!parsed) return null;
+
+    const node = queryNodeAt(parsed.tree, parsed.source, line, col);
+    if (!node) return null;
+
+    return {
+        file: filePath,
+        line,
+        nodeType: node.type,
+        nodeText: node.text.length > 300 ? node.text.substring(0, 300) + '\n...' : node.text,
+        ancestors: (node.ancestors || []).slice(0, 5),
+    };
 }
 
 async function continue_(input, level, cfg) {

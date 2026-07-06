@@ -9,6 +9,7 @@ import { guide } from "../src/tools/specmate_guide.mjs";
 import { learn } from "../src/tools/specmate_learn.mjs";
 import { getLevel, LEVEL_LIMITS } from "../src/config.mjs";
 import { hitError, addCapture, getLatestCaptureByCode, resolveCaptureById } from "../src/db/query.mjs";
+import { parseFile, extractAll, analyzeScheduling, buildCallGraph, buildDependencyGraph, findConflictPairs, extractMethods, extractRegWrites, extractRegDeclarations, queryNodeAt } from "../src/tools/ast_query.mjs";
 
 const server = new McpServer({
     name: "bsv-specmate",
@@ -155,6 +156,217 @@ server.tool(
         }
         await resolveCaptureById(capture.id, { cause, solution });
         return { content: [{ type: "text", text: `✅ ${code} 已标记为已解决。原因和方案已记录。` }] };
+    }
+);
+
+server.tool(
+    "specmate_analyze",
+    "Parse BSV files with a real AST and answer structural questions. Ask about: scheduling conflicts in rules, module call/dependency graphs, register usage across rules, method implementations, or analyze specific lines of code. Use when you need to understand how rules/methods/modules interact — things that require actually parsing BSV syntax rather than regex matching.",
+    {
+        files: z.array(z.string()).describe("要分析的 .bsv 文件路径列表"),
+        question: z.string().describe("想问什么？如 '调度冲突分析' / '模块依赖图' / 'rule 调用关系' / '寄存器读写分析' / '第156行是什么'"),
+    },
+    async ({ files, question }) => {
+        const q = (question || '').toLowerCase();
+
+        if (files.length === 0) {
+            return { content: [{ type: "text", text: "请至少提供一个 .bsv 文件路径。" }] };
+        }
+
+        // Parse all files
+        const parsed = files.map(f => ({ file: f, result: parseFile(f) }));
+        const failed = parsed.filter(p => !p.result);
+        const ok = parsed.filter(p => p.result);
+
+        if (ok.length === 0) {
+            return { content: [{ type: "text", text: `无法解析任何文件: ${failed.map(p => p.file).join(', ')}` }] };
+        }
+
+        // ── Routing ──
+
+        // Scheduling / conflict analysis
+        if (/调度|冲突|conflict|schedule|scheduling|G0004|G0010/.test(q)) {
+            const lines = [];
+            for (const { file, result } of ok) {
+                const sched = analyzeScheduling(result.tree, result.source, file);
+                const conflicts = findConflictPairs(result.tree, result.source, file);
+
+                if (sched.length === 0 && conflicts.length === 0) {
+                    lines.push(`**${file}**: 未发现 rule，或无需分析调度。`);
+                    continue;
+                }
+
+                lines.push(`## ${file}`);
+                lines.push('');
+                lines.push('| Rule | 行 | 子模块数 | 子模块 | 风险 |');
+                lines.push('|------|----|---------|--------|------|');
+                for (const s of sched) {
+                    const subs = s.submodules.join(', ') || '—';
+                    const riskIcon = s.risk === 'HIGH' ? '🔴 HIGH' : s.risk === 'LOW' ? '🟡 LOW' : '🟢 NONE';
+                    lines.push(`| ${s.rule} | ${s.line} | ${s.touchesSubmodules} | ${subs} | ${riskIcon} |`);
+                }
+
+                if (conflicts.length > 0) {
+                    lines.push('');
+                    lines.push('### ⚠ 同 rule 内多次写入:');
+                    for (const c of conflicts) {
+                        lines.push(`- **${c.rule}**: 寄存器 \`${c.reg}\` 在第 ${c.lines.join(', ')} 行被写入多次 → 可能触发 G0004`);
+                    }
+                }
+
+                // Show method calls per rule
+                for (const s of sched) {
+                    if (s.methodCalls.length > 0) {
+                        lines.push('');
+                        lines.push(`**${s.rule}** 内的方法调用:`);
+                        for (const mc of s.methodCalls) {
+                            lines.push(`- \`${mc.target}.${mc.method}\` (行 ${mc.line})`);
+                        }
+                    }
+                }
+                lines.push('');
+            }
+            return { content: [{ type: "text", text: lines.join('\n') }] };
+        }
+
+        // Dependency analysis
+        if (/依赖|dependency|影响|impact|dep|依赖图/.test(q)) {
+            const dg = buildDependencyGraph(files);
+            const lines = [];
+            lines.push('## 模块依赖图');
+            lines.push('');
+            lines.push('### 模块');
+            for (const m of dg.modules) {
+                lines.push(`- \`${m.name}\` (${m.file}:${m.line})`);
+            }
+            lines.push('');
+            lines.push('### 依赖关系');
+            if (dg.deps.length === 0) {
+                lines.push('(无子模块实例化)');
+            } else {
+                for (const d of dg.deps) {
+                    lines.push(`- \`${d.from}\` → \`${d.to}\` (via \`${d.via}\`, ${d.file})`);
+                }
+            }
+            return { content: [{ type: "text", text: lines.join('\n') }] };
+        }
+
+        // Call graph
+        if (/调用|call|graph|调用图/.test(q)) {
+            const cg = buildCallGraph(files);
+            const lines = [];
+            lines.push('## 调用图');
+            lines.push('');
+            lines.push(`节点: ${cg.nodes.length}, 边: ${cg.edges.length}`);
+            lines.push('');
+            lines.push('### 实例化');
+            for (const e of cg.edges.filter(e => e.type === 'instantiates')) {
+                lines.push(`- \`${e.from}\` instantiates \`${e.to}\` (${e.file}:${e.line})`);
+            }
+            lines.push('');
+            lines.push('### 方法调用');
+            const callEdges = cg.edges.filter(e => e.type === 'calls');
+            if (callEdges.length === 0) {
+                lines.push('(无子模块方法调用)');
+            } else {
+                for (const e of callEdges) {
+                    lines.push(`- \`${e.from}\` calls \`${e.to}\` (${e.file}:${e.line})`);
+                }
+            }
+            return { content: [{ type: "text", text: lines.join('\n') }] };
+        }
+
+        // Register analysis
+        if (/寄存器|register|reg|读写|write|read/.test(q) && !/调度|冲突|conflict/.test(q)) {
+            const lines = [];
+            for (const { file, result } of ok) {
+                const regs = extractRegDeclarations(result.tree, result.source, file);
+                const writes = extractRegWrites(result.tree, result.source, file);
+
+                if (regs.length === 0) {
+                    lines.push(`**${file}**: 未发现寄存器声明。`);
+                    continue;
+                }
+
+                lines.push(`## ${file}`);
+                lines.push('');
+                lines.push('| 寄存器 | 类型 | 行 | 写入者 |');
+                lines.push('|--------|------|----|--------|');
+                for (const r of regs) {
+                    const writers = writes
+                        .filter(w => w.reg === r.name)
+                        .map(w => w.ruleName || 'method')
+                        .filter((v, i, a) => a.indexOf(v) === i) // unique
+                        .join(', ');
+                    lines.push(`| ${r.name} | ${r.type} | ${r.line} | ${writers || '—'} |`);
+                }
+                lines.push('');
+            }
+            return { content: [{ type: "text", text: lines.join('\n') }] };
+        }
+
+        // Method analysis
+        if (/方法|method/.test(q)) {
+            const lines = [];
+            for (const { file, result } of ok) {
+                const methods = extractMethods(result.tree, result.source, file);
+                if (methods.length === 0) continue;
+                lines.push(`## ${file}`);
+                lines.push('');
+                lines.push('| 方法 | 类型 | 行 | 所属模块 |');
+                lines.push('|------|------|----|----------|');
+                for (const m of methods) {
+                    const kind = m.isValue ? 'ActionValue' : m.isAction ? 'Action' : 'value';
+                    lines.push(`| ${m.name} | ${kind} | ${m.line} | ${m.moduleName || '—'} |`);
+                }
+                lines.push('');
+            }
+            if (lines.length === 0) {
+                lines.push('未找到 method 实现。');
+            }
+            return { content: [{ type: "text", text: lines.join('\n') }] };
+        }
+
+        // Line/position query: "第156行" / "line 156" (check after content routes)
+        const lineMatch = q.match(/(?:第\s*|\bline\s*|行\s*)(\d+)(?:\s*[行:：]\s*(\d+))?/);
+        if (lineMatch) {
+            const line = parseInt(lineMatch[1], 10);
+            const col = lineMatch[2] ? parseInt(lineMatch[2], 10) : 1;
+            const pf = ok[0].result;
+            const node = queryNodeAt(pf.tree, pf.source, line, col);
+            if (!node) {
+                return { content: [{ type: "text", text: `${ok[0].file}:${line}:${col} — 该位置没有找到 AST 节点。` }] };
+            }
+            const ancestors = node.ancestors.map(a => `  ${a.type}: ${a.text}`).join('\n');
+            return { content: [{ type: "text", text:
+                `**${ok[0].file}:${node.line}:${node.col}** — \`${node.type}\`\n` +
+                `\`\`\`\n${node.text}\n\`\`\`\n\n` +
+                `祖先节点:\n${ancestors}`
+            }] };
+        }
+
+        // Default: full extraction summary
+        const lines = [];
+        for (const { file, result } of ok) {
+            const all = extractAll(file);
+            if (all.error) { lines.push(`**${file}**: ${all.error}`); continue; }
+
+            lines.push(`## ${file}`);
+            lines.push(`- ${all.modules.length} 个模块: ${all.modules.map(m => m.name).join(', ') || '(无)'}`);
+            lines.push(`- ${all.rules.length} 条规则: ${all.rules.map(r => r.name).join(', ') || '(无)'}`);
+            lines.push(`- ${all.methods.length} 个方法: ${all.methods.map(m => m.name).join(', ') || '(无)'}`);
+            lines.push(`- ${all.submodules.length} 个子模块实例`);
+            lines.push(`- ${all.registers.length} 个寄存器`);
+            lines.push(`- ${all.calls.length} 个函数/方法调用`);
+            lines.push(`- ${all.regWrites.length} 个寄存器写入`);
+            if (all.conflicts.length > 0) {
+                lines.push(`- ⚠ ${all.conflicts.length} 个潜在冲突`);
+            }
+            lines.push('');
+        }
+        lines.push('---');
+        lines.push('用 specmate_analyze(question="调度冲突分析" | "模块依赖图" | "调用图" | "寄存器分析" | "第N行") 获取详细分析。');
+        return { content: [{ type: "text", text: lines.join('\n') }] };
     }
 );
 
