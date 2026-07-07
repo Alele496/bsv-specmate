@@ -19,7 +19,7 @@ export function lookupRef(args) {
     }
 
     // Track hit asynchronously (fire-and-forget)
-    import('../db/query.mjs').then(m => m.trackRefHit(topic)).catch(() => {});
+    import('../db/query.mjs').then(m => m.trackRefHit(topic)).catch(err => console.error('[specmate] trackRefHit failed:', err.message));
 
     const content = readFileSync(filePath, 'utf-8');
     return content;

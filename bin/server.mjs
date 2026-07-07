@@ -44,7 +44,7 @@ server.tool(
         const results = checkStyle({ files, full });
 
         // Auto-count: every check_style hit increments the error's count
-        [...new Set(results.map(r => r.check))].forEach(c => hitError(c).catch(() => {}));
+        [...new Set(results.map(r => r.check))].forEach(c => hitError(c).catch(err => console.error('[specmate] hitError failed:', err.message)));
 
         if (results.length === 0) {
             const msg = cfg.collabHint
@@ -122,7 +122,7 @@ server.tool(
             // Try to find error-like patterns even without standard codes
             const hasError = /error|warning/i.test(bsc_output);
             if (hasError) {
-                await addCapture({ code: "UNKNOWN", bsc_output, files: files?.join(", ") }).catch(() => {});
+                addCapture({ code: "UNKNOWN", bsc_output, files: files?.join(", ") }).catch(err => console.error('[specmate] addCapture(UNKNOWN) failed:', err.message));
                 return { content: [{ type: "text", text: "未识别出标准错误码，已以 UNKNOWN 暂存。如果是新错误类型，用 specmate_learn 手动录入。" }] };
             }
             return { content: [{ type: "text", text: "未在输出中检测到编译错误码。" }] };
@@ -130,7 +130,7 @@ server.tool(
 
         // Fire-and-forget capture for each unique error code
         for (const code of codes) {
-            addCapture({ code, bsc_output, files: files?.join(", ") }).catch(() => {});
+            addCapture({ code, bsc_output, files: files?.join(", ") }).catch(err => console.error('[specmate] addCapture failed:', err.message));
         }
 
         const list = codes.map(c => `  • ${c}`).join('\n');

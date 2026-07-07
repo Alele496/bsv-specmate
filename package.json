@@ -35,7 +35,8 @@
     "start": "node bin/server.mjs",
     "db:seed": "node src/db/seed.mjs",
     "db:export": "node src/db/export.mjs",
-    "test": "node --test src/db/query.test.mjs src/tools/_matcher.test.mjs"
+    "test": "node --test src/db/query.test.mjs src/tools/_matcher.test.mjs",
+    "health-check": "node scripts/health-check.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.9.0",

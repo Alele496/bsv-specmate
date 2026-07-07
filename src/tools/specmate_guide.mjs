@@ -113,10 +113,10 @@ async function onError(input, level, cfg) {
     const err = await queryError(code);
 
     // Hit count: every time someone looks up this error, increment (fire-and-forget)
-    if (err) hitError(code).catch(() => {});
+    if (err) hitError(code).catch(err => console.error('[specmate] hitError in onError failed:', err.message));
 
     // Auto-capture: log every on_error query for project memory (fire-and-forget)
-    addCapture({ code, bsc_output: input, files: null }).catch(() => {});
+    addCapture({ code, bsc_output: input, files: null }).catch(err => console.error('[specmate] addCapture in onError failed:', err.message));
 
     if (!err) {
         if (level === 'silicon') {
