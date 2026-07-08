@@ -374,7 +374,7 @@ function checkLiteralOverflow(filename, lines, issues) {
                     suggestion: `最大值 ${max}，减少字面量值或增到位宽 Bit#(${bitsNeeded})`
                 });
             }
-            if (negVal && (val < min || val === -msbOnly)) {
+            if (negVal && val < min) {
                 issues.push({
                     file: filename, line: i + 1, check: 'T0132',
                     severity: 'warning',
