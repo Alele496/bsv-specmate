@@ -8,9 +8,12 @@ import { checkStyle } from "../src/tools/check_style.mjs";
 import { guide } from "../src/tools/specmate_guide.mjs";
 import { learn } from "../src/tools/specmate_learn.mjs";
 import { getLevel, LEVEL_LIMITS } from "../src/config.mjs";
-import { hitError, addCapture, getLatestCaptureByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots } from "../src/db/query.mjs";
+import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots } from "../src/db/query.mjs";
 import { parseBSCWarnings } from "../src/tools/warning_diff.mjs";
 import { parseFile, extractAll, analyzeScheduling, buildCallGraph, buildDependencyGraph, findConflictPairs, extractMethods, extractRegWrites, extractRegDeclarations, queryNodeAt, analyzeRuleConflicts, analyzeMethodOrder, findImplicitConflicts } from "../src/tools/ast_query.mjs";
+import { extractKeywords, match as matchKeywords } from "../src/tools/_matcher.mjs";
+import { start as startPush } from "../src/push/channel.mjs";
+import * as alerts from "../src/push/alerts.mjs";
 
 const server = new McpServer({
     name: "bsv-specmate",
@@ -27,6 +30,23 @@ server.tool(
     },
     async ({ phase, input }) => {
         const result = await guide({ phase, input });
+
+        // Push alerts: extract traps from pre_code and pattern phases
+        if (phase === 'pre_code' || phase === 'pattern') {
+            try {
+                const keywords = extractKeywords(input);
+                const m = matchKeywords(keywords);
+                if (m.traps.length > 0) {
+                    const trapItems = m.traps.slice(0, 5).map(t => ({ level: 'warn', title: t, detail: t }));
+                    if (phase === 'pattern') {
+                        alerts.onPattern(trapItems, input);
+                    } else {
+                        alerts.onPreCode(trapItems, input);
+                    }
+                }
+            } catch (_) { /* push is non-critical */ }
+        }
+
         return { content: [{ type: "text", text: result }] };
     }
 );
@@ -42,6 +62,11 @@ server.tool(
         const level = getLevel();
         const cfg = LEVEL_LIMITS[level];
         const results = checkStyle({ files, full });
+
+        // Push alerts for issues found
+        if (results.length > 0) {
+            try { alerts.onCheckStyle(results, files); } catch (_) {}
+        }
 
         // Auto-count: every check_style hit increments the error's count
         [...new Set(results.map(r => r.check))].forEach(c => hitError(c).catch(err => console.error('[specmate] hitError failed:', err.message)));
@@ -133,6 +158,11 @@ server.tool(
             addCapture({ code, bsc_output, files: files?.join(", ") }).catch(err => console.error('[specmate] addCapture failed:', err.message));
         }
 
+        // Push alerts for captured errors
+        if (codes.length > 0) {
+            try { alerts.onCapture(codes); } catch (_) {}
+        }
+
         const list = codes.map(c => `  • ${c}`).join('\n');
         const unresolvedMsg = codes.length === 1
             ? `错误码 ${codes[0]} 已记录。修好后调 specmate_resolve(code="${codes[0]}", cause="...", solution="...") 保存经验。`
@@ -156,6 +186,17 @@ server.tool(
             return { content: [{ type: "text", text: `没有找到 ${code} 的未解决记录。可能已经被 resolve 过了。` }] };
         }
         await resolveCaptureById(capture.id, { cause, solution });
+
+        // Push memory alert if this error has history
+        try {
+            const history = await queryCapturesByCode(code, 10);
+            if (history.length > 1) {
+                await alerts.onResolve(code, cause, solution,
+                    async (c) => ({ count: history.length, history: `出现过 ${history.length} 次` })
+                );
+            }
+        } catch (_) { /* non-critical */ }
+
         return { content: [{ type: "text", text: `✅ ${code} 已标记为已解决。原因和方案已记录。` }] };
     }
 );
@@ -228,6 +269,26 @@ server.tool(
                 }
                 lines.push('');
             }
+
+            // Push scheduling conflict alerts
+            try {
+                for (const { file } of ok) {
+                    const pf = parseFile(file);
+                    if (!pf) continue;
+                    const schedForAlert = analyzeScheduling(pf.tree, pf.source, file);
+                    const conflictsForAlert = findConflictPairs(pf.tree, pf.source, file);
+                    const allConflicts = [
+                        ...schedForAlert.filter(s => s.risk === 'critical' || s.risk === 'high')
+                            .map(s => ({ type: 'rule', rule: s.rule, severity: s.risk, detail: `Rule ${s.rule} 操作 ${s.touchesSubmodules} 个子模块` })),
+                        ...conflictsForAlert
+                            .map(c => ({ type: 'within-rule', rule: c.rule, severity: 'high', detail: `寄存器 ${c.reg} 在 ${c.rule} 内被多次写入` })),
+                    ];
+                    if (allConflicts.length > 0) {
+                        alerts.onAnalyzeConflicts(allConflicts, file);
+                    }
+                }
+            } catch (_) { /* non-critical */ }
+
             return { content: [{ type: "text", text: lines.join('\n') }] };
         }
 
@@ -472,6 +533,10 @@ server.tool(
             }
             const [curr, prev] = snapshots;
             const result = await diffWarnings(prev.snapshot_id, curr.snapshot_id);
+
+            // Push diff alerts
+            try { alerts.onDiff(result); } catch (_) {}
+
             const lines = [];
             lines.push(`## Warning Diff: ${prev.snapshot_id} → ${curr.snapshot_id}`);
             lines.push('');
@@ -507,3 +572,7 @@ server.tool(
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
+
+// Start WebSocket push channel alongside MCP stdio transport
+await startPush();
+console.error('[specmate] MCP + WS push channel ready');
