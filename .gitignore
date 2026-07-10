@@ -17,3 +17,4 @@ settings.json
 settings.local.json
 .commit-msg.txt
 *.lock
+VISION.md

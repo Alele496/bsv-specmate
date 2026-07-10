@@ -489,29 +489,119 @@ B Round 1 编译通过但有 5 个 warning：
 
 ---
 
-## 📊 五战总览
+## 🟠 第六战：SPI Master 控制器 — 半自动化框架 + 盲审
 
-| | 🥇 RISC-V | 🥈 SD 卡 | 🥉 CRC-32 | 🔵 xclock | ⚫ UART |
-|---|---|---|---|---|---|
-| 客户端 | OpenCode | CCB | CCB | CCB | CCB |
-| 条件数 | A vs B | A vs B | A vs B | A vs B1/B2/B3 | A vs B |
-| B 最终 | 9 轮 ✅ | 7/7 ✅ | 4 轮 ✅ | 0/5 编译, 96.5 分盲审 | R1 通过 ✅ |
-| B vs A 提升 | -18% 轮数 | -47% 时间 | -52% 时间 | +11 分盲审 | **+37.5% 盲审** |
-| specmate 调用 | 0 次 | 10+ 次 | 多次 | 0→R3 激活 | check_style + suggest |
-| 核心发现 | 编码风格影响 | Supervisor 激活工具 | 工程化 > 简洁 | silicon 社恐最优 | **自动化框架 + guard 互斥** |
-| 方法论升级 | — | goal 自动循环 | 双盲评审 | 独立出题 | **specmate_bench 框架** |
+### 实验设计
+
+第六场实验首次使用 **specmate_bench 半自动化框架**——scaffold → spawn → compile → record → fix 循环由框架管理，不再手工复制提示词和记录结果。同时首次集成**独立 reviewer 双盲评审**作为最终质量判定。
+
+| | 🅰️ Agent A（对照组） | 🅱️ Agent B（实验组） |
+|---|---|---|
+| 工具 | 仅通用 LLM 知识 | specmate MCP（`lookup_ref`） |
+| 修复提示 | 通用错误描述 | specmate 增强（含知识库查询建议） |
+| 环境 | 独立目录 A/bsv/ | 独立目录 B/bsv/ |
+| 提示词 | 相同需求描述 | 相同需求描述 |
+
+**任务**：4 线 SPI Master，支持 CPOL/CPHA 四种模式，可配置时钟分频。考察 BSV 高级特性——调度断言（`no_implicit_conditions`、`fire_when_enabled`）、method/rule 冲突、多态接口设计。
+
+### 编译战报
+
+```
+         R1    R2    R3    R4    R5    R6
+Agent A   ❌    ❌    ❌    ❌    ❌    ✅
+Agent B   ❌    ❌    ✅    —     —     —
+  (B 的 R4-R6 均无需重编译，框架 bug 已在 R6 修复)
+```
+
+### Agent A 错误链路（6 轮）
+
+| Round | 错误码 | 根因 |
+|-------|--------|------|
+| R1 | T0043 | 模块参数 `Integer cpol/cpha/divider`，BSV 要求 Bits 类 |
+| R2 | T0043 | Round 1 修复不完整——修了 Integer 但 `frame_len` 仍是自由 numeric type 变量 |
+| R3 | G0053 + G0005 | `mkReg(cpol)` 动态初始化 + `no_implicit_conditions` 断言失败 |
+| R4 | G0005 | `no_implicit_conditions` 未解决——`resp_fifo.enq` 隐含 notFull guard |
+| R5 | G0010 + G0005 | 移除了 `no_implicit_conditions` 但 `fire_when_enabled` 与 `start` 方法冲突 |
+| R6 | ✅ 通过 | 移除 `rl_start_transfer` 的 `fire_when_enabled` |
+
+**共计**：8 个错误，6 轮修复。主要卡在 `no_implicit_conditions`/`fire_when_enabled`——两个都是 BSV 的高级调度断言，没有 specmate 知识库辅助理解。
+
+### Agent B 错误链路（3 轮）
+
+| Round | 错误码 | 根因 |
+|-------|--------|------|
+| R1 | T0043 | 多态接口 `SpiMaster#(numeric type data_width)` 不可综合 |
+| R2 | G0053 | `mkReg(cpol)` 动态初始化 |
+| R3 | ✅ 通过 | 去多态 + `mkRegU` |
+
+**共计**：3 个错误，3 轮修复。specmate 的 `lookup_ref` 让 Agent B 快速锁定 T0043 的修复方向（去多态），避免了 Agent A 在 interface 泛型上的反复。
+
+### 🎭 盲审结果
+
+| 维度 | 🅰️ Agent A | 🅱️ Agent B |
+|------|:--:|:--:|
+| 代码可读性 | ⭐4.3 | 3.7 |
+| 接口设计 | ⭐4.5 | 4.0 |
+| SPI 协议正确性 | ⭐5.0 | 3.0 |
+| 时序设计 | ⭐5.0 | 3.7 |
+| 可综合质量 | ⭐5.0 | 3.7 |
+| **总评** | **🏆** | |
+
+**独立 reviewer 盲评结论**："X（Agent A）更好。Y 更紧凑，但 LSB-first 不是 SPI 行业惯例，且缺少 FIFO 缓冲使接口不够健壮。X 在协议正确性、时序清晰度、接口安全性和可扩展性方面全面领先。**如果这是要上 FPGA 的产品代码，我会毫不犹豫选 X。**"
+
+### 关键发现
+
+**反直觉结论：Agent B 修得更快（3 轮 vs 6 轮），但 Agent A 的最终代码质量更高。**
+
+原因：
+
+1. **specmate 帮你编译，不帮你设计**：Agent B 借助 `lookup_ref` 快速理解 T0043/G0053 的修复方法，3 轮编译通过。但 specmate 不会告诉你 LSB-first 违反 SPI 惯例，也不会提醒你缺了 FIFO 缓冲会丢数据。
+
+2. **"慢"不一定差**：Agent A 的多轮迭代不是在瞎改——它在 BSV 调度语义（`no_implicit_conditions`、`fire_when_enabled`、method/rule 冲突）上反复打磨。这些知识 specmate 的知识库覆盖率不足，导致 Agent A 在黑暗中摸索，但最终代码的时序安全性因此更高。
+
+3. **specmate 知识库缺口**：`no_implicit_conditions` 和 `fire_when_enabled` 的调度语义、method/rule conflict 的 G0010 警告——这三个主题在 specmate 的 `lookup_ref` 中覆盖不足，Agent A 在这上面消耗了 3 轮（R3-R5）。Agent B 避开了这些问题（用更简单的 rule 设计），但代价是架构正确性打了折扣。
+
+### 综合指标
+
+| 指标 | 🅰️ Agent A | 🅱️ Agent B |
+|------|:--:|:--:|
+| 通过轮次 | 6 | 3 |
+| 最终 LoC | 193 | 163 |
+| 累计错误 | 8 | 3 |
+| 盲审得分 | 🏆 | — |
+| specmate 覆盖率 | N/A（未使用） | T0043✅ G0053✅ G0005❌ G0010❌ |
+
+### 方法论突破
+
+- ✅ **首次半自动化实验**：specmate_bench 框架实现 `scaffold → spawn → compile → record → fix → 循环`，不再需要手工复制提示词和记录结果
+- ✅ **首次盲审集成**：独立 reviewer 不知代码来源，纯粹从工程质量评审
+- ⚠️ **框架 bug**：`compile.mjs` 假阴性（"All packages are up to date" 误判失败），已在 R6 修复
+
+---
+
+## 📊 六战总览
+
+| | 🥇 RISC-V | 🥈 SD 卡 | 🥉 CRC-32 | 🔵 xclock | ⚫ UART | 🟠 SPI |
+|---|---|---|---|---|---|---|
+| 客户端 | OpenCode | CCB | CCB | CCB | CCB | CCB |
+| 条件数 | A vs B | A vs B | A vs B | A vs B1/B2/B3 | A vs B | A vs B |
+| B 最终 | 9 轮 ✅ | 7/7 ✅ | 4 轮 ✅ | 0/5 编译, 96.5 分盲审 | R1 通过 ✅ | 3 轮 ✅ |
+| B vs A 提升 | -18% 轮数 | -47% 时间 | -52% 时间 | +11 分盲审 | **+37.5% 盲审** | **-50% 轮数** |
+| specmate 调用 | 0 次 | 10+ 次 | 多次 | 0→R3 激活 | check_style + suggest | lookup_ref |
+| 核心发现 | 编码风格影响 | Supervisor 激活工具 | 工程化 > 简洁 | silicon 社恐最优 | **自动化框架 + guard 互斥** | **快≠好: A 盲审胜出** |
+| 方法论升级 | — | goal 自动循环 | 双盲评审 | 独立出题 | **specmate_bench 框架** | **半自动 + 盲审集成** |
 
 ---
 
 ## 📝 后续
 
 1. **编码记忆持续积累** — 每场实验新增 2-4 条编码记忆，当前 12 条，目标 20+
-2. **specmate_bench 跑完 8 个任务** — 首战只是开始，7 个任务待跑（01-spi ~ 08-bram）
+2. **specmate_bench 跑完 8 个任务** — 两场已跑（02-uart、01-spi），6 个任务待跑（03-crc ~ 08-bram）
 3. **框架打磨** — compile.mjs 模块名自动检测、bsc 路径配置已完成；chart.mjs 仪表盘待实现
 4. **testbench 集成** — 选择 2-3 个核心任务手写 testbench，验证功能正确性（而非仅编译通过）
 5. **全自动化** — 积累足够实验数据后，用 CCB Workflow 实现 spawn agent → compile → fix loop → report 全自动
 
 ---
 
-> **声明**：第一战 2026-07-03 OpenCode，第二战 2026-07-04 CCB，第三战 2026-07-04 CCB + 盲审，第四战 2026-07-05 CCB + 独立出题 + 三级干涉对比，第五战 2026-07-10 CCB + specmate_bench 自动化框架。BSV 编译器版本 2025.07。
-> 原始数据见 `docs/experiments/periph/`、`docs/experiments/sdcard/`、`docs/experiments/packet-crc/`、`docs/experiments/xclock/` 和 `../../specmate_bench/projects/02-uart/`。
+> **声明**：第一战 2026-07-03 OpenCode，第二战 2026-07-04 CCB，第三战 2026-07-04 CCB + 盲审，第四战 2026-07-05 CCB + 独立出题 + 三级干涉对比，第五战 2026-07-10 CCB + specmate_bench 自动化框架，第六战 2026-07-11 CCB + specmate_bench 半自动化框架 + 盲审。BSV 编译器版本 2025.07。
+> 原始数据见 `docs/experiments/periph/`、`docs/experiments/sdcard/`、`docs/experiments/packet-crc/`、`docs/experiments/xclock/`、`../../specmate_bench/projects/02-uart/` 和 `../../specmate_bench/projects/01-spi/`。

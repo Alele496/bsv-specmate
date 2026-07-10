@@ -38,6 +38,7 @@ function checkFile(filename, content, full = false) {
     checkLiteralOverflow(filename, lines, issues);   // 位宽溢出 — BSC 可能不精确
     checkSizedLiteralZero(filename, lines, issues);   // 零位宽 — 边界情况
     checkBoolOperators(filename, lines, issues);      // Bool 位取反 — 语义错误
+    checkG0053(filename, lines, issues);              // mkReg 动态参数 — G0053 风险
 
     // Full-scan: 仅在显式 full=true 时启用
     if (full) {
@@ -667,6 +668,36 @@ function checkSizedLiteralZero(filename, lines, issues) {
                 severity: 'warning',
                 message: `零位宽字面量 "${m[0].trim()}" — Bit#(0) 尺寸为 0，不能容纳任何值`,
                 suggestion: `使用非零位宽，或直接使用 ? 作为 don't-care`
+            });
+        }
+    }
+}
+
+function checkG0053(filename, lines, issues) {
+    // 检测 mkReg(模块参数) — G0053 风险
+    // 模式: mkReg(cpol) 或 mkReg(divider) 等非字面量参数
+    // 注意: mkReg(?)、mkReg(0)、mkReg(1)、mkReg(maxBound) 是合法的
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        // 匹配: <- mkReg(X) 其中 X 不是 0, 1, ?, maxBound, unpack(...)
+        const m = line.match(/<-\s*mkReg\(\s*([^)]+)\s*\)/);
+        if (!m) continue;
+        const init = m[1].trim();
+        // 允许的字面量
+        if (init === '?' || init === '0' || init === '1' ||
+            init.match(/^\d+$/) || init === 'maxBound' ||
+            init.startsWith('unpack(') || init.startsWith('fromInteger(') ||
+            init.startsWith('truncate(') || init.startsWith('extend(') ||
+            init === 'False' || init === 'True') continue;
+        // 包含标识符 → 可能是模块参数或变量 → 警告
+        if (/[a-zA-Z_]/.test(init)) {
+            issues.push({
+                file: filename,
+                line: i + 1,
+                check: 'G0053',
+                severity: 'warning',
+                message: `mkReg 初始化值 "${init}" 可能是模块参数或变量——非编译期静态常量，编译时可能触发 G0053`,
+                suggestion: '改用 mkRegU（不初始化），然后在 rule/method 中显式赋初值。或确认该值确实是编译期常量。'
             });
         }
     }

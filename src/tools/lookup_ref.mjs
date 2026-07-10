@@ -4,7 +4,7 @@ import { PKG_DOCS } from '../config.mjs';
 
 const REF_DIR = resolve(PKG_DOCS, 'reference');
 
-export const VALID_TOPICS = ['module', 'types', 'syntax', 'stdlib', 'keywords', 'schedule', 'patterns', 'styles', 'tutorial', 'examples', 'attributes', 'unions', 'structs'];
+export const VALID_TOPICS = ['module', 'types', 'syntax', 'stdlib', 'keywords', 'schedule', 'patterns', 'styles', 'tutorial', 'examples', 'attributes', 'unions', 'structs', 'workflow'];
 
 export function lookupRef(args) {
     const topic = (args.topic || '').toLowerCase().trim();
