@@ -411,29 +411,107 @@ Goal 里写：
 
 ---
 
-## 📊 四战总览
+## ⚫ 第五战：UART 发送器 — specmate_bench 自动化评测首战
 
-| | 🥇 第一战 (RISC-V) | 🥈 第二战 (SD 卡) | 🥉 第三战 (CRC-32) | 🔵 第四战 (xclock) |
-|---|---|---|---|---|
-| 客户端 | OpenCode | CCB | CCB | CCB |
-| 条件数 | A vs B | A vs B | A vs B | A vs B1/B2/B3 |
-| B 最终 | 9 轮 ✅ | 7/7 ✅ | 4 轮 ✅ | 0/5 编译, 96.5 分盲审 |
-| B vs A 提升 | -18% 轮数 | -47% 时间 | -52% 时间 | +11 分盲审 |
-| specmate 调用 | 0 次 | 10+ 次 | 多次 | 0 次(R1-R2)→R3 后激活 |
-| 核心发现 | coding_rules 隐式影响风格 | Supervisor 角色驱动工具调用 | 工程化代码获盲审认可 | silicon 社恐模式最优 |
-| 方法论升级 | — | goal 自动循环 | 双盲评审 | 独立出题 + 三级干涉对比 |
+### 实验设计
+
+这是 **specmate_bench 自动化实验框架**的首场正式运行——不再是手工复制提示词、人工记录结果，而是框架统一管理 scaffold → compile → fix → record 全流程。
+
+| | 🅰️ Agent A（对照组） | 🅱️ Agent B（实验组） |
+|---|---|---|
+| 模型 | deepseek-v4-pro (max) | deepseek-v4-pro (max) |
+| 客户端 | CCB | CCB |
+| 辅助 | 6 条静态 BSV 规则 | **specmate (tapeout)** + Supervisor 角色 |
+| 框架 | specmate_bench scaffold | specmate_bench scaffold + MCP |
+
+**任务**：UART 异步串行发送器 (8N1 格式, 可配置波特率, FIFO 缓冲)。单一模块，考察 BSV 基础素养——模块参数、规则调度、FIFO 接口。
+
+### 编码结果
+
+| 指标 | 🅰️ A | 🅱️ B | 差距 |
+|------|------|------|------|
+| 编码时间 | ~2m 22s | ~2m 57s | +25% |
+| 编译轮数 | 2 | 1* | -50% |
+| Round 1 | ❌ T0043 | ✅ 通过 (5 warnings) |
+| Round 2 | ✅ 0 error, 0 warning | ✅ 0 error, 0 warning |
+| 代码行数 | 53 | 63 | +19% |
+| 架构 | 2-rule (load + shift) | 5-rule 显式 FSM |
+| specmate 调用 | — | check_style → lookup_ref → suggest |
+| Token 消耗 | — | ~3.9M |
+| 费用 | ~$5 | ~$13.07 |
+
+\* Agent B Round 1 已编译通过，Round 2 是优化 warning。
+
+### Agent A 的错误
+
+**T0043** — `Integer` 作为模块参数不可综合。A 写了 `module mkUartTx#(Integer baud_div)`，但 BSV 要求模块参数必须是 `Bits` 类类型。修复：`Integer` → `Bit#(16)`。
+
+这是新发现的错误模式，已入库 `errors.map` 和 specmate 知识库。
+
+### Agent B 的 warning 与修复
+
+B Round 1 编译通过但有 5 个 warning：
+- **G0010 ×3** — `rl_tx_shift`/`rl_tx_stop`/`rl_tx_done` 共享 `bit_idx` 寄存器，BSC 无法静态判定互斥
+- **G0021 ×2** — `rl_tx_stop` 和 `rl_tx_done` 在 BSC 默认调度下永不被触发
+
+**修复**：将 `bit_idx >= 1 && bit_idx < 9` 从 `rl_tx_shift` 的 body 移至 guard。四个 rule 的 guard 范围互斥 → BSC 可直接判定无冲突，消除全部 warning。这是教科书级的 BSV 调度修复——不需要 `descending_urgency`，guard 互斥就够了。
+
+### 🎭 盲审结果
+
+| 维度 | 🅰️ Agent A | 🅱️ Agent B |
+|------|:--:|:--:|
+| 正确性 | 3/5 | 5/5 |
+| 可维护性 | 3/5 | 5/5 |
+| BSV 规范性 | 2/5 | 5/5 |
+| 设计质量 | 3/5 | 4/5 |
+| 简洁性 | 5/5 | 3/5 |
+| **总分** | **16/25** | **22/25** |
+
+**评审员评语**：*"A 像是在任何一个 HDL 中写 BSV，B 是按 BSV 的方式写 BSV。"*
+
+### 关键发现
+
+**1. A 的 busy 信号有功能性缺陷。** `busy = sending` 只在当前字节发送中返回 1，帧间（sending=0 但有数据在 FIFO 中）返回空闲——这是一个假空闲 bug。B 的 `busy = (bit_idx != 0 || tx_fifo.notEmpty)` 正确处理了 FIFO 状态。
+
+**2. A 缺失 `(* synthesize *)` 属性。** 缺少综合标注意味着模块无法被 BSC 综合为 Verilog。B 从一开始就在 AGENTS.md 中被告知要加这个属性。
+
+**3. B 唯一扣分：rl_tx_stop + rl_tx_done 可合并。** stop 和 done 各占一个 bit 周期，合并为单条 rule 不影响时序但减少代码量。这是"略过度设计"。
+
+**4. A 的 2-rule 极简设计是亮点。** 10-bit shift register 一次装载整个帧（stop+data+start），一个 rule 完成全部移位——这个设计思路本身没问题，是简洁性满分的答案。问题出在规范和细节。
+
+**5. 发现 tree-sitter-bsv 解析器 bug。** Agent B 的 `check_style` 将 `bit_idx <= 8` 的比较运算符误识别为 `nb_assignment`（非阻塞赋值），触发虚假 G0004。避让方案：写 `< 9` 而非 `<= 8`。
+
+### 方法论突破
+
+这是 **第一次使用自动化框架的对照实验**。之前四场每场都需要 2-4 小时的手工操作（复制提示词、手动编译、记录结果）。specmate_bench 把这一切压缩到几条命令——`init` 搭环境、`compile` 跑编译、`record` 记数据。唯一仍需人工的环节是 agent 交互本身（在 CCB 中 `/goal`），但框架已准备好全自动化扩展。
+
+**新错误入库**：T0043（模块参数非 Bits 类）是实验中发现的全新错误模式，已同时录入 `errors.map`（框架层）和 `knowledge.db`（specmate 知识库）。
+
+---
+
+## 📊 五战总览
+
+| | 🥇 RISC-V | 🥈 SD 卡 | 🥉 CRC-32 | 🔵 xclock | ⚫ UART |
+|---|---|---|---|---|---|
+| 客户端 | OpenCode | CCB | CCB | CCB | CCB |
+| 条件数 | A vs B | A vs B | A vs B | A vs B1/B2/B3 | A vs B |
+| B 最终 | 9 轮 ✅ | 7/7 ✅ | 4 轮 ✅ | 0/5 编译, 96.5 分盲审 | R1 通过 ✅ |
+| B vs A 提升 | -18% 轮数 | -47% 时间 | -52% 时间 | +11 分盲审 | **+37.5% 盲审** |
+| specmate 调用 | 0 次 | 10+ 次 | 多次 | 0→R3 激活 | check_style + suggest |
+| 核心发现 | 编码风格影响 | Supervisor 激活工具 | 工程化 > 简洁 | silicon 社恐最优 | **自动化框架 + guard 互斥** |
+| 方法论升级 | — | goal 自动循环 | 双盲评审 | 独立出题 | **specmate_bench 框架** |
 
 ---
 
 ## 📝 后续
 
-1. **编码记忆持续积累** — 每场实验新增 2-4 条编码记忆，目标 20+ 条
-2. **更多实验** — AXI DSP pipeline、Ultracode 多 Agent 编排等新方向
-3. **npm v0.2.0 发布** — 攒够改动后发布里程碑版本
-4. **Kova 框架推广** — 参考 specmate 架构创建第二个领域实例
-5. **goal 模板优化** — 基于第四战发现，把 specmate 定位为"搭档"而非"工具"
+1. **编码记忆持续积累** — 每场实验新增 2-4 条编码记忆，当前 12 条，目标 20+
+2. **specmate_bench 跑完 8 个任务** — 首战只是开始，7 个任务待跑（01-spi ~ 08-bram）
+3. **框架打磨** — compile.mjs 模块名自动检测、bsc 路径配置已完成；chart.mjs 仪表盘待实现
+4. **testbench 集成** — 选择 2-3 个核心任务手写 testbench，验证功能正确性（而非仅编译通过）
+5. **全自动化** — 积累足够实验数据后，用 CCB Workflow 实现 spawn agent → compile → fix loop → report 全自动
 
 ---
 
-> **声明**：第一战 2026-07-03 OpenCode，第二战 2026-07-04 CCB，第三战 2026-07-04 CCB + 盲审，第四战 2026-07-05 CCB + 独立出题 + 三级干涉对比。BSV 编译器版本 2025.07。
-> 原始数据见 `docs/experiments/periph/`、`docs/experiments/sdcard/`、`docs/experiments/packet-crc/` 和 `docs/experiments/xclock/`。
+> **声明**：第一战 2026-07-03 OpenCode，第二战 2026-07-04 CCB，第三战 2026-07-04 CCB + 盲审，第四战 2026-07-05 CCB + 独立出题 + 三级干涉对比，第五战 2026-07-10 CCB + specmate_bench 自动化框架。BSV 编译器版本 2025.07。
+> 原始数据见 `docs/experiments/periph/`、`docs/experiments/sdcard/`、`docs/experiments/packet-crc/`、`docs/experiments/xclock/` 和 `../../specmate_bench/projects/02-uart/`。
