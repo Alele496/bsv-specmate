@@ -2,3 +2,18 @@ node_modules/
 *.db-journal
 data/knowledge.db-journal
 docs/MAINTAINER.md
+
+# CCB / Claude Code config (不应该进项目仓库)
+CLAUDE.md
+.claude/
+dispatch.js
+ship.js
+advisor.js
+ops.md
+dev.md
+reviewer.md
+lead.md
+settings.json
+settings.local.json
+.commit-msg.txt
+*.lock
