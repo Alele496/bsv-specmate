@@ -14,7 +14,7 @@ import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, reso
 import { parseBSCWarnings } from "../src/tools/warning_diff.mjs";
 import { parseFile, extractAll, analyzeScheduling, buildCallGraph, buildDependencyGraph, findConflictPairs, extractMethods, extractRegWrites, extractRegDeclarations, queryNodeAt, analyzeRuleConflicts, analyzeMethodOrder, findImplicitConflicts } from "../src/tools/ast_query.mjs";
 import { extractKeywords, match as matchKeywords } from "../src/tools/_matcher.mjs";
-import { start as startPush } from "../src/push/channel.mjs";
+import { init as initNotify } from "../src/notify.mjs";
 import * as alerts from "../src/push/alerts.mjs";
 
 const server = new McpServer({
@@ -633,7 +633,5 @@ if (TRANSPORT === 'stdio') {
   console.error(`[specmate] MCP Streamable HTTP on http://127.0.0.1:${PORT}/mcp`);
 }
 
-// Start WebSocket push channel only in stdio mode (Streamable HTTP uses MCP notifications natively)
-if (TRANSPORT === 'stdio') {
-  await startPush();
-}
+// Initialize MCP notification bridge — replaces WebSocket push
+initNotify(server.server);
