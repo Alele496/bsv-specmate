@@ -2,6 +2,8 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { createServer } from "http";
 import { z } from "zod";
 
 import { checkStyle } from "../src/tools/check_style.mjs";
@@ -44,6 +46,15 @@ server.tool(
                         alerts.onPreCode(trapItems, input);
                     }
                 }
+            } catch (_) { /* push is non-critical */ }
+        }
+
+        // Push on_error alert (gated by pushOnError flag in alerts.mjs)
+        if (phase === 'on_error') {
+            try {
+                const codePattern = /\b([GPTBS]\d{4})\b/g;
+                const errCodes = [...new Set([...input.matchAll(codePattern)].map(m => m[1]))];
+                alerts.onCapture(errCodes);
             } catch (_) { /* push is non-critical */ }
         }
 
@@ -570,9 +581,56 @@ server.tool(
     }
 );
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
+const TRANSPORT = (process.env.SPECMATE_TRANSPORT || 'streamable-http').toLowerCase();
 
-// Start WebSocket push channel alongside MCP stdio transport
-await startPush();
-console.error('[specmate] MCP + WS push channel ready');
+if (TRANSPORT === 'stdio') {
+  // stdio fallback — keep existing behavior
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error('[specmate] MCP stdio transport ready');
+} else {
+  // Streamable HTTP — supports bidirectional communication + SSE push
+  const PORT = parseInt(process.env.SPECMATE_PORT || '9339', 10);
+  const httpServer = createServer();
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined, // stateless mode
+  });
+
+  // Bind MCP connection to POST /mcp
+  httpServer.on('request', async (req, res) => {
+    // CORS — allow CCB cross-origin connections
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Mcp-Session-Id');
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    // Health check
+    if (req.method === 'GET' && req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok', transport: 'streamable-http' }));
+      return;
+    }
+
+    // MCP requests route to /mcp
+    if (req.url === '/mcp' || req.url?.startsWith('/mcp')) {
+      await transport.handleRequest(req, res);
+    } else {
+      res.writeHead(404);
+      res.end('Not Found');
+    }
+  });
+
+  await server.connect(transport);
+  await new Promise((resolve) => httpServer.listen(PORT, '127.0.0.1', resolve));
+  console.error(`[specmate] MCP Streamable HTTP on http://127.0.0.1:${PORT}/mcp`);
+}
+
+// Start WebSocket push channel only in stdio mode (Streamable HTTP uses MCP notifications natively)
+if (TRANSPORT === 'stdio') {
+  await startPush();
+}

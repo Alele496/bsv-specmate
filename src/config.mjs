@@ -66,40 +66,66 @@ export function initDataDir(force = false) {
     return { created: false, root };
 }
 
-const LEVELS = ['silicon', 'wafer', 'tapeout'];
+const LEVELS = ['silicon', 'wafer', 'tapeout', 'verify', 'develop'];
+const ALIASES = { silicon: 'verify', wafer: 'develop' };
 
 export function getLevel() {
-    const raw = (process.env.SPECMATE_LEVEL || 'wafer').toLowerCase();
-    return LEVELS.includes(raw) ? raw : 'wafer';
+    const raw = (process.env.SPECMATE_LEVEL || 'develop').toLowerCase();
+    if (ALIASES[raw]) return ALIASES[raw];
+    return LEVELS.includes(raw) ? raw : 'develop';
 }
 
 export const LEVEL_LIMITS = {
-    silicon: {
+    // verify — 验证模式：快速迭代，别挡路
+    verify: {
         errors: 3, highlight: 'TOP 3',
-        name: '静默模式',
-        mode: 'passive',   // 首次告知工具存在，之后纯应答
-        intro: true,        // 展示极简工具列表
-        crossRef: false,    // 不追加交叉引用
-        styleHint: false,   // 不推荐风格
-        collabHint: false,  // 不建立协作关系
+        name: '验证模式',
+        desc: '快速迭代跑通逻辑，只应答不主动',
+        mode: 'passive',
+        intro: true,
+        crossRef: false,
+        styleHint: false,
+        collabHint: false,
+        // 推送：全关 — Agent 问才答
+        pushPreCode: false,
+        pushCheckStyle: false,
+        pushOnError: false,
+        pushDiff: false,
+        pushAnalyze: false,
     },
-    wafer: {
+    // develop — 开发模式：写新模块，编码前提醒陷阱（默认）
+    develop: {
         errors: 5, highlight: 'TOP 5',
-        name: '引导模式',
-        mode: 'suggestive', // 每次返回末尾带交叉引用
+        name: '开发模式',
+        desc: '编码前提醒陷阱，该提醒的提醒',
+        mode: 'suggestive',
         intro: true,
         crossRef: true,
         styleHint: false,
         collabHint: false,
+        // 推送：编码前推陷阱
+        pushPreCode: true,
+        pushCheckStyle: false,
+        pushOnError: false,
+        pushDiff: false,
+        pushAnalyze: false,
     },
+    // tapeout — 流片模式：要交出去了，全量检查
     tapeout: {
         errors: 10, highlight: 'TOP 10',
-        name: '全程协作',
-        mode: 'collaborative', // 启动建立搭档 + 编码引导 + 持续反馈
+        name: '流片模式',
+        desc: '要交出去了，一个都别漏',
+        mode: 'collaborative',
         intro: true,
         crossRef: true,
-        styleHint: true,     // 主动推荐编码风格
-        collabHint: true,    // 建立"搭档"关系
-        scanSimilar: true,   // lookup_error 后扫描相似模式
+        styleHint: true,
+        collabHint: true,
+        scanSimilar: true,
+        // 推送：全开 — 全程守护
+        pushPreCode: true,
+        pushCheckStyle: true,
+        pushOnError: true,
+        pushDiff: true,
+        pushAnalyze: true,
     },
 };

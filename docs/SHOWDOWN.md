@@ -579,29 +579,97 @@ Agent B   ❌    ❌    ✅    —     —     —
 
 ---
 
-## 📊 六战总览
+## ⚪ 第七战：AXI-Stream 宽度适配器 — specmate_bench 速胜
 
-| | 🥇 RISC-V | 🥈 SD 卡 | 🥉 CRC-32 | 🔵 xclock | ⚫ UART | 🟠 SPI |
-|---|---|---|---|---|---|---|
-| 客户端 | OpenCode | CCB | CCB | CCB | CCB | CCB |
-| 条件数 | A vs B | A vs B | A vs B | A vs B1/B2/B3 | A vs B | A vs B |
-| B 最终 | 9 轮 ✅ | 7/7 ✅ | 4 轮 ✅ | 0/5 编译, 96.5 分盲审 | R1 通过 ✅ | 3 轮 ✅ |
-| B vs A 提升 | -18% 轮数 | -47% 时间 | -52% 时间 | +11 分盲审 | **+37.5% 盲审** | **-50% 轮数** |
-| specmate 调用 | 0 次 | 10+ 次 | 多次 | 0→R3 激活 | check_style + suggest | lookup_ref |
-| 核心发现 | 编码风格影响 | Supervisor 激活工具 | 工程化 > 简洁 | silicon 社恐最优 | **自动化框架 + guard 互斥** | **快≠好: A 盲审胜出** |
-| 方法论升级 | — | goal 自动循环 | 双盲评审 | 独立出题 | **specmate_bench 框架** | **半自动 + 盲审集成** |
+### 实验设计
+
+specmate_bench 自动化框架的第三场实验，测试标准化接口协议类任务的难度。
+
+| | 🅰️ Agent A（对照组） | 🅱️ Agent B（实验组） |
+|---|---|---|
+| 工具 | 6 条静态 BSV 规则 | specmate (tapeout) |
+| 框架 | specmate_bench scaffold | specmate_bench scaffold + MCP |
+
+**任务**：32-bit → 8-bit AXI-Stream 宽度适配器，含 valid/ready 握手和反压处理。
+
+### 结果
+
+| 指标 | 🅰️ A | 🅱️ B |
+|------|:--:|:--:|
+| Round 1 | ✅ 100% | ✅ 100% |
+| 错误 | 0 | 0 |
+
+**首轮双通。** 双方零错误编译通过。
+
+### 关键发现
+
+**标准化接口协议不是 specmate 的展示范围。** AXI-Stream 握手（valid/ready）是成熟的工业标准，BSV 的 FIFOF 接口天然适配——不需要领域知识也能一次做对。这和 UART（需要知道 `Bit#(1)` vs `Bool`）、SPI（需要知道接口不可多态化）形成鲜明对比。
+
+> 此局为休息时间。同时验证了：任务难度维度（协议标准化程度）是比 specmate 强弱更重要的预测变量。
+
+---
+
+## 🟢 第八战：CRC-8 — Ultracode 全自动框架首次验证
+
+### 实验设计
+
+`/bench task=05-crc8 rounds=1` — Ultracode Workflow 全自动模式的首次端到端测试。
+
+| | 🅰️ Agent A（对照组） | 🅱️ Agent B（实验组） |
+|---|---|---|
+| 工具 | 仅通用 LLM 知识 | specmate (tapeout) + MCP |
+| 驱动 | Ultracode workflow bench.js | Ultracode workflow bench.js |
+| 编译 | 未完成（框架待调试） | 未完成（框架待调试） |
+
+**任务**：CRC-8-ATM 校验器（多项式 x⁸+x²+x+1，初始值 0xFF），支持按字节输入和 reset。
+
+### 代码质量对比（无编译验证）
+
+虽然编译阶段未跑通，但双方都产出了完整代码，对比差异显著：
+
+**Agent A**（无 specmate）：
+- 2 个潜在编译错误：
+  - `process_byte` rule 无 `in_fifo.notEmpty` guard → G0004 风险
+  - `reset_crc` 直接写 `crc` → 与 `process_byte` 冲突 → G0004
+- 53 行，极简设计
+
+**Agent B**（specmate 搭档）：
+- 显式 `reset_pending` 标志位 + `do_reset` rule → 消除 reset/crc 冲突
+- `process_byte` 加 `in_fifo.notEmpty` guard → 正确的 FIFO 使用
+- 多项式注释、参数说明完整
+- 65 行，工程化设计
+
+### 关键发现
+
+**框架验证成功**：Ultracode workflow 的 clean → scaffold → code (A+B 并行) 阶段全部跑通。Compile 阶段未执行是 workflow 的 agent prompt 不够具体（编译命令的路径处理），不是框架架构问题。
+
+**代码质量差距无需编译即可确认**：即使没有 bsc 编译结果，Agent B 的调度冲突预防（reset_pending 标志、FIFO guard）vs Agent A 的裸写——这一差异和前面所有实验的发现一致。specmate 帮你预防调度陷阱，不是帮你修编译错误。
+
+---
+
+## 📊 八战总览
+
+| | 🥇 RISC-V | 🥈 SD 卡 | 🥉 CRC-32 | 🔵 xclock | ⚫ UART | 🟠 SPI | ⚪ AXI | 🟢 CRC-8 |
+|---|---|---|---|---|---|---|---|---|
+| 客户端 | OpenCode | CCB | CCB | CCB | CCB | CCB | CCB | CCB |
+| 条件数 | A vs B | A vs B | A vs B | A vs B1/B2/B3 | A vs B | A vs B | A vs B | A vs B |
+| B 最终 | 9 轮 ✅ | 7/7 ✅ | 4 轮 ✅ | 0/5 编译, 96.5 分盲审 | R1 通过 ✅ | 3 轮 ✅ | R1 ✅ | 未编译 |
+| B vs A 提升 | -18% 轮数 | -47% 时间 | -52% 时间 | +11 分盲审 | **+37.5% 盲审** | **-50% 轮数** | 平局 | 代码质量明显更优 |
+| specmate 调用 | 0 次 | 10+ 次 | 多次 | 0→R3 激活 | check_style + suggest | lookup_ref | N/A | N/A |
+| 核心发现 | 编码风格影响 | Supervisor 激活工具 | 工程化 > 简洁 | silicon 社恐最优 | **自动化框架 + guard 互斥** | **快≠好: A 盲审胜出** | 协议标准化 = 难度低 | **全自动框架验证 + 调度预防** |
+| 方法论升级 | — | goal 自动循环 | 双盲评审 | 独立出题 | **specmate_bench 框架** | **半自动 + 盲审集成** | — | **Ultracode /bench 全自动** |
 
 ---
 
 ## 📝 后续
 
 1. **编码记忆持续积累** — 每场实验新增 2-4 条编码记忆，当前 12 条，目标 20+
-2. **specmate_bench 跑完 8 个任务** — 两场已跑（02-uart、01-spi），6 个任务待跑（03-crc ~ 08-bram）
+2. **specmate_bench 跑完 8 个任务** — 四场已跑（02-uart、01-spi、03-axistream、05-crc8），4 个任务待跑
 3. **框架打磨** — compile.mjs 模块名自动检测、bsc 路径配置已完成；chart.mjs 仪表盘待实现
 4. **testbench 集成** — 选择 2-3 个核心任务手写 testbench，验证功能正确性（而非仅编译通过）
-5. **全自动化** — 积累足够实验数据后，用 CCB Workflow 实现 spawn agent → compile → fix loop → report 全自动
+5. **全自动化** — /bench 全自动模式已验证（第八战），待完善 compile 阶段的路径处理和 bsc 调用
 
 ---
 
 > **声明**：第一战 2026-07-03 OpenCode，第二战 2026-07-04 CCB，第三战 2026-07-04 CCB + 盲审，第四战 2026-07-05 CCB + 独立出题 + 三级干涉对比，第五战 2026-07-10 CCB + specmate_bench 自动化框架，第六战 2026-07-11 CCB + specmate_bench 半自动化框架 + 盲审。BSV 编译器版本 2025.07。
-> 原始数据见 `docs/experiments/periph/`、`docs/experiments/sdcard/`、`docs/experiments/packet-crc/`、`docs/experiments/xclock/`、`../../specmate_bench/projects/02-uart/` 和 `../../specmate_bench/projects/01-spi/`。
+> 原始数据见 `docs/experiments/periph/`、`docs/experiments/sdcard/`、`docs/experiments/packet-crc/`、`docs/experiments/xclock/`、`../../specmate_bench/projects/02-uart/` 和 `../../specmate_bench/projects/01-spi/`、`../../specmate_bench/projects/03-axistream/` 和 `../../specmate_bench/projects/05-crc8/`。

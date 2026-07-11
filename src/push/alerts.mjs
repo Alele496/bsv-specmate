@@ -1,13 +1,20 @@
 // Alert generation — transforms tool results into push notifications.
 // Each function mirrors a specmate tool and extracts push-worthy signals.
 
-import { push, pushMemory, pushDiff } from './channel.mjs';
+import { push, pushMemory, pushDiff } from './channel.mjs'
+import { getLevel, LEVEL_LIMITS } from '../config.mjs'
+
+function shouldPush(flag) {
+  const cfg = LEVEL_LIMITS[getLevel()]
+  return cfg && cfg[flag]
+}
 
 /**
  * After specmate_guide(pre_code) — push design-level traps as alerts.
  */
 export function onPreCode(traps, input) {
-  if (!traps || traps.length === 0) return;
+  if (!shouldPush('pushPreCode')) return
+  if (!traps || traps.length === 0) return
   for (const t of traps) {
     push({
       level: t.level || 'warn',
@@ -24,7 +31,8 @@ export function onPreCode(traps, input) {
  * After specmate_guide(pattern) — push code skeleton traps.
  */
 export function onPattern(traps, patternName) {
-  if (!traps || traps.length === 0) return;
+  if (!shouldPush('pushPreCode')) return
+  if (!traps || traps.length === 0) return
   for (const t of traps) {
     push({
       level: 'warn',
@@ -42,7 +50,8 @@ export function onPattern(traps, patternName) {
  * Only push if there are issues (empty = clean = no alert needed).
  */
 export function onCheckStyle(results, files) {
-  if (!results || results.length === 0) return;
+  if (!shouldPush('pushCheckStyle')) return
+  if (!results || results.length === 0) return
   const critical = results.filter(r => r.severity === 'error' || r.check === 'P0032');
   const batch = (critical.length > 0 ? critical : results).slice(0, 5); // max 5 alerts per check
 
@@ -64,7 +73,8 @@ export function onCheckStyle(results, files) {
  * After specmate_capture — push newly recorded error codes.
  */
 export function onCapture(codes) {
-  if (!codes || codes.length === 0) return;
+  if (!shouldPush('pushOnError')) return
+  if (!codes || codes.length === 0) return
   for (const code of codes) {
     push({
       level: 'error',
@@ -81,6 +91,7 @@ export function onCapture(codes) {
  * of repeated occurrences (project memory match).
  */
 export async function onResolve(code, cause, solution, queryFn) {
+  if (!shouldPush('pushOnError')) return
   // If there are prior captures of the same code, push memory reminder
   try {
     if (queryFn) {
@@ -102,7 +113,8 @@ export async function onResolve(code, cause, solution, queryFn) {
  * After specmate_diff — push warning changes.
  */
 export function onDiff({ added, removed, persistent }) {
-  if (added.length === 0 && removed.length === 0) return;
+  if (!shouldPush('pushDiff')) return
+  if (added.length === 0 && removed.length === 0) return
   pushDiff({ added, removed, persistent });
 
   if (added.length > 0) {
@@ -124,7 +136,8 @@ export function onDiff({ added, removed, persistent }) {
  * After specmate_analyze — push scheduling conflict findings.
  */
 export function onAnalyzeConflicts(conflicts, file) {
-  if (!conflicts || conflicts.length === 0) return;
+  if (!shouldPush('pushAnalyze')) return
+  if (!conflicts || conflicts.length === 0) return
   for (const c of conflicts.slice(0, 5)) {
     const severity = c.severity || c.risk || 'medium';
     const level = severity === 'critical' ? 'error' : 'warn';
