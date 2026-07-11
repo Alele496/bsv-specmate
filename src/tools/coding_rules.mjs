@@ -50,15 +50,15 @@ const TAPEOUT_INTRO = [
 ].join('\n');
 
 function getIntro(level) {
-    if (level === 'silicon') return SILICON_INTRO;
-    if (level === 'wafer') return WAFER_INTRO;
+    if (LEVEL_LIMITS[level].mode === 'passive') return SILICON_INTRO;
+    if (LEVEL_LIMITS[level].mode === 'suggestive') return WAFER_INTRO;
     return TAPEOUT_INTRO;
 }
 
 export async function codingRules() {
     const level = getLevel();
     const cfg = LEVEL_LIMITS[level];
-    const limit = level === 'silicon' ? 5 : level === 'wafer' ? 8 : 20;
+    const limit = LEVEL_LIMITS[level].mode === 'passive' ? 5 : LEVEL_LIMITS[level].mode === 'suggestive' ? 8 : 20;
 
     const rules = await queryTopRules(limit);
 

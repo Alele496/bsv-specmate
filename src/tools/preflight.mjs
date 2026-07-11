@@ -57,7 +57,7 @@ export async function preflight() {
 
     lines.push(`## 🔴 高频编译错误 (${highlight})`);
     lines.push('');
-    lines.push(`当前模式: **${cfg.name}** — 设置 \`SPECMATE_LEVEL=silicon|wafer|tapeout\` 切换干涉强度`);
+    lines.push(`当前模式: **${cfg.name}** — 设置 \`SPECMATE_LEVEL=verify|develop|tapeout\` 切换干涉强度`);
     lines.push('');
 
     for (const e of topErrors) {
@@ -66,12 +66,12 @@ export async function preflight() {
         lines.push('');
     }
 
-    if (level !== 'silicon') {
+    if (LEVEL_LIMITS[level].mode !== 'passive') {
         lines.push('---');
         lines.push('');
         lines.push('## ⚠️ 常见设计警告');
         lines.push('');
-        const warnCount = level === 'wafer' ? 3 : COMMON_WARNINGS.length;
+        const warnCount = LEVEL_LIMITS[level].mode === 'suggestive' ? 3 : COMMON_WARNINGS.length;
         for (const w of COMMON_WARNINGS.slice(0, warnCount)) {
             lines.push(`### ${w.title}`);
             lines.push(w.detail);

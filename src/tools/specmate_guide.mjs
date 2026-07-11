@@ -25,18 +25,18 @@ async function preCode(input, level, cfg) {
     const lines = [];
 
     if (m.traps.length > 0) {
-        const count = cfg === LEVEL_LIMITS.silicon ? 1 : cfg === LEVEL_LIMITS.wafer ? Math.min(4, m.traps.length) : m.traps.length;
+        const count = cfg.mode === 'passive' ? 1 : cfg.mode === 'suggestive' ? Math.min(4, m.traps.length) : m.traps.length;
         lines.push(`⚠ 当前任务高频陷阱 (${count}):`);
         for (let i = 0; i < count; i++) {
             lines.push(`  ${i + 1}. ${m.traps[i]}`);
         }
-        if (level === 'silicon' && m.traps.length > 1) {
+        if (LEVEL_LIMITS[level].mode === 'passive' && m.traps.length > 1) {
             lines.push(`  → 还有 ${m.traps.length - 1} 条，提升 SPECMATE_LEVEL 查看更多`);
         }
         lines.push('');
     }
 
-    if (m.errors.length > 0 && level !== 'silicon') {
+    if (m.errors.length > 0 && LEVEL_LIMITS[level].mode !== 'passive') {
         const topRules = await queryTopRules(10);
         const relevant = topRules.filter(r => m.errors.includes(r.code));
         if (relevant.length > 0) {
@@ -48,7 +48,7 @@ async function preCode(input, level, cfg) {
         }
     }
 
-    if (m.refs.length > 0 && level !== 'silicon') {
+    if (m.refs.length > 0 && LEVEL_LIMITS[level].mode !== 'passive') {
         lines.push(`📖 参考: ${m.refs.map(r => `lookup_ref(topic="${r}")`).join(', ')}`);
         lines.push('');
     }
@@ -67,7 +67,7 @@ async function preCode(input, level, cfg) {
     }
 
     // Project memory: show recent captures from this project
-    if (level !== 'silicon') {
+    if (LEVEL_LIMITS[level].mode !== 'passive') {
         const recentCaps = await queryRecentCaptures(5);
         if (recentCaps.length > 0) {
             lines.push('📝 本项目近期捕获的错误:');
@@ -85,7 +85,7 @@ async function preCode(input, level, cfg) {
     }
 
     if (lines.length === 0) {
-        if (level === 'silicon') return '没有匹配到已知陷阱。提升 SPECMATE_LEVEL 查看详细分析。';
+        if (LEVEL_LIMITS[level].mode === 'passive') return '没有匹配到已知陷阱。提升 SPECMATE_LEVEL 查看详细分析。';
         return `没有匹配到 "${input}" 的已知陷阱。尝试更具体的描述，或调 suggest。`;
     }
     return lines.join('\n');
@@ -119,7 +119,7 @@ async function onError(input, level, cfg) {
     addCapture({ code, bsc_output: input, files: null }).catch(err => console.error('[specmate] addCapture in onError failed:', err.message));
 
     if (!err) {
-        if (level === 'silicon') {
+        if (LEVEL_LIMITS[level].mode === 'passive') {
             return `错误码 "${code}" 未收录。提升 SPECMATE_LEVEL 查看相似条目。`;
         }
         const all = await queryAllErrors();
@@ -135,13 +135,13 @@ async function onError(input, level, cfg) {
         return `错误码 "${code}" 未找到。如果是新错误，用 specmate_learn 加入编码记忆。`;
     }
 
-    if (level === 'silicon') {
+    if (LEVEL_LIMITS[level].mode === 'passive') {
         return [
             `## ${err.code} — ${err.title} (×${err.count})`,
             '',
             '> ' + (err.rules || err.cause?.substring(0, 200) || ''),
             '',
-            '提升 SPECMATE_LEVEL=wafer 或 tapeout 查看完整方案。',
+            '提升 SPECMATE_LEVEL=develop 或 tapeout 查看完整方案。',
         ].join('\n');
     }
 
@@ -238,20 +238,20 @@ async function continue_(input, level, cfg) {
 
     if (m.traps.length > 0) {
         lines.push('🔮 接下来可能遇到:');
-        const count = level === 'silicon' ? 1 : cfg === LEVEL_LIMITS.wafer ? Math.min(3, m.traps.length) : m.traps.length;
+        const count = LEVEL_LIMITS[level].mode === 'passive' ? 1 : LEVEL_LIMITS[level].mode === 'suggestive' ? Math.min(3, m.traps.length) : m.traps.length;
         for (let i = 0; i < count; i++) {
             lines.push(`  • ${m.traps[i]}`);
         }
         lines.push('');
     }
 
-    if (m.errors.length > 0 && level !== 'silicon') {
+    if (m.errors.length > 0 && LEVEL_LIMITS[level].mode !== 'passive') {
         lines.push(`⚠ 相关错误码: ${m.errors.join(', ')}`);
         lines.push(`  编译后如果遇到，直接 specmate_guide(phase="on_error", input="错误码")`);
         lines.push('');
     }
 
-    if (m.refs.length > 0 && level !== 'silicon') {
+    if (m.refs.length > 0 && LEVEL_LIMITS[level].mode !== 'passive') {
         lines.push(`📖 建议先看: ${m.refs.map(r => `lookup_ref(topic="${r}")`).join(', ')}`);
         lines.push('');
     }
@@ -364,7 +364,7 @@ function patternPhase(input, level, cfg) {
     const results = searchPatterns(keywords);
 
     if (results.length === 0) {
-        if (level === 'silicon') return `没有匹配到 "${input.slice(0, 50)}" 的范式模板。`;
+        if (LEVEL_LIMITS[level].mode === 'passive') return `没有匹配到 "${input.slice(0, 50)}" 的范式模板。`;
         const av = searchPatterns(['fifo', 'bram', 'fsm']).map(p => '  ' + p.name).join('\n');
         return `没找到匹配 "${input}" 的范式。已支持的范式:\n${av}\n\n用更具体的描述，如 "FIFO" / "AXI4 Stream" / "SPI Master"。`;
     }
@@ -375,8 +375,8 @@ function patternPhase(input, level, cfg) {
         '',
     ];
 
-    const variantCount = cfg === LEVEL_LIMITS.silicon ? 1 : cfg === LEVEL_LIMITS.wafer ? 3 : Object.keys(top.variants).length;
-    if (level !== 'silicon') {
+    const variantCount = LEVEL_LIMITS[level].mode === 'passive' ? 1 : LEVEL_LIMITS[level].mode === 'suggestive' ? 3 : Object.keys(top.variants).length;
+    if (LEVEL_LIMITS[level].mode !== 'passive') {
         lines.push('### 变体选择');
         const keys = Object.keys(top.variants).slice(0, variantCount);
         for (const k of keys) {
@@ -394,7 +394,7 @@ function patternPhase(input, level, cfg) {
     lines.push('```');
     lines.push('');
 
-    if (top.traps.length > 0 && level !== 'silicon') {
+    if (top.traps.length > 0 && LEVEL_LIMITS[level].mode !== 'passive') {
         lines.push('### ⚠ 陷阱');
         for (const t of top.traps) {
             lines.push(`  • ${t}`);
@@ -402,7 +402,7 @@ function patternPhase(input, level, cfg) {
         lines.push('');
     }
 
-    if (top.cross && top.cross.length > 0 && level !== 'silicon') {
+    if (top.cross && top.cross.length > 0 && LEVEL_LIMITS[level].mode !== 'passive') {
         lines.push(`### 📖 参考: ${top.cross.map(t => `lookup_ref(topic="${t}")`).join(', ')}`);
     }
 

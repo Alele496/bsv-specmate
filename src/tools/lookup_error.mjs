@@ -26,13 +26,13 @@ export async function lookupError(args) {
 
 function formatError(err, level) {
     const cfg = LEVEL_LIMITS[level];
-    if (level === 'silicon') {
+    if (LEVEL_LIMITS[level].mode === 'passive') {
         return [
             `## ${err.code} — ${err.title} (×${err.count})`,
             '',
             '> ' + (err.rules || err.cause?.substring(0, 200) || ''),
             '',
-            `💡 设置 SPECMATE_LEVEL=wafer 或 tapeout 查看更多详情`,
+            `💡 设置 SPECMATE_LEVEL=develop 或 tapeout 查看更多详情`,
         ].join('\n');
     }
 

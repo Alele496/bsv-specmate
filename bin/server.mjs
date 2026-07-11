@@ -626,7 +626,10 @@ if (TRANSPORT === 'stdio') {
   });
 
   await server.connect(transport);
-  await new Promise((resolve) => httpServer.listen(PORT, '127.0.0.1', resolve));
+  await new Promise((resolve, reject) => {
+    httpServer.on('error', reject);
+    httpServer.listen(PORT, '127.0.0.1', resolve);
+  });
   console.error(`[specmate] MCP Streamable HTTP on http://127.0.0.1:${PORT}/mcp`);
 }
 
