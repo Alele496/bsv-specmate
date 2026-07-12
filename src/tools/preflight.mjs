@@ -34,7 +34,7 @@ const COMMON_WARNINGS = [
     },
     {
         title: 'Bool 与 Bit 类型切勿混淆',
-        detail: '`Bool` 和 `Bit#(1)` 是不同的类型。控制信号如需位拼接或从 Bus 中提取，优先用 `Reg#(Bit#(1))` 而非 `Reg#(Bool)`。Bool 不能用于 `{...}` 拼接，也不能直接用 `bit[0]` 赋值。',
+        detail: '`Bool` 和 `Bit#(1)` 是不同的类型。接口方法（method）返回值用 `Bit#(1)` 不用 `Bool`——`Bool` 是软件类型，硬件接口统一用 `Bit#(1)`。控制信号如需位拼接或从 Bus 中提取，优先用 `Reg#(Bit#(1))` 而非 `Reg#(Bool)`。Bool 不能用于 `{...}` 拼接，也不能直接用 `bit[0]` 赋值。',
         ref: 'T0061',
     },
     {
