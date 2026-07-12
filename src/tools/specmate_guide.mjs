@@ -1,4 +1,4 @@
-import { extractKeywords, match } from './_matcher.mjs';
+import { extractKeywords, match, filterTrapsByMode, formatTrapsOutput } from './_matcher.mjs';
 import { searchPatterns } from './_patterns.mjs';
 import { queryError, queryAllErrors, queryTopRules, queryHotTopics, hitError, addCapture, queryRecentCaptures } from '../db/query.mjs';
 import { lookupRef } from './lookup_ref.mjs';
@@ -25,15 +25,17 @@ async function preCode(input, level, cfg) {
     const lines = [];
 
     if (m.traps.length > 0) {
-        const count = cfg.mode === 'passive' ? 1 : cfg.mode === 'suggestive' ? Math.min(4, m.traps.length) : m.traps.length;
-        lines.push(`⚠ 当前任务高频陷阱 (${count}):`);
-        for (let i = 0; i < count; i++) {
-            lines.push(`  ${i + 1}. ${m.traps[i]}`);
+        const grouped = filterTrapsByMode(m.traps, cfg.mode);
+        const totalVisible = grouped.hard.length + grouped.quality.length + grouped.style.length;
+        if (totalVisible > 0) {
+            lines.push(formatTrapsOutput(grouped, cfg.mode));
+        } else if (cfg.mode === 'passive') {
+            // passive 模式下如果所有 trap 都是 quality/style，给一条提示
+            lines.push('没有匹配到编译级硬约束。提升 SPECMATE_LEVEL 查看代码质量和风格建议。');
+            lines.push('');
+        } else {
+            lines.push('');
         }
-        if (LEVEL_LIMITS[level].mode === 'passive' && m.traps.length > 1) {
-            lines.push(`  → 还有 ${m.traps.length - 1} 条，提升 SPECMATE_LEVEL 查看更多`);
-        }
-        lines.push('');
     }
 
     if (m.errors.length > 0 && LEVEL_LIMITS[level].mode !== 'passive') {
@@ -84,6 +86,8 @@ async function preCode(input, level, cfg) {
         lines.push('💬 需要展开某个陷阱，或选方案时可以调 specmate_guide(phase="decide")。');
     }
 
+    // Defensive: with UNIVERSAL_TRAPS always injected, this branch is unlikely to trigger,
+    // but kept as a safety net in case UNIVERSAL_TRAPS is ever empty or filtered out.
     if (lines.length === 0) {
         if (LEVEL_LIMITS[level].mode === 'passive') return '没有匹配到已知陷阱。提升 SPECMATE_LEVEL 查看详细分析。';
         return `没有匹配到 "${input}" 的已知陷阱。尝试更具体的描述，或调 suggest。`;
@@ -237,12 +241,16 @@ async function continue_(input, level, cfg) {
     const lines = [];
 
     if (m.traps.length > 0) {
-        lines.push('🔮 接下来可能遇到:');
-        const count = LEVEL_LIMITS[level].mode === 'passive' ? 1 : LEVEL_LIMITS[level].mode === 'suggestive' ? Math.min(3, m.traps.length) : m.traps.length;
-        for (let i = 0; i < count; i++) {
-            lines.push(`  • ${m.traps[i]}`);
+        const grouped = filterTrapsByMode(m.traps, cfg.mode);
+        const allVisible = [...grouped.hard, ...grouped.quality, ...grouped.style];
+        if (allVisible.length > 0) {
+            lines.push('🔮 接下来可能遇到:');
+            const count = cfg.mode === 'passive' ? Math.min(1, allVisible.length) : cfg.mode === 'suggestive' ? Math.min(3, allVisible.length) : allVisible.length;
+            for (let i = 0; i < count; i++) {
+                lines.push(`  • ${allVisible[i].text}`);
+            }
+            lines.push('');
         }
-        lines.push('');
     }
 
     if (m.errors.length > 0 && LEVEL_LIMITS[level].mode !== 'passive') {
