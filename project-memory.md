@@ -45,6 +45,11 @@ specmate 是 **Kova**（领域知识引擎框架）在 BSV 领域的第一个实
 - [x] **Bool/Bit 警告加强** — `preflight.mjs` 对 interface 方法的 Bool vs Bit#(1) 做更明确区分（`e4c724c`）
 - [x] **project-memory.md 纳入版本控制** — 确认 CCB/MCP 配置已在 .gitignore 中排除（`a7e788b`）
 
+### 本次改动（未提交）— Sprint 1: preflight AST 集成
+- [x] **`src/tools/preflight.mjs`** — 新增 `filePath` 可选参数，集成 AST 扫描：P0030（函数内 for/if 块 return）、T0043（Integer 模块参数）、G0053（mkReg 动态初始化）、G0005（no_implicit_conditions）。补 summarizeRule 条目（T0043/G0053/G0005），补强 P0030 描述覆盖 function 内 for 循环 return 场景。
+- [x] **`docs/errors/T0043.md`** — 已存在，内容完整（Integer/numeric type 参数不可综合，含 Before/After 示例）
+- [x] **`src/tools/_matcher.mjs`** — 确认 synthesize/schedule/regfile 节点 errors 数组已含 T0043/G0005/G0053，UNIVERSAL_TRAPS 已含 P0005
+
 ### 推送状态
 - staging（`bsv-specmate-staging`）：**已同步**，HEAD = `a7e788b`
 - 公开（`bsv-specmate`）：**待用户确认后推送**（领先 10 个 commit）
@@ -124,12 +129,14 @@ Co-Authored-By: 台阁 <armada@bsv-agent>
 
 ### 进行中
 - [x] **提交 6 个未推送文件** — styles.md / _matcher.mjs / _matcher.test.mjs / _patterns.mjs / preflight.mjs / specmate_guide.mjs + project-memory.md → 5 个 commit 已推 staging
-- [ ] **通用陷阱层扩展** — UNIVERSAL_TRAPS 目前只有 P0030，需分析 P0005/P0012/T0051 等是否应加入
+- [x] **preflight 接入 AST (Sprint 1)** — `preflight()` 新增 `filePath` 参数，调用 `ast_query.mjs` 的 `parseFile()` 扫描 P0030/T0043/G0053/G0005 四种错误模式。目标将 bench Agent B 通过率从 45.5% 提升至 70-80%（见 P0-1 修复）
+- [x] **P0030 知识库描述补全** — summarizeRule 已覆盖 function 内 for 循环 return 场景（见 P1-1 修复）
 
 ### 计划中（短期）
-- [ ] **preflight 接入 AST** — `ast_query.mjs` 能力完备但被动使用，需让 preflight 接受文件路径 → parse → 扫描已知错误模式（见 P0-1）
+- [ ] **通用陷阱层扩展** — UNIVERSAL_TRAPS 目前只有 P0030 和 P0005，需分析 P0012/T0051 等是否应加入
 - [ ] **Agent B prompt 硬性约束** — 当前是"建议先调 specmate"，需改为"必须走 specmate 工具全部指南阶段"（见 P0-2）
-- [ ] **P0030 知识库描述补全** — 补充 function 内 for 循环 return 的错误模式（见 P1-1）
+- [ ] **db:seed 重建数据库** — 运行 `npm run db:seed` 确保 T0043 等所有错误码入库（手动执行）
+- [ ] **bench 重跑** — 用更新后的 preflight 重跑 04-priority-encoder，验证 P0030/T0043/G0053/G0005 拦截效果
 
 ### 计划中（中期）
 - [ ] **16 个知识图谱节点补 style/pattern**
@@ -139,12 +146,12 @@ Co-Authored-By: 台阁 <armada@bsv-agent>
 ## 已知问题
 
 ### P0 - 致命
-- [ ] **preflight 不做真正的代码检查** — 当前 `preflight()` 不接收文件路径，只是 dump 数据库高频错误。AST 解析器（`ast_query.mjs`）有完整的 tree-sitter 能力，但只用在 `on_error` 的事后上下文展示中。需要在 preflight 接入：parse 文件 → 遍历 AST → 扫描已知错误模式（如 function 内 for 循环有 return）
+- [x] **preflight 不做真正的代码检查** — Sprint 1 已修复：`preflight(filePath)` 接入 AST，扫描 P0030/T0043/G0053/G0005 四种模式。待 bench 验证。
 - [ ] **Agent B 不调用 specmate** — bench 实验显示：Agent B 收到 specmate 建议后，理解了概念但用自己的方式实现（如手写 findFirst 代替 findIndex），引入 specmate 不知道的 P0030 错误
 
 ### P1 - 重要
-- [ ] **P0030 知识库描述不完整** — `preflight.mjs:111` 的 P0030 summarizeRule 说的是 "Value method 用 `= expr` 或 `? :` 三元链，不能用 if-return"，但没覆盖 "function 内 for 循环中 return" 的常见错误模式
-- [ ] **通用陷阱层只含一条** — UNIVERSAL_TRAPS 目前只有 P0030，应该陆续加入其他跨领域 BSV 基础规则
+- [x] **P0030 知识库描述不完整** — Sprint 1 已修复：summarizeRule 更新为覆盖 function 内 for 循环 return 场景，AST scanner scanP0030 主动检测此模式。
+- [ ] **通用陷阱层只含两条** — UNIVERSAL_TRAPS 目前有 P0030 和 P0005，应该陆续加入其他跨领域 BSV 基础规则
 - [ ] **16 个知识图谱节点缺乏 style/pattern** — 系统架构师在议会中提出的问题
 
 ### P2 - 改善
@@ -159,7 +166,7 @@ Co-Authored-By: 台阁 <armada@bsv-agent>
 | `src/tools/_matcher.mjs` | 知识图谱（22 领域节点 + 通用陷阱） | developer |
 | `src/tools/specmate_guide.mjs` | 核心工具：pre_code / on_error / continue / decide / pattern | developer |
 | `src/tools/_patterns.mjs` | 代码范式模板（13 个） | developer |
-| `src/tools/preflight.mjs` | 编译前检查（⚠ 当前不做真正的代码检查） | developer |
+| `src/tools/preflight.mjs` | 编译前检查（✅ Sprint 1: 已接入 AST 扫描 P0030/T0043/G0053/G0005） | developer |
 | `src/tools/ast_query.mjs` | tree-sitter BSV 解析器（能力完备，被动使用） | developer |
 | `src/tools/check_style.mjs` | specmate_check 工具的后端 | developer |
 | `src/tools/lookup_ref.mjs` | 参考文档查询 | developer |
@@ -171,7 +178,7 @@ Co-Authored-By: 台阁 <armada@bsv-agent>
 
 1. **三级陷阱（hard/quality/style）**：Agent 分不清硬约束和软建议 → 选型时被 style 干扰 → 分三级，不同 mode 显示不同级
 2. **通用陷阱层（UNIVERSAL_TRAPS）**：P0030 同时在 fsm/method 节点有声明，但 encoder 任务不匹配到这两个 → Agent 漏掉 P0030 → 改为不依赖关键词匹配的通用层
-3. **preflight 不用 AST**：历史原因——preflight 最初设计为"快速预检"，只是数据库查表。现在 AST 能力完善了，该让它进 preflight
+3. **preflight 接入 AST（Sprint 1 完成）**：历史原因——preflight 最初设计为"快速预检"，只是数据库查表。Sprint 1 已将 AST 能力接入 preflight，扫描 P0030/T0043/G0053/G0005 四种高频错误模式
 4. **findIndex 用 `\== (1)` 部分应用而不是 function lambda**：bsc 2025.07 不支持 `function` 关键字匿名 lambda（P0005）
 
 ## 实验数据

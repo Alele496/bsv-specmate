@@ -10,12 +10,20 @@ const DB_PATH = getDBPath();
 const USER_ERRORS_DIR = getUserErrorsDir();
 const PKG_ERRORS_DIR = join(PKG_DOCS, 'errors');
 
-function getErrorsDir() {
-    if (existsSync(USER_ERRORS_DIR)) {
-        const files = readdirSync(USER_ERRORS_DIR).filter(f => f.endsWith('.md') && f !== 'INDEX.md');
-        if (files.length > 0) return USER_ERRORS_DIR;
-    }
-    return PKG_ERRORS_DIR;
+function collectErrorFiles() {
+    // Merge package + user error dirs; user files override package files of same name
+    const files = {};
+    const addDir = (dir) => {
+        if (!existsSync(dir)) return;
+        for (const f of readdirSync(dir)) {
+            if (f.endsWith('.md') && f !== 'INDEX.md') {
+                files[f] = join(dir, f);
+            }
+        }
+    };
+    addDir(PKG_ERRORS_DIR);
+    addDir(USER_ERRORS_DIR);
+    return Object.values(files);
 }
 
 function parseErrorFile(content) {
@@ -31,11 +39,11 @@ function parseErrorFile(content) {
     let count = 1;
 
     const firstLine = lines[0] || '';
-    const match = firstLine.match(/^#\s+(\S+)\s*[—-]\s*(.+?)\s*\(×(\d+)\)/);
+    const match = firstLine.match(/^#\s+(\S+)\s*[—-]\s*(.+?)\s*(?:\(×(\d+)\))?$/);
     if (match) {
         code = match[1].trim();
         title = match[2].trim();
-        count = parseInt(match[3], 10);
+        if (match[3]) count = parseInt(match[3], 10);
     }
 
     let section = '';
@@ -99,30 +107,26 @@ async function main() {
         db = new SQL.Database();
     }
 
-    const ERRORS_DIR = getErrorsDir();
-
     initDB(db);
 
-    if (!existsSync(ERRORS_DIR)) {
+    const errorPaths = collectErrorFiles();
+
+    if (errorPaths.length === 0) {
         console.log('No error files found in user dir or package dir.');
         db.close();
         return;
     }
 
-    const errorFiles = readdirSync(ERRORS_DIR)
-        .filter(f => f.endsWith('.md') && f !== 'INDEX.md')
-        .sort();
-
     let inserted = 0;
-    for (const file of errorFiles) {
-        const content = readFileSync(join(ERRORS_DIR, file), 'utf-8');
+    for (const filePath of errorPaths.sort()) {
+        const content = readFileSync(filePath, 'utf-8');
         const err = parseErrorFile(content);
         if (err.code) {
             insertError(db, err);
             console.log(`  + ${err.code}: ${err.title}`);
             inserted++;
         } else {
-            console.log(`  - ${file}: skipped (parse failed)`);
+            console.log(`  - ${filePath}: skipped (parse failed)`);
         }
     }
 
@@ -130,7 +134,7 @@ async function main() {
     const buf = Buffer.from(data);
     const { writeFileSync } = await import('fs');
     writeFileSync(DB_PATH, buf);
-    console.log(`\n${inserted}/${errorFiles.length} errors written to ${DB_PATH}`);
+    console.log(`\n${inserted}/${errorPaths.length} errors written to ${DB_PATH}`);
     db.close();
 }
 

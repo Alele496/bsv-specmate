@@ -6,6 +6,7 @@
 // Universal traps — always shown regardless of domain keyword match
 const UNIVERSAL_TRAPS = [
     { text: 'function 内 return 只能在末尾 — 不可在 for/if 块中间 return（P0030）。需要提前退出的场景用 flag 变量 + 末尾 return', severity: 'hard' },
+    { text: 'function 是 Verilog-2001 保留字 — BSV 模块内不要用 function 关键字定义函数，用 method 替代或放在单独包中（P0005）', severity: 'hard' },
 ];
 
 const GRAPH = {
@@ -174,7 +175,7 @@ const GRAPH = {
         ],
     },
     schedule: {
-        errors: ['G0004', 'G0010', 'G0030', 'G0040', 'G0054'],
+        errors: ['G0004', 'G0010', 'G0030', 'G0040', 'G0054', 'G0005'],
         refs: ['schedule'],
         traps: [
             { text: 'descending_urgency 不循环', severity: 'hard' },
@@ -182,7 +183,7 @@ const GRAPH = {
         ],
     },
     regfile: {
-        errors: ['G0002'],
+        errors: ['G0002', 'G0053'],
         refs: ['stdlib'],
         pattern: 'regfile',
         traps: [
@@ -266,7 +267,7 @@ const GRAPH = {
         ],
     },
     synthesize: {
-        errors: ['T0030', 'P0085'],
+        errors: ['T0030', 'P0085', 'T0043'],
         refs: ['module', 'attributes'],
         traps: [
             { text: '多态模块不能直接 synthesize — 用具体类型包裹', severity: 'hard' },
