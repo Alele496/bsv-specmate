@@ -45,17 +45,24 @@ endrule
 - 避免冗余中间寄存器——仅保留必要的流水寄存器
 - 利用 `Integer` 做编译期 for 循环展开
 
-**示例**（来自 BSV 教程 200 行 RISC-V CPU）：
+**示例**（来自 specmate 实验 Agent B）：
 
 ```bsv
+import Vector::*;
+
+// 优先编码器 — 找第一个为 1 的位，findIndex 一行搞定
+function Bit#(TLog#(n)) priorityEncode(Bit#(n) x);
+    Vector#(n, Bit#(1)) v = unpack(pack(x));
+    Maybe#(UInt#(TLog#(n))) m = findIndex(\== (1), v);
+    return case (m) matches
+        tagged Valid .i: pack(i);
+        tagged Invalid: 0;
+    endcase;
+endfunction
+
+// Vector + 高阶函数做并行计算
 Vector#(4, Bit#(8)) v = genWith(fromInteger);
 Bit#(32) sum = fold(\+ , 0, values);
-
-function Bit#(5) priorityEncode(Bit#(32) x);
-    for (Integer i = 0; i < 32; i = i + 1)
-        if (x[i] == 1) return fromInteger(i);
-    return 0;
-endfunction
 ```
 
 **适合场景**：个人项目、原型验证、追求代码简洁和表达力。
@@ -101,7 +108,7 @@ endmodule
 **核心规则**：
 - 纯组合接口能省则省（`method val = reg` 而非 `method val; return reg; endmethod`）
 - FIFO 用默认深度 `mkFIFOF` 而非 `mkSizedFIFOF`
-- 控制信号直接 `Bool` 而非 `Bit#(1)`——简单场景下编译器能处理
+- 内部控制信号可用 `Bool`，接口 method 返回值统一用 `Bit#(1)`
 - 不写 `descending_urgency`，让编译器推断（除非编译报 warning）
 - 最小化 import 数量——只导入实际用到的包
 
