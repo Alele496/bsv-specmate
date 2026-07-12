@@ -1,6 +1,6 @@
 # specmate 项目记忆
 
-> 最后更新：2026-07-11
+> 最后更新：2026-07-12
 > 维护者：specmate 负责人 + ops
 
 ## 项目背景
@@ -36,22 +36,18 @@ specmate 是 **Kova**（领域知识引擎框架）在 BSV 领域的第一个实
 - **数据库**：SQLite，含 30+ 错误码（P/T/G/BSV 系列）
 - **最近分支**：master，HEAD `cf11c7a`（MCP 通知推送替代 WebSocket）
 
-## 最近改动（2026-07-11）
+## 最近改动（2026-07-12）
 
-### 已完成
-- [x] **traps 分级** — 知识图谱 22 个节点的陷阱全部分为 hard/quality/style 三级
-- [x] **通用陷阱层** — `_matcher.mjs` 新增 `UNIVERSAL_TRAPS`，match() 总是注入。当前只有 P0030
-- [x] **encoder 范式修复** — `_patterns.mjs` 新增 encoder 模板（findIndex 骨架）
-- [x] **encoder 陷阱修复** — 移除误导性的 foldl 手工遍历建议，改为 findIndex 推荐
-- [x] **styles.md 修复** — Style 2 和 Style 4 的不良示范已替换
+### 已提交并推送到 staging（5 个 commit）
+- [x] **styles.md 修复** — Style 2 和 Style 4 的不良示范已替换（`ca593ab`）
+- [x] **traps 分级 + 通用陷阱层** — `_matcher.mjs` 22 节点分 hard/quality/style 三级 + `UNIVERSAL_TRAPS`（`c8e3f3f`）
+- [x] **encoder 范式+陷阱修复** — `_patterns.mjs` 新增 encoder 模板（findIndex 骨架），移除误导性 foldl 建议（`d9d6cee`）
+- [x] **Bool/Bit 警告加强** — `preflight.mjs` 对 interface 方法的 Bool vs Bit#(1) 做更明确区分（`e4c724c`）
+- [x] **project-memory.md 纳入版本控制** — 确认 CCB/MCP 配置已在 .gitignore 中排除（`a7e788b`）
 
-### 有修改未提交（6 个文件）
-- `docs/reference/styles.md` — 风格示例替换
-- `src/tools/_matcher.mjs` — traps 分级 + 通用陷阱层
-- `src/tools/_matcher.test.mjs` — 测试更新
-- `src/tools/_patterns.mjs` — encoder 范式
-- `src/tools/preflight.mjs` — Bool/Bit 警告加强
-- `src/tools/specmate_guide.mjs` — severity-aware 陷阱过滤
+### 推送状态
+- staging（`bsv-specmate-staging`）：**已同步**，HEAD = `a7e788b`
+- 公开（`bsv-specmate`）：**待用户确认后推送**（领先 10 个 commit）
 
 ## 仓库与发布
 
@@ -127,7 +123,7 @@ Co-Authored-By: 台阁 <armada@bsv-agent>
 ## 当前任务
 
 ### 进行中
-- [ ] **提交 6 个未推送文件** — styles.md / _matcher.mjs / _matcher.test.mjs / _patterns.mjs / preflight.mjs / specmate_guide.mjs → reviewer 审查 → ops 推 staging
+- [x] **提交 6 个未推送文件** — styles.md / _matcher.mjs / _matcher.test.mjs / _patterns.mjs / preflight.mjs / specmate_guide.mjs + project-memory.md → 5 个 commit 已推 staging
 - [ ] **通用陷阱层扩展** — UNIVERSAL_TRAPS 目前只有 P0030，需分析 P0005/P0012/T0051 等是否应加入
 
 ### 计划中（短期）
