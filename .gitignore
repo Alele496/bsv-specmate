@@ -1,10 +1,12 @@
 node_modules/
+.env
 *.db-journal
 data/knowledge.db-journal
 docs/MAINTAINER.md
 
 # CCB / Claude Code config (不应该进项目仓库)
 CLAUDE.md
+.mcp.json
 .claude/
 dispatch.js
 ship.js
