@@ -1,16 +1,17 @@
-import { extractKeywords, match, filterTrapsByMode, formatTrapsOutput } from './_matcher.mjs';
+import { extractKeywords, match, filterTrapsByMode, filterTrapsByPhase, formatTrapsOutput, inferPhase } from './_matcher.mjs';
 import { searchPatterns } from './_patterns.mjs';
 import { queryError, queryAllErrors, queryTopRules, queryHotTopics, hitError, addCapture, queryRecentCaptures } from '../db/query.mjs';
 import { lookupRef } from './lookup_ref.mjs';
 import { getLevel, LEVEL_LIMITS } from '../config.mjs';
 import { parseFile, queryNodeAt } from './ast_query.mjs';
+import { preflight, scanAST } from './preflight.mjs';
 
-export async function guide({ phase, input }) {
+export async function guide({ phase, input, file }) {
     const level = getLevel();
     const cfg = LEVEL_LIMITS[level];
 
     switch (phase) {
-        case 'pre_code': return preCode(input, level, cfg);
+        case 'pre_code': return preCode(input, level, cfg, file);
         case 'on_error': return onError(input, level, cfg);
         case 'continue': return continue_(input, level, cfg);
         case 'decide': return decide(input, level, cfg);
@@ -19,15 +20,32 @@ export async function guide({ phase, input }) {
     }
 }
 
-async function preCode(input, level, cfg) {
+async function preCode(input, level, cfg, file = null) {
     const keywords = extractKeywords(input);
     const m = match(keywords);
     const lines = [];
 
+    // Pillar 2: infer the Agent's design phase and filter traps accordingly
+    const agentPhase = inferPhase(input);
+
+    // Pillar 1a: run AST preflight if a file path is provided
+    let preflightResult = null;
+    if (file && cfg.mode !== 'passive') {
+        try {
+            preflightResult = await preflight(file);
+        } catch (_) { /* preflight is non-critical */ }
+    }
+
     if (m.traps.length > 0) {
-        const grouped = filterTrapsByMode(m.traps, cfg.mode);
+        // Use phase-aware filtering (pillar 2)
+        const grouped = filterTrapsByPhase(m.traps, cfg.mode, agentPhase);
         const totalVisible = grouped.hard.length + grouped.quality.length + grouped.style.length;
+
         if (totalVisible > 0) {
+            // Show phase indicator so Agent knows what's being shown
+            const phaseLabel = agentPhase === 'design' ? '架构阶段' : '编码阶段';
+            lines.push(`> 🎯 检测到你在 **${phaseLabel}** — 只展示该阶段相关的陷阱。`);
+            lines.push('');
             lines.push(formatTrapsOutput(grouped, cfg.mode));
         } else if (cfg.mode === 'passive') {
             // passive 模式下如果所有 trap 都是 quality/style，给一条提示
@@ -36,6 +54,9 @@ async function preCode(input, level, cfg) {
         } else {
             lines.push('');
         }
+    } else {
+        // No traps matched at all
+        lines.push('');
     }
 
     if (m.errors.length > 0 && LEVEL_LIMITS[level].mode !== 'passive') {
@@ -82,8 +103,60 @@ async function preCode(input, level, cfg) {
         }
     }
 
-    if (cfg.collabHint) {
-        lines.push('💬 需要展开某个陷阱，或选方案时可以调 specmate_guide(phase="decide")。');
+    // ── Pillar 1a: preflight AST scan results embedded in response ──
+    // This is the key change: instead of just hinting "you should check your code",
+    // we actually run the check and show results. Agent always sees the response.
+    if (file && preflightResult && cfg.mode !== 'passive') {
+        // Extract only the AST scan section (the "代码静态扫描" part) from preflight output
+        const astSectionMatch = preflightResult.match(/### 🔍 代码静态扫描\n\n([\s\S]*?)(?=\n## |\n---|\n$)/);
+        if (astSectionMatch) {
+            const astLines = astSectionMatch[1].trim();
+            if (astLines && !astLines.includes('未发现')) {
+                lines.push('---');
+                lines.push('### 🔍 预编译扫描结果 (specmate preflight)');
+                lines.push('');
+                lines.push(astLines);
+                lines.push('');
+                lines.push('> 这些是 specmate 用 AST 直接扫描你的 .bsv 文件发现的——**不需要跑 bsc**。');
+                lines.push('> 修完这些问题再编译，首编通过率大幅提升。');
+                lines.push('');
+            }
+        }
+    }
+
+    // ── Pillar 1a (continued): file path hint when no file provided ──
+    if (!file && cfg.mode !== 'passive') {
+        lines.push('---');
+        lines.push('### 🔍 建议：传入文件路径以启用预编译扫描');
+        lines.push('调用 `specmate_guide(phase="pre_code", input="...", file="路径.bsv")` 传入你的 .bsv 文件——');
+        lines.push('specmate 会用 AST 直接扫描 P0030/P0005/T0043/G0053/G0005 五种高频错误，**不用等 bsc 编译**。');
+        lines.push('');
+    }
+
+    // ── Pillar 3: structured NEXT STEPS — proactive guidance embedded in response ──
+    const nextSteps = [];
+
+    // Always suggest decide for common design choices
+    nextSteps.push('`specmate_guide(phase="decide", input="选项A vs 选项B")` — 不确定选哪个模块/方案时');
+
+    // Suggest check when file available
+    if (file) {
+        nextSteps.push('`specmate_check(files=["' + file + '"])` — 运行更多静态检查（位宽溢出、Bool误用等）');
+    }
+
+    // Suggest analyze for schedule/rule-related tasks
+    const hasScheduleMatch = keywords.some(k => ['schedule', 'rule', 'method', 'regfile', 'arbiter'].includes(k));
+    if (hasScheduleMatch) {
+        nextSteps.push('`specmate_analyze(files=["..."], question="调度冲突分析")` — 写完 rule 后做跨 rule 冲突检查');
+    }
+
+    if (nextSteps.length > 0 && cfg.mode !== 'passive') {
+        lines.push('---');
+        lines.push('### 📋 接下来可以做什么');
+        for (const step of nextSteps) {
+            lines.push(`- ${step}`);
+        }
+        lines.push('');
     }
 
     // Defensive: with UNIVERSAL_TRAPS always injected, this branch is unlikely to trigger,
@@ -277,84 +350,175 @@ async function continue_(input, level, cfg) {
     return lines.join('\n');
 }
 
+// ── Pillar 1b: GRAPH-driven design decision engine ──
+// Instead of 5 hardcoded if-else, we use a decision map that covers the most
+// common BSV architectural choices. Each entry maps keywords → decision output.
+// This is NOT a full inference engine — it's a lookup table backed by the
+// knowledge graph nodes.
+// Moved to module scope so both decide() and scan() can access it.
+
+const DECISIONS = [
+        {
+            keywords: ['fifo', 'bypass'],
+            title: 'mkFIFO vs mkBypassFIFO',
+            body: [
+                '| | mkFIFO | mkBypassFIFO |',
+                '|------|--------|-------------|',
+                '| 同周期 enq/deq | 不可 | 可 (Bypass) |',
+                '| G0010 风险 | 低 (CF) | 高 (需 extra scheduling) |',
+                '| 适用场景 | 无 bypass 需求 | 需要组合逻辑通路 |',
+                '',
+                '> **建议**: 除非明确需要 bypass，否则用 mkFIFO。',
+                '> 如果用 BypassFIFO，检查 enq/deq 是否跨 rule — G0010 高频触发。',
+            ],
+        },
+        {
+            keywords: ['fifo', 'fifof', 'lfi', 'pipeline', 'bram', 'sized'],
+            title: 'FIFO 变体选择',
+            body: [
+                '| 类型 | 容量 | 用途 |',
+                '|------|------|------|',
+                '| mkFIFO | 2 | 基本点对点 |',
+                '| mkFIFOF | 2 | 有 notFull/notEmpty 信号 |',
+                '| mkBypassFIFO | 2 | 组合 bypass 路径 |',
+                '| mkLFIFO | N | 大容量 FIFO |',
+                '| mkBRAMFIFO | N | BRAM 上实现的大容量 |',
+                '| mkSizedFIFO | N | 带 deq/enq 计数的 |',
+                '| mkPipelineFIFO | N | 流水线 FIFO |',
+                '',
+                '📖 lookup_ref(topic="stdlib") 查看每种 FIFO 的接口定义。',
+            ],
+        },
+        {
+            keywords: ['bram', 'core', 'bramcore'],
+            title: 'BRAM vs BRAMCore',
+            body: [
+                '| | BRAM | BRAMCore |',
+                '|------|-------|----------|',
+                '| 读写端口 | 单端口 | 双端口 (可配置) |',
+                '| 接口 | 简单 Put/Get | 原生 BRAM signal |',
+                '| G0004 风险 | 中 | 低 (显式 port 控制) |',
+                '',
+                '> **建议**: 需要同时读写用 BRAMCore，简单 FIFO 缓冲用 BRAM。',
+                '> BRAMCore 需要手动管理 enable 和地址。',
+            ],
+        },
+        {
+            keywords: ['reg', 'config'],
+            title: 'Reg vs ConfigReg',
+            body: [
+                '| | Reg | ConfigReg |',
+                '|------|-----|-----------|',
+                '| 写入冲突检查 | G0004 显式报错 | ConfigReg 优先上次写入 |',
+                '| 调度参与 | 是 | 否 (schedule CF) |',
+                '',
+                '> **建议**: 配置寄存器用 ConfigReg（避免调度告警），计算用 Reg。',
+            ],
+        },
+        {
+            keywords: ['wire', 'reg'],
+            title: 'Wire vs Reg',
+            body: [
+                '| | Wire | Reg |',
+                '|------|------|-----|',
+                '| 值保持 | 每个 cycle 刷新 | 保持到下次写入 |',
+                '| 时机 | 同 cycle 可读 | 下一 cycle 可见 |',
+                '| 用途 | 组合逻辑连接 | 时序状态 |',
+                '',
+                '> **建议**: 默认用 Reg。Wire 用于组合逻辑传递，且需确保每个 cycle 都有值写入。',
+            ],
+        },
+        {
+            keywords: ['regfile', 'full'],
+            title: 'mkRegFile vs mkRegFileFull',
+            body: [
+                '| | mkRegFile | mkRegFileFull |',
+                '|------|-----------|---------------|',
+                '| 读端口数 | 有限（最多 5） | 理论不限 |',
+                '| 实现 | 分布式寄存器 | 可能是 BRAM |',
+                '| 初始化 | 部分支持 | 支持 load 初始化文件 |',
+                '',
+                '> **建议**: 寄存器数量少（<256）用 mkRegFile，大规模存储用 mkRegFileFull。',
+                '> 注意 G0002: RegFile 最多 5 读端口限制。',
+            ],
+        },
+        {
+            keywords: ['fsm', 'stmt', 'statemachine', 'state machine'],
+            title: 'StmtFSM vs 手写 state register',
+            body: [
+                '| | StmtFSM | 手写 state register |',
+                '|------|---------|-------------------|',
+                '| 可读性 | 高（代码即状态图） | 低（需追踪 state 转换） |',
+                '| 调度控制 | 隐式（需 par/seq） | 显式（完全控制） |',
+                '| G0004 风险 | 中（隐式并行写） | 低（显式控制） |',
+                '| 适用场景 | 简单协议、快速原型 | 复杂调度、高性能 |',
+                '',
+                '> **建议**: 简单协议用 StmtFSM（代码清晰），复杂调度用手写 state register。',
+                '> StmtFSM 内避免同一 cycle 写同一 Reg — 即使在不同 branch 中。',
+            ],
+        },
+        {
+            keywords: ['clock', 'sync', 'cros', 'domain'],
+            title: '跨时钟域方案',
+            body: [
+                '| | mkSyncFIFO | mkSyncBit05 | mkSyncBRAMFIFO |',
+                '|------|------------|-------------|----------------|',
+                '| 数据量 | 小数据流 | 单 bit 控制信号 | 大数据量 |',
+                '| 深度 | 2 | N/A | N |',
+                '| 用途 | 跨域数据传递 | 复位/使能同步 | 跨域 FIFO |',
+                '',
+                '> **建议**: 数据用 mkSyncFIFO，控制信号用 mkSyncBit05，大量数据用 mkSyncBRAMFIFO。',
+                '> 直接用普通寄存器跨时钟域会在综合时产生不确定行为。',
+            ],
+        },
+        {
+            keywords: ['bool', 'bit'],
+            title: 'Bool vs Bit#(1) 选型',
+            body: [
+                '| | Bool | Bit#(1) |',
+                '|------|------|---------|',
+                '| 操作符 | `!` `&&` `||` | `~` `&` `|` |',
+                '| 位拼接 | 不可 | 可 `{...}` |',
+                '| 接口方法 | 不推荐 | **推荐** |',
+                '| 适用场景 | 纯逻辑判断 | 硬件接口/控制信号 |',
+                '',
+                '> **建议**: 接口 method 返回值用 Bit#(1)（统一硬件接口），内部 done/valid 等纯逻辑信号可用 Bool。',
+                '> 控制信号如需位拼接或从 Bus 中提取，必须用 Bit#(1)。',
+            ],
+        },
+        {
+            keywords: ['pipeline', 'stage', '级', '流水'],
+            title: '流水线级间数据传递方案',
+            body: [
+                '| | FIFO | Wire + Reg | mkPipelineFIFO |',
+                '|------|------|-----------|----------------|',
+                '| 反压 | 自动 | 需手写 handshake | 自动 |',
+                '| 延迟 | 1 cycle | 0 cycle（组合）+ 1 cycle | 可配置 |',
+                '| G0010 风险 | 低 | 高 | 低 |',
+                '',
+                '> **建议**: 级联模块间用 FIFO 传递，不要用 Wire + handshake — 手写容易丢数据。',
+                '> 如果必须零延迟通路，用 Wire 但确保每个 cycle 都有值写入 + 下游有 valid 信号校验。',
+            ],
+        },
+];
+
 async function decide(input, level, cfg) {
     const lower = input.toLowerCase();
 
-    if (lower.includes('fifo') && lower.includes('bypass')) {
-        return [
-            '### mkFIFO vs mkBypassFIFO',
-            '',
-            '| | mkFIFO | mkBypassFIFO |',
-            '|------|--------|-------------|',
-            '| 同周期 enq/deq | ❌ 不可 | ✅ 可 (Bypass) |',
-            '| G0010 风险 | 低 (CF) | 高 (需 extra scheduling) |',
-            '| 适用场景 | 无 bypass 需求 | 需要组合逻辑通路 |',
-            '',
-            '> **建议**: 除非明确需要 bypass，否则用 mkFIFO。',
-            '> 如果用 BypassFIFO，检查 enq/deq 是否跨 rule — G0010 高频触发。',
-        ].join('\n');
+    // First try the expanded decision map (pillar 1b)
+    for (const decision of DECISIONS) {
+        // All keywords must be present
+        const allMatch = decision.keywords.every(kw => lower.includes(kw));
+        if (allMatch) {
+            return [
+                `### ${decision.title}`,
+                '',
+                ...decision.body,
+            ].join('\n');
+        }
     }
 
-    if (lower.includes('bram') && (lower.includes('core') || lower.includes('bramcore'))) {
-        return [
-            '### BRAM vs BRAMCore',
-            '',
-            '| | BRAM | BRAMCore |',
-            '|------|-------|----------|',
-            '| 读写端口 | 单端口 | 双端口 (可配置) |',
-            '| 接口 | 简单 Put/Get | 原生 BRAM signal |',
-            '| G0004 风险 | 中 | 低 (显式 port 控制) |',
-            '',
-            '> **建议**: 需要同时读写用 BRAMCore，简单 FIFO 缓冲用 BRAM。',
-            '> BRAMCore 需要手动管理 enable 和地址。',
-        ].join('\n');
-    }
-
-    if (lower.includes('reg') && lower.includes('config')) {
-        return [
-            '### Reg vs ConfigReg',
-            '',
-            '| | Reg | ConfigReg |',
-            '|------|-----|-----------|',
-            '| 写入冲突检查 | G0004 显式报错 | ConfigReg 优先上次写入 |',
-            '| 调度参与 | 是 | 否 (schedule CF) |',
-            '',
-            '> **建议**: 配置寄存器用 ConfigReg（避免调度告警），计算用 Reg。',
-        ].join('\n');
-    }
-
-    if (lower.includes('wire') && lower.includes('reg')) {
-        return [
-            '### Wire vs Reg',
-            '',
-            '| | Wire | Reg |',
-            '|------|------|-----|',
-            '| 值保持 | 每个 cycle 刷新 | 保持到下次写入 |',
-            '| 时机 | 同 cycle 可读 | 下一 cycle 可见 |',
-            '| 用途 | 组合逻辑连接 | 时序状态 |',
-            '',
-            '> **建议**: 默认用 Reg。Wire 用于组合逻辑传递，且需确保每个 cycle 都有值写入。',
-        ].join('\n');
-    }
-
-    if (lower.includes('fifo') || lower.includes('fifof')) {
-        return [
-            '### FIFO 变体选择',
-            '',
-            '| 类型 | 容量 | 用途 |',
-            '|------|------|------|',
-            '| mkFIFO | 2 | 基本点对点 |',
-            '| mkFIFOF | 2 | 有 notFull/notEmpty 信号 |',
-            '| mkBypassFIFO | 2 | 组合 bypass 路径 |',
-            '| mkLFIFO | N | 大容量 FIFO |',
-            '| mkBRAMFIFO | N | BRAM 上实现的大容量 |',
-            '| mkSizedFIFO | N | 带 deq/enq 计数的 |',
-            '| mkPipelineFIFO | N | 流水线 FIFO |',
-            '',
-            `📖 lookup_ref(topic="stdlib") 查看每种 FIFO 的接口定义。`,
-        ].join('\n');
-    }
-
+    // Fallback to keyword matching from GRAPH — show relevant reference topics
     const keywords = extractKeywords(input);
     const m = match(keywords);
 
@@ -412,6 +576,191 @@ function patternPhase(input, level, cfg) {
 
     if (top.cross && top.cross.length > 0 && LEVEL_LIMITS[level].mode !== 'passive') {
         lines.push(`### 📖 参考: ${top.cross.map(t => `lookup_ref(topic="${t}")`).join(', ')}`);
+    }
+
+    return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1: Unified scan() — replaces the need for Agent to call 5 phases
+// Internally routes: trap matching → DECISIONS check → preflight → NEXT STEPS
+// ---------------------------------------------------------------------------
+
+/**
+ * Check if the task description matches any DECISIONS entry.
+ * Returns a formatted string or null if no match.
+ */
+function checkDecisions(input, cfg) {
+    if (cfg && cfg.mode === 'passive') return null;
+    const lower = input.toLowerCase();
+
+    for (const decision of DECISIONS) {
+        const allMatch = decision.keywords.every(kw => lower.includes(kw));
+        if (allMatch) {
+            return [
+                `**${decision.title}**`,
+                '',
+                ...decision.body,
+            ].join('\n');
+        }
+    }
+    return null;
+}
+
+/**
+ * Unified scan — the main entry point for CLI/MCP.
+ * Replaces the old `pre_code` → manually call `decide` → manually call `preflight` workflow
+ * with a single call that does everything automatically.
+ *
+ * @param {string} taskDescription — what the Agent is about to code
+ * @param {string|null} filePath — optional .bsv file for AST preflight scan
+ * @returns {string} structured text output (Agent sees via CLI stdout or MCP response)
+ */
+export async function scan(taskDescription, filePath = null) {
+    const level = getLevel();
+    const cfg = LEVEL_LIMITS[level];
+    const keywords = extractKeywords(taskDescription);
+    const m = match(keywords);
+    const lines = [];
+
+    // Phase inference (Pillar 2)
+    const agentPhase = inferPhase(taskDescription);
+
+    // ── SECTION 1: Traps (phase-aware, from GRAPH + UNIVERSAL_TRAPS) ──
+    if (m.traps.length > 0) {
+        const grouped = filterTrapsByPhase(m.traps, cfg.mode, agentPhase);
+        const totalVisible = grouped.hard.length + grouped.quality.length + grouped.style.length;
+
+        if (totalVisible > 0) {
+            const phaseLabel = agentPhase === 'design' ? '架构阶段' : '编码阶段';
+            lines.push(`> 🎯 检测到你在 **${phaseLabel}** — 只展示该阶段相关的陷阱。`);
+            lines.push('');
+            lines.push(formatTrapsOutput(grouped, cfg.mode));
+        } else if (cfg.mode === 'passive') {
+            lines.push('没有匹配到编译级硬约束。提升 SPECMATE_LEVEL 查看代码质量和风格建议。');
+            lines.push('');
+        }
+    }
+
+    // ── SECTION 2: DECISIONS (auto-check) — Task 4 ──
+    const decisionResult = checkDecisions(taskDescription, cfg);
+    if (decisionResult) {
+        lines.push('---');
+        lines.push('### 📐 设计决策建议');
+        lines.push('');
+        lines.push(decisionResult);
+        lines.push('');
+    }
+
+    // ── SECTION 3: Error memory (from database) ──
+    if (m.errors.length > 0 && cfg.mode !== 'passive') {
+        const topRules = await queryTopRules(10);
+        const relevant = topRules.filter(r => m.errors.includes(r.code));
+        if (relevant.length > 0) {
+            lines.push('📊 相关编码记忆:');
+            for (const r of relevant.slice(0, cfg.errors)) {
+                lines.push(`  ${r.code} — ${r.title} (×${r.count})`);
+            }
+            lines.push('');
+        }
+    }
+
+    if (m.refs.length > 0 && cfg.mode !== 'passive') {
+        lines.push(`📖 参考: ${m.refs.map(r => `lookup_ref(topic="${r}")`).join(', ')}`);
+        lines.push('');
+    }
+
+    if (m.styles.length > 0 && cfg.styleHint) {
+        lines.push(`🎨 推荐风格: ${m.styles.join(', ')}`);
+        lines.push('');
+    }
+
+    // ── SECTION 4: Preflight AST scan (auto-capture issues) — Task 3 ──
+    if (filePath && cfg.mode !== 'passive') {
+        try {
+            const parsed = parseFile(filePath);
+            if (parsed) {
+                const astIssues = scanAST(parsed);
+
+                if (astIssues.length > 0) {
+                    lines.push('---');
+                    lines.push('### 🔍 预编译扫描结果 (specmate preflight)');
+                    lines.push('');
+                    for (const issue of astIssues) {
+                        if (issue.line > 0) {
+                            lines.push(`- **${issue.code}** (行${issue.line}): ${issue.detail}`);
+                        } else {
+                            lines.push(`- **${issue.code}**: ${issue.detail}`);
+                        }
+                    }
+                    lines.push('');
+                    lines.push('> 这些是 specmate 用 AST 直接扫描你的 .bsv 文件发现的——**不需要跑 bsc**。');
+                    lines.push('> 修完这些问题再编译，首编通过率大幅提升。');
+                    lines.push('');
+
+                    // Task 3: auto-capture preflight issues — Agent doesn't need to know
+                    for (const issue of astIssues) {
+                        addCapture({
+                            code: issue.code,
+                            bsc_output: `preflight: ${issue.title} — ${issue.detail}`,
+                            files: filePath,
+                        }).catch(() => {});
+                    }
+                } else {
+                    lines.push('---');
+                    lines.push('### 🔍 预编译扫描结果');
+                    lines.push('');
+                    lines.push('未发现 P0030/P0005/T0043/G0053/G0005 模式。');
+                    lines.push('');
+                }
+            }
+        } catch (_) { /* preflight is non-critical */ }
+    }
+
+    // ── SECTION 5: Project memory (recent captures) ──
+    if (cfg.mode !== 'passive') {
+        const recentCaps = await queryRecentCaptures(5);
+        if (recentCaps.length > 0) {
+            lines.push('📝 本项目近期捕获的错误:');
+            for (const c of recentCaps) {
+                const icon = c.status === 'resolved' ? '✅' : '⏳';
+                const preview = (c.bsc_output || '').replace(/\n/g, ' ').substring(0, 80);
+                lines.push(`  ${icon} ${c.code} — ${preview}`);
+            }
+            lines.push('');
+        }
+    }
+
+    // ── SECTION 6: NEXT STEPS (Pillar 3) ──
+    const nextSteps = [];
+
+    // Always suggest decide for common design choices
+    if (!decisionResult) {
+        nextSteps.push('`specmate scan "选项A vs 选项B"` — 不确定选哪个方案时，用 scan 会自动给出设计建议');
+    }
+
+    if (filePath) {
+        nextSteps.push('`specmate check "' + filePath + '"` — 运行更多静态检查（位宽溢出、Bool误用等）');
+    }
+
+    const hasScheduleMatch = keywords.some(k => ['schedule', 'rule', 'method', 'regfile', 'arbiter'].includes(k));
+    if (hasScheduleMatch) {
+        nextSteps.push('`specmate_analyze(files=["..."], question="调度冲突分析")` — 写完 rule 后做跨 rule 冲突检查');
+    }
+
+    if (nextSteps.length > 0 && cfg.mode !== 'passive') {
+        lines.push('---');
+        lines.push('### 📋 接下来可以做什么');
+        for (const step of nextSteps) {
+            lines.push(`- ${step}`);
+        }
+        lines.push('');
+    }
+
+    // Safety net
+    if (lines.length === 0) {
+        if (cfg.mode === 'passive') return '没有匹配到已知陷阱。提升 SPECMATE_LEVEL 查看详细分析。';
+        return `没有匹配到 "${taskDescription}" 的已知陷阱。尝试更具体的描述。`;
     }
 
     return lines.join('\n');

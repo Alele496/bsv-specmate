@@ -401,6 +401,10 @@ export function getPattern(id) {
     return PATTERNS[id] || null;
 }
 
+export function getAllPatterns() {
+    return Object.entries(PATTERNS).map(([id, p]) => ({ ...p, id }));
+}
+
 function countMatches(inputKeywords, patternKeywords) {
     let score = 0;
     for (const ik of inputKeywords) {

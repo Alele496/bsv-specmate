@@ -86,12 +86,6 @@ export const LEVEL_LIMITS = {
         crossRef: false,
         styleHint: false,
         collabHint: false,
-        // 推送：全关 — Agent 问才答
-        pushPreCode: false,
-        pushCheckStyle: false,
-        pushOnError: false,
-        pushDiff: false,
-        pushAnalyze: false,
     },
     // develop — 开发模式：写新模块，编码前提醒陷阱（默认）
     develop: {
@@ -103,12 +97,6 @@ export const LEVEL_LIMITS = {
         crossRef: true,
         styleHint: false,
         collabHint: false,
-        // 推送：编码前推陷阱
-        pushPreCode: true,
-        pushCheckStyle: false,
-        pushOnError: false,
-        pushDiff: false,
-        pushAnalyze: false,
     },
     // tapeout — 流片模式：要交出去了，全量检查
     tapeout: {
@@ -121,11 +109,5 @@ export const LEVEL_LIMITS = {
         styleHint: true,
         collabHint: true,
         scanSimilar: true,
-        // 推送：全开 — 全程守护
-        pushPreCode: true,
-        pushCheckStyle: true,
-        pushOnError: true,
-        pushDiff: true,
-        pushAnalyze: true,
     },
 };

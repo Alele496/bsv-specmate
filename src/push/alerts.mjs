@@ -1,8 +1,20 @@
+/* @deprecated — Phase 1 (2026-07-12)
+ * SPP (Specmate Push Protocol) is deprecated. Information is now delivered
+ * through CLI output and MCP response text — channels the Agent always sees.
+ * MCP notification push (notifications/specmate/*) depended on client support
+ * which was unreliable (P0-3: safety classifier blocking HTTP/MCP).
+ *
+ * The push flag fields (pushPreCode, pushCheckStyle, etc.) have been removed
+ * from config.mjs LEVEL_LIMITS. shouldPush() always returns falsy.
+ * Functions are kept as no-op shells for backward compatibility.
+ */
+
 // Alert generation — transforms tool results into push notifications.
 // Each function mirrors a specmate tool and extracts push-worthy signals.
 
 import { sendAlert, sendMemory, sendDiff } from '../notify.mjs'
 import { getLevel, LEVEL_LIMITS } from '../config.mjs'
+import { inferPhase } from '../tools/_matcher.mjs'
 
 function shouldPush(flag) {
   const cfg = LEVEL_LIMITS[getLevel()]
@@ -11,11 +23,22 @@ function shouldPush(flag) {
 
 /**
  * After specmate_guide(pre_code) — push design-level traps as alerts.
+ *
+ * Pillar 2: phase-aware filtering.
+ * Only pushes traps whose `phase` matches the inferred Agent stage.
+ * This prevents "Bit#(1) 不用 Bool" from interrupting architecture design.
  */
 export function onPreCode(traps, input) {
   if (!shouldPush('pushPreCode')) return
   if (!traps || traps.length === 0) return
+
+  const agentPhase = inferPhase(input);
+
   for (const t of traps) {
+    // Phase gate: only push if trap phase matches Agent's current phase
+    // Traps without a phase (legacy) or with phase='both' pass through
+    if (t.phase && t.phase !== agentPhase && t.phase !== 'both') continue;
+
     sendAlert({
       level: t.level || 'warn',
       code: t.code || 'TRAP',

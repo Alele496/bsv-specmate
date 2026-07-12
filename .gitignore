@@ -20,3 +20,4 @@ settings.local.json
 .commit-msg.txt
 *.lock
 VISION.md
+project-memory.md

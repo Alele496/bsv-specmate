@@ -7,8 +7,8 @@ import { createServer } from "http";
 import { z } from "zod";
 
 import { checkStyle } from "../src/tools/check_style.mjs";
-import { guide } from "../src/tools/specmate_guide.mjs";
-import { learn } from "../src/tools/specmate_learn.mjs";
+import { guide, scan } from "../src/tools/specmate_guide.mjs";
+// specmate_learn.mjs import removed — deprecated. add_error.mjs retained for db:seed script only.
 import { getLevel, LEVEL_LIMITS } from "../src/config.mjs";
 import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots } from "../src/db/query.mjs";
 import { parseBSCWarnings } from "../src/tools/warning_diff.mjs";
@@ -24,22 +24,24 @@ const server = new McpServer({
 
 server.tool(
     "specmate_guide",
-    "Call BEFORE writing any BSV module (phase=pre_code) — like checking the weather before heading out. Returns traps, coding memories, and references for your task. Also call when: compilation fails (phase=on_error), unsure between two approaches (phase=decide), ready for the next module (phase=continue), or need a standard code skeleton (phase=pattern).",
+    "【DEPRECATED — 向后兼容】旧的多阶段 API。推荐使用 specmate_scan 替代 pre_code+decide+preflight 三步调用。Still call when: compilation fails (phase=on_error), need a standard code skeleton (phase=pattern)。",
     {
         phase: z.enum(["pre_code", "on_error", "continue", "decide", "pattern"])
             .describe("When you are: pre_code=about to write a module | on_error=compilation failed with error code | continue=writing next module | decide=choosing between two approaches | pattern=need a standard module skeleton"),
         input: z.string().describe("Brief: task description (pre_code) | error code (on_error) | next task (continue) | two options (decide) | what module (pattern)"),
+        file: z.string().optional().describe("Optional .bsv file path. When set with pre_code, specmate runs AST preflight scan on the file and embeds results in the response — catches P0030/P0005/T0043/G0053/G0005 without bsc compilation."),
     },
-    async ({ phase, input }) => {
-        const result = await guide({ phase, input });
+    async ({ phase, input, file }) => {
+        const result = await guide({ phase, input, file });
 
         // Push alerts: extract traps from pre_code and pattern phases
+        // Pillar 2: phase-aware push — infer Agent's stage before pushing
         if (phase === 'pre_code' || phase === 'pattern') {
             try {
                 const keywords = extractKeywords(input);
                 const m = matchKeywords(keywords);
                 if (m.traps.length > 0) {
-                    const trapItems = m.traps.slice(0, 5).map(t => ({ level: 'warn', title: t, detail: t }));
+                    const trapItems = m.traps.slice(0, 5).map(t => ({ level: 'warn', title: t, detail: t, phase: t.phase }));
                     if (phase === 'pattern') {
                         alerts.onPattern(trapItems, input);
                     } else {
@@ -57,6 +59,30 @@ server.tool(
                 alerts.onCapture(errCodes);
             } catch (_) { /* push is non-critical */ }
         }
+
+        return { content: [{ type: "text", text: result }] };
+    }
+);
+
+server.tool(
+    "specmate_scan",
+    "【推荐】统一预编码检查 — 替代旧的 specmate_guide(pre_code)+decide+preflight 三步调用。一次性返回陷阱、设计决策建议、AST预编译扫描结果、下一步建议。传入任务描述和可选的 .bsv 文件路径。",
+    {
+        task: z.string().describe("任务描述，如 '写一个SPI主控制器' 或 'mkFIFO vs mkBypassFIFO'"),
+        file: z.string().optional().describe("可选 .bsv 文件路径。传入后 specmate 自动运行 AST 预编译扫描 (P0030/P0005/T0043/G0053/G0005)"),
+    },
+    async ({ task, file }) => {
+        const result = await scan(task, file || null);
+
+        // Push alerts for pre_code-like behavior (phase-aware)
+        try {
+            const keywords = extractKeywords(task);
+            const m = matchKeywords(keywords);
+            if (m.traps.length > 0) {
+                const trapItems = m.traps.slice(0, 5).map(t => ({ level: 'warn', title: t, detail: t, phase: t.phase }));
+                alerts.onPreCode(trapItems, task);
+            }
+        } catch (_) { /* push is non-critical */ }
 
         return { content: [{ type: "text", text: result }] };
     }
@@ -125,26 +151,13 @@ server.tool(
     }
 );
 
-server.tool(
-    "specmate_learn",
-    "Only when specmate_guide(phase=on_error) says an error code is not yet known. Stores it in SQLite so the same pitfall is blocked next time. You write it once, specmate remembers forever.",
-    {
-        code: z.string().describe("错误码, 如 'P0005' 或 'G0010'"),
-        title: z.string().describe("简短标题, 如 'Methods must be at end of block'"),
-        bsc_output: z.string().describe("bsc 编译器原始错误输出"),
-        cause: z.string().describe("根因分析"),
-        solution: z.string().describe("修复方案, 含代码示例"),
-        rules: z.string().optional().describe("通用预防规则"),
-    },
-    async ({ code, title, bsc_output, cause, solution, rules }) => {
-        const result = await learn({ code, title, bsc_output, cause, solution, rules: rules || "" });
-        return { content: [{ type: "text", text: result }] };
-    }
-);
+// specmate_learn tool removed — deprecated in Phase 1.
+// add_error.mjs retained for db:seed script only — NOT an MCP tool.
+// Use specmate_capture + specmate_resolve for the automated error capture/resolve flow.
 
 server.tool(
     "specmate_capture",
-    "Feed raw bsc compiler output. specmate auto-parses error codes and saves context for project memory. Use when compilation produces errors — no need to manually call specmate_learn, just capture first.",
+    "【DEPRECATED — Phase 1】captures 现在由 specmate_scan 和 check_style 自动驱动，不再需要手动调用。保留以向后兼容。",
     {
         bsc_output: z.string().describe("bsc 编译器的完整输出 (stdout+stderr)"),
         files: z.array(z.string()).optional().describe("当前编译相关的 .bsv 文件路径"),
@@ -159,7 +172,7 @@ server.tool(
             const hasError = /error|warning/i.test(bsc_output);
             if (hasError) {
                 addCapture({ code: "UNKNOWN", bsc_output, files: files?.join(", ") }).catch(err => console.error('[specmate] addCapture(UNKNOWN) failed:', err.message));
-                return { content: [{ type: "text", text: "未识别出标准错误码，已以 UNKNOWN 暂存。如果是新错误类型，用 specmate_learn 手动录入。" }] };
+                return { content: [{ type: "text", text: "未识别出标准错误码，已以 UNKNOWN 暂存。" }] };
             }
             return { content: [{ type: "text", text: "未在输出中检测到编译错误码。" }] };
         }
@@ -581,7 +594,7 @@ server.tool(
     }
 );
 
-const TRANSPORT = (process.env.SPECMATE_TRANSPORT || 'streamable-http').toLowerCase();
+const TRANSPORT = (process.env.SPECMATE_TRANSPORT || 'stdio').toLowerCase();
 
 if (TRANSPORT === 'stdio') {
   // stdio fallback — keep existing behavior

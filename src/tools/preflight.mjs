@@ -168,6 +168,45 @@ function scanG0053(tree, source, issues) {
     });
 }
 
+function scanP0005(tree, source, issues) {
+    // Find function keyword usage inside moduleDef — the `function` keyword is a
+    // Verilog-2001 reserved word and bsc rejects it in module context.
+    // This catches patterns like genWith(function(Integer i); return requests[i]; endfunction)
+    // that the text-based UNIVERSAL_TRAPS warning cannot catch when the agent doesn't
+    // call specmate tools (e.g., due to safety classifier blocking HTTP/MCP calls).
+    walk(tree.rootNode, (node) => {
+        if (node.type !== 'function') return false;
+        const moduleAncestor = findAncestor(node, ['moduleDef']);
+        if (!moduleAncestor) return false;
+
+        // Get the module name for the message
+        const modNameNode = firstChildOfType(moduleAncestor, ['variable', 'lcIdentifier'], source);
+        const modName = modNameNode ? textOf(modNameNode, source) : 'unknown';
+        const funcText = textOf(node, source);
+
+        // Check if it's inside a genWith / map / fold call (lambda pattern)
+        const isLambda = /\b(genWith|map|fold|findIndex)\b/.test(funcText) ||
+            (node.parent && /\b(genWith|map|fold|findIndex)\b/.test(textOf(node.parent, source)));
+
+        if (isLambda) {
+            issues.push({
+                code: 'P0005',
+                title: 'genWith/map 回调中使用了 function 关键字',
+                detail: `模块 "${modName}" 行${node.startPosition.row + 1}：function 是 Verilog-2001 保留字，genWith/map 等回调不可用 function 关键字。用 \\== (1) 部分应用 或 独立包中的具名函数替代。`,
+                line: node.startPosition.row + 1,
+            });
+        } else {
+            issues.push({
+                code: 'P0005',
+                title: '模块内使用了 function 关键字',
+                detail: `模块 "${modName}" 行${node.startPosition.row + 1}：function 是 Verilog-2001 保留字，BSV 模块内不应定义 function。提取到独立包或用 method 替代。`,
+                line: node.startPosition.row + 1,
+            });
+        }
+        return true;
+    });
+}
+
 function scanG0005(tree, source, issues) {
     // Check for no_implicit_conditions attribute. If present, confirm. If absent
     // and the module has if/case without else/default, flag it as a recommendation.
@@ -192,10 +231,12 @@ function scanG0005(tree, source, issues) {
 
 /**
  * Run all AST scans on a file. Returns issues array.
+ * Exported for use by specmate_guide.scan() — enables auto-capture.
  */
-function scanAST(parsed) {
+export function scanAST(parsed) {
     const { tree, source } = parsed;
     const issues = [];
+    scanP0005(tree, source, issues);
     scanP0030(tree, source, issues);
     scanT0043(tree, source, issues);
     scanG0053(tree, source, issues);
@@ -286,7 +327,7 @@ export async function preflight(filePath = null) {
 function summarizeRule(code) {
     const rules = {
         'P0032': '所有 module/rule 必须在所有 method 之前。',
-        'P0005': '标识符不用 action/bit/byte/reg/wire/module/input/output/priority 等 SV 保留字。',
+        'P0005': 'function 是 V2K 保留字 — 模块内不可用。genWith/map 回调用 \\== (1) 部分应用，不用 function 关键字。独立函数提取到包中。',
         'G0004': '同一 rule 内每个寄存器只能被写入一次，检查 case default 分支。',
         'G0005': '加 `(* no_implicit_conditions *)` 属性确保 if/case 完备性检查。调用 lookup_error("G0005") 获取详情。',
         'G0010': '跨 rule 数据用 FIFOF 传，跨模块互斥加 urgency 标注。',
