@@ -357,6 +357,32 @@ endrule`,
         traps: ['中断信号用 Bit#(IRQ_N) 便于位操作 — 多个 IRQ 同时有效可检测', '中断掩码 mask 的位宽必须与 pending 一致'],
         cross: ['types', 'patterns'],
     },
+
+    encoder: {
+        name: '优先编码器 (Priority Encoder)',
+        keywords: ['encoder', 'priority encoder', '优先编码', 'findIndex', 'findindex'],
+        skeleton: `import Vector::*;
+
+// 优先编码器：找 req 中最低位为 1 的索引（bit 0 优先级最高）
+function Bit#(TLog#(n)) priorityEncode(Bit#(n) req);
+    Vector#(n, Bit#(1)) reqVec = unpack(pack(req));
+    Maybe#(UInt#(TLog#(n))) m_idx = findIndex(
+        \\== (1),
+        reqVec
+    );
+    return case (m_idx) matches
+        tagged Valid .x: pack(x);
+        tagged Invalid: 0;
+    endcase;
+endfunction`,
+        variants: {
+            '纯组合逻辑 (无寄存器)': '用 function + findIndex — 一行搞定，延迟最小',
+            '带 valid 输出': '接口加 method Bit#(1) valid(Bit#(32) req) = pack(req != 0)',
+            '任意输入位宽 N': '参数化: Bit#(N) req → Bit#(TLog#(N)) idx',
+        },
+        traps: ['不要用 foldl 手工遍历 Vector — findIndex 是标准库原语', 'valid 信号用 Bit#(1) 不用 Bool', '索引用 UInt 不用 Integer', '\\== (1) 是部分应用语法，不要用 function lambda'],
+        cross: ['stdlib', 'types'],
+    },
 };
 
 export function searchPatterns(keywords) {
