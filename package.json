@@ -38,7 +38,9 @@
     "db:export": "node src/db/export.mjs",
     "test": "node --test src/db/query.test.mjs src/tools/_matcher.test.mjs src/tools/ast_query.test.mjs",
     "health-check": "node scripts/health-check.mjs",
-    "knowledge:snapshot": "node src/tools/knowledge_snapshot.mjs"
+    "knowledge:snapshot": "node src/tools/knowledge_snapshot.mjs",
+    "knowledge:validate": "node --test test/knowledge-validation.test.mjs",
+    "verify-traps": "node scripts/verify-traps.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.9.0",

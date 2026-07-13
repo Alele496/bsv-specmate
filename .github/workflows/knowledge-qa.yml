@@ -1,0 +1,54 @@
+name: knowledge-qa
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'src/tools/_matcher.mjs'
+      - 'test/knowledge-validation.test.mjs'
+      - 'docs/errors/**'
+  pull_request:
+    branches: [master, main]
+    paths:
+      - 'src/tools/_matcher.mjs'
+      - 'test/knowledge-validation.test.mjs'
+      - 'docs/errors/**'
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test
+
+  knowledge-validation:
+    name: Knowledge Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run knowledge:validate
+
+  compile-fixtures:
+    name: Compile Fixtures (BSC)
+    if: false  # 骨架 — 待 fixture 文件建好后启用
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/alexforencich/bsc:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile fixtures
+        run: |
+          echo "TODO: bsc compile test/fixtures/*.bsv"
+          echo "验证方式: 每个 fixture 对应一个 trap，编译应该触发预期的错误码"

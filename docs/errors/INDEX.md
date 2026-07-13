@@ -16,3 +16,14 @@
 | 10 | P0030 | value method if-return 语法 | 1 |
 | 11 | T0011 | method/register 同名冲突 | 1 |
 | 12 | T0030 | 多态模块 synthesize 限制 | 1 |
+| 13 | G0002 | RegFile 读端口超限 | 1 |
+| 14 | G0004_FSM | FSM 中多子模块方法并行调用冲突 | 1 |
+| 15 | G0030 | Urgency 属性形成循环依赖 | 1 |
+| 16 | G0040 | Urgency 声明中规则自引用 | 1 |
+| 17 | G0054 | Urgency 引用不存在的规则 | 1 |
+| 18 | G0124 | BVI Method 名与 Verilog Port 名不匹配 | 1 |
+| 19 | P0073 | 重复声明（类型参数/函数参数/接口方法） | 1 |
+| 20 | P0085 | 属性语法错误 | 1 |
+| 21 | T0016 | Struct 字段不存在 | 1 |
+| 22 | T0132 | Sized Literal 值超位宽 | 1 |
+| 23 | T0144 | Union tagged 构造/访问错误 | 1 |
