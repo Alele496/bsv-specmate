@@ -229,6 +229,52 @@ function scanG0005(tree, source, issues) {
     }
 }
 
+function scanG0004(tree, source, issues) {
+    // Detect rules that call methods on multiple different submodules.
+    // A single rule driving submodule A (e.g. fifo.enq) and submodule B
+    // (e.g. regfile.wr) creates implicit scheduling conflicts → G0004.
+    // This is the error Agent A was stuck on for 4 rounds in 07-i2c.
+    const ruleNodes = [];
+    walk(tree.rootNode, (node) => {
+        if (node.type === 'rule') ruleNodes.push(node);
+        return false;
+    });
+
+    for (const ruleNode of ruleNodes) {
+        const submodMethods = new Map();
+        walk(ruleNode, (node) => {
+            if (node.type !== 'functioncall') return false;
+            const text = textOf(node, source);
+            const dotIdx = text.indexOf('.');
+            if (dotIdx === -1) return false;
+            const modName = text.substring(0, dotIdx).trim();
+            const skip = new Set(['if', 'else', 'begin', 'end', 'case', 'endcase']);
+            if (skip.has(modName)) return false;
+
+            const parenIdx = text.indexOf('(');
+            const methodName = parenIdx !== -1
+                ? text.substring(dotIdx + 1, parenIdx).trim()
+                : text.substring(dotIdx + 1).trim();
+
+            if (!submodMethods.has(modName)) submodMethods.set(modName, new Set());
+            submodMethods.get(modName).add(methodName);
+            return false;
+        });
+
+        if (submodMethods.size >= 2) {
+            const mods = [...submodMethods.keys()];
+            const nameNode = firstChildOfType(ruleNode, ['variable', 'lcIdentifier', 'identifier'], source);
+            const ruleName = nameNode ? textOf(nameNode, source) : 'unknown';
+            issues.push({
+                code: 'G0004',
+                title: 'Rule 内多子模块方法调用 — 可能冲突写入',
+                detail: `Rule "${ruleName}" 调用了 ${submodMethods.size} 个子模块 (${mods.join(', ')})。不同子模块的隐式状态变化可能触发 G0004 调度冲突。建议拆为独立规则，或加 (* descending_urgency *) 属性消除歧义。`,
+                line: ruleNode.startPosition.row + 1,
+            });
+        }
+    }
+}
+
 /**
  * Run all AST scans on a file. Returns issues array.
  * Exported for use by specmate_guide.scan() — enables auto-capture.
@@ -241,6 +287,7 @@ export function scanAST(parsed) {
     scanT0043(tree, source, issues);
     scanG0053(tree, source, issues);
     scanG0005(tree, source, issues);
+    scanG0004(tree, source, issues);
     return issues;
 }
 

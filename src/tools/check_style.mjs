@@ -34,11 +34,15 @@ function checkFile(filename, content, full = false) {
     const issues = [];
     const lines = content.split('\n');
 
-    // Always-on: BSC 覆盖不到的语义规则
+    // Always-on: BSC 覆盖不到的语义规则 + 议会恢复的高频拦截规则
     checkLiteralOverflow(filename, lines, issues);   // 位宽溢出 — BSC 可能不精确
     checkSizedLiteralZero(filename, lines, issues);   // 零位宽 — 边界情况
     checkBoolOperators(filename, lines, issues);      // Bool 位取反 — 语义错误
     checkG0053(filename, lines, issues);              // mkReg 动态参数 — G0053 风险
+    checkMultiSubmodule(filename, content, issues);   // rule 内多子模块冲突 — G0004
+    checkVecUsage(filename, lines, issues);           // vec() 用法 — T0004
+    checkBoolBitMismatch(filename, lines, issues);    // Bool 位拼接 — T0061
+    checkValueMethodSyntax(filename, lines, issues);  // value method 语法 — P0030
 
     // Full-scan: 仅在显式 full=true 时启用
     if (full) {
@@ -49,10 +53,8 @@ function checkFile(filename, content, full = false) {
         checkAttrBadRule(filename, content, issues);
         checkArgCountMismatch(filename, lines, issues);
         // 以下 BSC 100% 覆盖，不再默认：
-        // checkMethodOrder, checkReservedWords, checkVecUsage,
-        // checkBoolBitMismatch, checkValueMethodSyntax, checkMethodRegNaming,
-        // checkMultiSubmodule, checkDupValueParams, checkDupInterfaceMembers,
-        // checkStructField
+        // checkMethodOrder, checkReservedWords, checkMethodRegNaming,
+        // checkDupValueParams, checkDupInterfaceMembers, checkStructField
     }
 
     return issues;

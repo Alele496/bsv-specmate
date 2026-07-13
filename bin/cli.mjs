@@ -5,6 +5,7 @@
 // Usage:
 //   npx specmate scan <task-description> [--file=MyModule.bsv]
 //   npx specmate check <files...>
+//   npx specmate example <keyword> [--dir=<subdirectory>]
 
 import { resolve } from 'path';
 import { pathToFileURL } from 'url';
@@ -31,8 +32,9 @@ if (!command || command === 'help' || command === '--help' || command === '-h') 
   console.log('Usage: npx specmate <command>');
   console.log('');
   console.log('Commands:');
-  console.log('  scan  <task-description> [--file=MyModule.bsv]  Pre-code check: traps + decisions + preflight + next-steps');
-  console.log('  check <files...>                                Quick static check (literal overflow, zero-width, Bool misuse)');
+  console.log('  scan    <task-description> [--file=MyModule.bsv]  Pre-code check: traps + decisions + preflight + next-steps');
+  console.log('  check   <files...>                                Quick static check (literal overflow, zero-width, Bool misuse)');
+  console.log('  example <keyword> [--dir=<subdir>]                Search official BSC examples for keyword usage snippets');
   console.log('');
   process.exit(0);
 }
@@ -82,7 +84,7 @@ async function main() {
         addCapture = _addCapture;
       } catch (_) {}
 
-      const results = checkStyle({ files, full: false });
+      const results = checkStyle({ files, full: true });
 
       if (results.length === 0) {
         console.log('通过 — 未发现问题。');
@@ -104,9 +106,27 @@ async function main() {
       }
       break;
     }
+    case 'example': {
+      const { lookupExample } = await loadModule('src/tools/lookup_example.mjs');
+
+      const keyword = args[1];
+      if (!keyword) {
+        console.log('Usage: npx specmate example <keyword> [--dir=<subdirectory>]');
+        console.log('Example: npx specmate example mkFIFO');
+        console.log('Example: npx specmate example mkFIFO --dir=bsc.scheduler');
+        process.exit(1);
+      }
+
+      const dirArg = args.find(a => a.startsWith('--dir='));
+      const directory = dirArg ? dirArg.replace('--dir=', '') : '';
+
+      const result = lookupExample({ keyword, directory });
+      console.log(result);
+      break;
+    }
     default:
       console.log(`Unknown command: ${command}`);
-      console.log('Usage: npx specmate <scan|check>');
+      console.log('Usage: npx specmate <scan|check|example>');
       process.exit(1);
   }
 }

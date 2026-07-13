@@ -24,7 +24,7 @@ const server = new McpServer({
 
 server.tool(
     "specmate_guide",
-    "【DEPRECATED — 向后兼容】旧的多阶段 API。推荐使用 specmate_scan 替代 pre_code+decide+preflight 三步调用。Still call when: compilation fails (phase=on_error), need a standard code skeleton (phase=pattern)。",
+    "Multi-phase BSV coding guide. Call with phase=pre_code before writing, phase=on_error when compilation fails with a specific error code, phase=decide when choosing between approaches, phase=pattern for code skeletons. Both specmate_guide(pre_code) and npx specmate scan are first-class pre-code entry points.",
     {
         phase: z.enum(["pre_code", "on_error", "continue", "decide", "pattern"])
             .describe("When you are: pre_code=about to write a module | on_error=compilation failed with error code | continue=writing next module | decide=choosing between two approaches | pattern=need a standard module skeleton"),
@@ -157,7 +157,7 @@ server.tool(
 
 server.tool(
     "specmate_capture",
-    "【DEPRECATED — Phase 1】captures 现在由 specmate_scan 和 check_style 自动驱动，不再需要手动调用。保留以向后兼容。",
+    "Parse BSC compiler output, extract error codes, and record them into the project error memory. Use after a failed bsc compilation to persist error history for future resolution.",
     {
         bsc_output: z.string().describe("bsc 编译器的完整输出 (stdout+stderr)"),
         files: z.array(z.string()).optional().describe("当前编译相关的 .bsv 文件路径"),

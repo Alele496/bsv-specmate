@@ -1,12 +1,10 @@
-/* @deprecated — Phase 1 (2026-07-12)
- * SPP (Specmate Push Protocol) is deprecated. Information is now delivered
- * through CLI output and MCP response text — channels the Agent always sees.
- * MCP notification push (notifications/specmate/*) depended on client support
- * which was unreliable (P0-3: safety classifier blocking HTTP/MCP).
+/* @dormant -- push flags removed from config.mjs in Phase 1, functions are no-op shells.
+ * SPP (Specmate Push Protocol) notification functions are kept for backward
+ * compatibility. All information delivery is now through CLI stdout and MCP
+ * response text — channels the Agent always sees.
  *
  * The push flag fields (pushPreCode, pushCheckStyle, etc.) have been removed
  * from config.mjs LEVEL_LIMITS. shouldPush() always returns falsy.
- * Functions are kept as no-op shells for backward compatibility.
  */
 
 // Alert generation — transforms tool results into push notifications.

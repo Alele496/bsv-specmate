@@ -748,6 +748,81 @@ export async function scan(taskDescription, filePath = null) {
         nextSteps.push('`specmate_analyze(files=["..."], question="调度冲突分析")` — 写完 rule 后做跨 rule 冲突检查');
     }
 
+    // ── lookup_example integration: keyword → example recommendation ──
+    const exampleKeywordMap = {
+        fifo: 'fifo', mkfifo: 'fifo', bypass: 'fifo', pipeline: 'fifo', syncfifo: 'fifo',
+        i2c: 'i2c', spi: 'spi', uart: 'uart', gpio: 'gpio',
+        bram: 'bram', sram: 'bram', memory: 'bram',
+        fsm: 'fsm', state: 'fsm', 'state machine': 'fsm', stmtfsm: 'fsm',
+        crc: 'crc', checksum: 'crc',
+        arbiter: 'arbiter', arbitration: 'arbiter', priority: 'arbiter',
+        axi: 'axi', axilite: 'axi', axistream: 'axi',
+        register: 'register', regfile: 'register', control: 'register',
+        dma: 'dma', 'direct memory': 'dma',
+        counter: 'counter', timer: 'counter',
+        shift: 'shifter', barrel: 'shifter',
+        encoder: 'encoder', decoder: 'decoder',
+        gray: 'gray', 'grey code': 'gray', cdc: 'gray',
+    };
+    const seenExamples = new Set();
+    const exampleRecs = [];
+    for (const kw of keywords) {
+        const mapped = exampleKeywordMap[kw.toLowerCase()];
+        if (mapped && !seenExamples.has(mapped)) {
+            seenExamples.add(mapped);
+            exampleRecs.push('`npx specmate example ' + mapped + '`');
+        }
+    }
+    // Also check taskDescription for extra domain keywords
+    const taskLower = taskDescription.toLowerCase();
+    for (const [domainKw, exampleKw] of Object.entries(exampleKeywordMap)) {
+        if (taskLower.includes(domainKw) && !seenExamples.has(exampleKw)) {
+            seenExamples.add(exampleKw);
+            exampleRecs.push('`npx specmate example ' + exampleKw + '`');
+        }
+    }
+    if (exampleRecs.length > 0 && cfg.mode !== 'passive') {
+        const maxRecs = 3;
+        const displayRecs = exampleRecs.slice(0, maxRecs);
+        nextSteps.push(displayRecs.join(' | ') + ' — 搜索 BSC 官方示例参考');
+    }
+
+    // ── suggest routing: matched error codes → lookup_ref recommendation ──
+    const errorTopicMap = {
+        G0004: 'schedule', G0005: 'schedule', G0010: 'schedule',
+        T0061: 'types',
+        P0005: 'keywords',
+        P0030: 'module', P0032: 'module',
+        T0004: 'stdlib', T0011: 'stdlib',
+    };
+    const topicLabels = {
+        schedule: '调度注解和 G0004 修复模式',
+        types: 'Bool vs Bit#(1) 类型系统',
+        keywords: 'BSV 保留字和 SV 关键字黑名单',
+        module: '标准模块结构和 method 语法',
+        stdlib: 'FIFO/Reg/Vector 标准库速查',
+    };
+    const seenTopics = new Set();
+    // From matched errors
+    for (const e of (m.errors || [])) {
+        const topic = errorTopicMap[e.code];
+        if (topic && !seenTopics.has(topic)) {
+            seenTopics.add(topic);
+        }
+    }
+    // From taskDescription directly
+    const errorCodePattern = /\b(G\d{4}|P\d{4}|T\d{4})\b/g;
+    for (const match of taskDescription.matchAll(errorCodePattern)) {
+        const topic = errorTopicMap[match[0]];
+        if (topic && !seenTopics.has(topic)) seenTopics.add(topic);
+    }
+    if (seenTopics.size > 0 && cfg.mode !== 'passive') {
+        for (const topic of seenTopics) {
+            const label = topicLabels[topic] || topic;
+            nextSteps.push('`lookup_ref(topic="' + topic + '")` — 查看' + label);
+        }
+    }
+
     if (nextSteps.length > 0 && cfg.mode !== 'passive') {
         lines.push('---');
         lines.push('### 📋 接下来可以做什么');
