@@ -18,8 +18,8 @@
 
 // Universal traps — always shown regardless of domain keyword match
 const UNIVERSAL_TRAPS = [
-    { text: 'function 内 return 只能在末尾 — 不可在 for/if 块中间 return（P0030）。需要提前退出的场景用 flag 变量 + 末尾 return', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: false },
-    { text: '【P0005】function 关键字在模块内是 Verilog-2001 保留字，bsc 直接拒绝编译。genWith/map/fold/findIndex 的回调绝不可写 function(Integer i)...endfunction。正确写法：`genWith(requests, \\\\== (1))` 用部分应用，或把逻辑提取到模块外的独立 function 再引用。错误示范：`genWith(function(Integer i); return requests[i]; endfunction)` — 这会被 bsc 拒绝。', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: false },
+    { text: 'function 内 return 只能在末尾 — 不可在 for/if 块中间 return（P0030）。需要提前退出的场景用 flag 变量 + 末尾 return', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: false, alwaysShow: true },
+    { text: '【P0005】function 关键字在模块内是 Verilog-2001 保留字，bsc 直接拒绝编译。genWith/map/fold/findIndex 的回调绝不可写 function(Integer i)...endfunction。正确写法：`genWith(requests, \\\\== (1))` 用部分应用，或把逻辑提取到模块外的独立 function 再引用。错误示范：`genWith(function(Integer i); return requests[i]; endfunction)` — 这会被 bsc 拒绝。', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: false, alwaysShow: true },
 ];
 
 const GRAPH = {
@@ -110,7 +110,7 @@ const GRAPH = {
         pattern: 'crc',
         traps: [
             { text: 'CRC 多项式位宽确认', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: false },
-            { text: "Bool vs Bit#(1) 区分 — 'done' 信号用 Bool", severity: 'quality', phase: 'code', bscVersions: ['2025.07'], verified: false },
+            { text: "Bool vs Bit#(1) 区分 — 硬件控制信号如 'done' 用 Bit#(1)，方便 interface 连接和位拼接", severity: 'quality', phase: 'code', bscVersions: ['2025.07'], verified: false },
         ],
     },
     uart: {
@@ -238,7 +238,7 @@ const GRAPH = {
         traps: [
             { text: 'DMA 描述符链用 FIFO 传递 — 不用 Wire', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: false },
             { text: 'burst 传输注意地址对齐', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: false },
-            { text: 'DMA done 信号用 Bool 而非 Bit#(1)', severity: 'style', phase: 'code', bscVersions: ['2025.07'], verified: false },
+            { text: 'DMA 控制信号（done、error、valid）统一用 Bit#(1)，便于多通道状态总线拼接', severity: 'quality', phase: 'code', bscVersions: ['2025.07'], verified: false },
         ],
     },
     encoder: {
@@ -267,7 +267,7 @@ const GRAPH = {
         traps: [
             { text: '计数器位宽 = ceil(log2(max_count))', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: false },
             { text: '预分频器用 Bit#(n) 分频', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: false },
-            { text: 'timer done 用 Bool 避免位拼接冲突', severity: 'style', phase: 'code', bscVersions: ['2025.07'], verified: false },
+            { text: 'timer 控制信号（done、overflow、tick）用 Bit#(1)，状态寄存器位拼接时无类型冲突', severity: 'quality', phase: 'code', bscVersions: ['2025.07'], verified: false },
         ],
     },
     gpio: {
@@ -358,31 +358,38 @@ export function filterTrapsByMode(traps, mode) {
  * 将分级的 traps 格式化为面向 Agent 的输出文本
  */
 export function formatTrapsOutput(grouped, mode) {
+    // Filter out unverified traps. Only verified traps and alwaysShow traps
+    // (core safety rules like P0030/P0005) are visible to the Agent.
+    const showFilter = (t) => t.verified !== false || t.alwaysShow === true;
+    const hard = grouped.hard.filter(showFilter);
+    const quality = grouped.quality.filter(showFilter);
+    const style = grouped.style.filter(showFilter);
+
     const lines = [];
 
-    if (grouped.hard.length > 0) {
+    if (hard.length > 0) {
         lines.push('## ⚠ 编译硬约束（不遵守会报错）');
         lines.push('');
-        for (let i = 0; i < grouped.hard.length; i++) {
-            lines.push(`  ${i + 1}. ${grouped.hard[i].text}`);
+        for (let i = 0; i < hard.length; i++) {
+            lines.push(`  ${i + 1}. ${hard[i].text}`);
         }
         lines.push('');
     }
 
-    if (grouped.quality.length > 0) {
+    if (quality.length > 0) {
         lines.push('## 📐 代码质量（不影响编译，影响硬件正确性）');
         lines.push('');
-        for (let i = 0; i < grouped.quality.length; i++) {
-            lines.push(`  ${i + 1}. ${grouped.quality[i].text}`);
+        for (let i = 0; i < quality.length; i++) {
+            lines.push(`  ${i + 1}. ${quality[i].text}`);
         }
         lines.push('');
     }
 
-    if (grouped.style.length > 0 && mode === 'collaborative') {
+    if (style.length > 0 && mode === 'collaborative') {
         lines.push('## 🎨 风格建议（可选，影响代码优雅度）');
         lines.push('');
-        for (let i = 0; i < grouped.style.length; i++) {
-            lines.push(`  ${i + 1}. ${grouped.style[i].text}`);
+        for (let i = 0; i < style.length; i++) {
+            lines.push(`  ${i + 1}. ${style[i].text}`);
         }
         lines.push('');
     }

@@ -43,6 +43,8 @@ function checkFile(filename, content, full = false) {
     checkVecUsage(filename, lines, issues);           // vec() 用法 — T0004
     checkBoolBitMismatch(filename, lines, issues);    // Bool 位拼接 — T0061
     checkValueMethodSyntax(filename, lines, issues);  // value method 语法 — P0030
+    checkInterfaceBoolReturn(filename, content, issues);  // interface method Bool 返回 — 2026-07-14
+    checkAlwaysAttrMisuse(filename, content, issues);     // always_ready/enabled 滥用 — 2026-07-14
 
     // Full-scan: 仅在显式 full=true 时启用
     if (full) {
@@ -701,6 +703,111 @@ function checkG0053(filename, lines, issues) {
                 message: `mkReg 初始化值 "${init}" 可能是模块参数或变量——非编译期静态常量，编译时可能触发 G0053`,
                 suggestion: '改用 mkRegU（不初始化），然后在 rule/method 中显式赋初值。或确认该值确实是编译期常量。'
             });
+        }
+    }
+}
+
+/**
+ * checkInterfaceBoolReturn — detect interface methods returning Bool instead of Bit#(1).
+ * Interface methods defining hardware signals should use Bit#(1), not Bool.
+ * Bool is a software type that cannot participate in bit concatenation and
+ * complicates downstream module connections.
+ * Always-on rule (added 2026-07-14 per council resolution).
+ */
+function checkInterfaceBoolReturn(filename, content, issues) {
+    // Find interface blocks and check method return types
+    const ifBlocks = content.match(/interface\s+\w+[\s\S]*?endinterface/g) || [];
+    for (const block of ifBlocks) {
+        // Match method declarations: method Type name(args) or method Action name(args)
+        // Look for Bool as return type
+        const methodMatches = block.matchAll(/method\s+(Bool)\s+(\w+)\s*[\(;]/g);
+        for (const m of methodMatches) {
+            const methodName = m[2];
+            const blockLineEst = content.substring(0, content.indexOf(block)).split('\n').length;
+            const methodLineEst = content.substring(0, content.indexOf(m[0])).split('\n').length + 1;
+            issues.push({
+                file: filename,
+                line: methodLineEst,
+                check: 'interface-bool-return',
+                severity: 'warning',
+                message: `接口方法 "${methodName}" 返回 Bool 类型 — 硬件接口应返回 Bit#(1)`,
+                suggestion: `将 method Bool ${methodName} 改为 method Bit#(1) ${methodName}。Bool 不能参与位拼接，会导致下游模块连接困难。`
+            });
+        }
+        // Also check method Action with Bool parameters
+        const actionMatches = block.matchAll(/method\s+Action\s+\w+\s*\(([^)]*Bool[^)]*)\)/g);
+        for (const m of actionMatches) {
+            const params = m[1];
+            const paramMatches = params.matchAll(/\bBool\s+(\w+)/g);
+            for (const pm of paramMatches) {
+                const paramName = pm[1];
+                const methodLineEst = content.substring(0, content.indexOf(m[0])).split('\n').length + 1;
+                issues.push({
+                    file: filename,
+                    line: methodLineEst,
+                    check: 'interface-bool-param',
+                    severity: 'warning',
+                    message: `接口方法参数 "${paramName}" 使用 Bool 类型 — 硬件接口参数应使用 Bit#(1)`,
+                    suggestion: `将 Bool ${paramName} 改为 Bit#(1) ${paramName}`
+                });
+            }
+        }
+    }
+}
+
+/**
+ * checkAlwaysAttrMisuse — detect always_ready/enabled on methods with guard conditions
+ * or conditional bodies. Methods with guards should NOT be marked always_ready/enabled
+ * because the attribute states the method is available every cycle, which contradicts
+ * the guard condition.
+ * Always-on rule (added 2026-07-14 per council resolution).
+ */
+function checkAlwaysAttrMisuse(filename, content, issues) {
+    const lines = content.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        if (trimmed.startsWith('//')) continue;
+
+        // Match attribute: (* always_ready, always_enabled *) or (* always_ready *)
+        const attrMatch = trimmed.match(/\(\*\s*(.+?)\s*\*\)/);
+        if (!attrMatch) continue;
+        const attrs = attrMatch[1].toLowerCase();
+        const hasAlwaysReady = /\balways_ready\b/.test(attrs) || /\balwaysready\b/.test(attrs);
+        const hasAlwaysEnabled = /\balways_enabled\b/.test(attrs) || /\balwaysenabled\b/.test(attrs);
+        if (!hasAlwaysReady && !hasAlwaysEnabled) continue;
+
+        // Look forward for the method declaration (within next 3 lines)
+        for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+            const nextLine = lines[j].trim();
+            if (nextLine.startsWith('//') || nextLine === '') continue;
+
+            // Check if this is a method with a guard: method ... if (guard);
+            const hasGuard = /\bif\s*\(/.test(nextLine);
+            // Check for method keyword
+            const isMethod = /^\s*method\s+/.test(nextLine);
+
+            if (isMethod) {
+                const methodNameMatch = nextLine.match(/method\s+(?:Action\s+)?(?:\S+\s+)?(\w+)/);
+                const methodName = methodNameMatch ? methodNameMatch[1] : 'unknown';
+
+                if (hasGuard) {
+                    issues.push({
+                        file: filename,
+                        line: i + 1,
+                        check: 'always-attr-guard-conflict',
+                        severity: 'warning',
+                        message: `方法 "${methodName}" 有 guard 条件但标记了 always_ready/enabled — 属性与实际语义矛盾`,
+                        suggestion: '移除 always_ready/enabled 属性，或移除 guard 条件。有 guard 的 method 不是每周期可用，不应标 always。'
+                    });
+                }
+                break; // Found the method, move on
+            }
+
+            // If we hit another attribute, module, interface, or rule, stop looking
+            if (/\(\*\s*.*\s*\*\)/.test(nextLine) || /^\s*(module|interface|rule|endinterface)\b/.test(nextLine)) {
+                break;
+            }
         }
     }
 }

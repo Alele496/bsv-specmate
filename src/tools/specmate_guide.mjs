@@ -1,4 +1,4 @@
-import { extractKeywords, match, filterTrapsByMode, filterTrapsByPhase, formatTrapsOutput, inferPhase } from './_matcher.mjs';
+import { extractKeywords, match, filterTrapsByMode, filterTrapsByPhase, formatTrapsOutput, inferPhase, UNIVERSAL_TRAPS } from './_matcher.mjs';
 import { searchPatterns } from './_patterns.mjs';
 import { queryError, queryAllErrors, queryTopRules, queryHotTopics, hitError, addCapture, queryRecentCaptures } from '../db/query.mjs';
 import { lookupRef } from './lookup_ref.mjs';
@@ -21,14 +21,9 @@ export async function guide({ phase, input, file }) {
 }
 
 async function preCode(input, level, cfg, file = null) {
-    const keywords = extractKeywords(input);
-    const m = match(keywords);
     const lines = [];
 
-    // Pillar 2: infer the Agent's design phase and filter traps accordingly
-    const agentPhase = inferPhase(input);
-
-    // Pillar 1a: run AST preflight if a file path is provided
+    // ── Pillar 1a: run AST preflight if a file path is provided ──
     let preflightResult = null;
     if (file && cfg.mode !== 'passive') {
         try {
@@ -36,78 +31,29 @@ async function preCode(input, level, cfg, file = null) {
         } catch (_) { /* preflight is non-critical */ }
     }
 
-    if (m.traps.length > 0) {
-        // Use phase-aware filtering (pillar 2)
-        const grouped = filterTrapsByPhase(m.traps, cfg.mode, agentPhase);
-        const totalVisible = grouped.hard.length + grouped.quality.length + grouped.style.length;
-
-        if (totalVisible > 0) {
-            // Show phase indicator so Agent knows what's being shown
-            const phaseLabel = agentPhase === 'design' ? '架构阶段' : '编码阶段';
-            lines.push(`> 🎯 检测到你在 **${phaseLabel}** — 只展示该阶段相关的陷阱。`);
-            lines.push('');
-            lines.push(formatTrapsOutput(grouped, cfg.mode));
-        } else if (cfg.mode === 'passive') {
-            // passive 模式下如果所有 trap 都是 quality/style，给一条提示
-            lines.push('没有匹配到编译级硬约束。提升 SPECMATE_LEVEL 查看代码质量和风格建议。');
-            lines.push('');
-        } else {
-            lines.push('');
+    // ── UNIVERSAL_TRAPS: core safety rules that always apply ──
+    const groupedByMode = filterTrapsByMode(UNIVERSAL_TRAPS, cfg.mode);
+    const universalTraps = groupedByMode.hard;
+    if (universalTraps.length > 0) {
+        lines.push('## ⚠ 编译硬约束（必须遵守）');
+        lines.push('');
+        for (let i = 0; i < universalTraps.length; i++) {
+            lines.push(`  ${i + 1}. ${universalTraps[i].text}`);
         }
-    } else {
-        // No traps matched at all
         lines.push('');
     }
 
-    if (m.errors.length > 0 && LEVEL_LIMITS[level].mode !== 'passive') {
-        const topRules = await queryTopRules(10);
-        const relevant = topRules.filter(r => m.errors.includes(r.code));
-        if (relevant.length > 0) {
-            lines.push('📊 相关编码记忆:');
-            for (const r of relevant.slice(0, cfg.errors)) {
-                lines.push(`  ${r.code} — ${r.title} (×${r.count})`);
-            }
-            lines.push('');
-        }
-    }
+    // ── Message: specmate does not do active guidance ──
+    lines.push('---');
+    lines.push('');
+    lines.push('> **specmate 当前不做主动设计指导。**');
+    lines.push('> 请用最保守的 BSV 写法自主完成架构：Bit#(1) 不用 Bool、显式 guard 不用 always_ready、');
+    lines.push('> 子接口组织、手写 state register 不用 StmtFSM、跨 rule 数据用 FIFOF 传递。');
+    lines.push('> **编码完成后运行 `npx specmate check --full` 验证代码正确性。**');
+    lines.push('');
 
-    if (m.refs.length > 0 && LEVEL_LIMITS[level].mode !== 'passive') {
-        lines.push(`📖 参考: ${m.refs.map(r => `lookup_ref(topic="${r}")`).join(', ')}`);
-        lines.push('');
-    }
-
-    if (m.styles.length > 0 && cfg.styleHint) {
-        lines.push(`🎨 推荐风格: ${m.styles.join(', ')}`);
-        lines.push('');
-    }
-
-    if (cfg.collabHint) {
-        const hot = await queryHotTopics(3);
-        if (hot.length > 0) {
-            lines.push(`🔮 相关知识热点: ${hot.map(h => `\`${h.topic}\` (×${h.count})`).join(', ')}`);
-            lines.push('');
-        }
-    }
-
-    // Project memory: show recent captures from this project
-    if (LEVEL_LIMITS[level].mode !== 'passive') {
-        const recentCaps = await queryRecentCaptures(5);
-        if (recentCaps.length > 0) {
-            lines.push('📝 本项目近期捕获的错误:');
-            for (const c of recentCaps) {
-                const icon = c.status === 'resolved' ? '✅' : '⏳';
-                const preview = (c.bsc_output || '').replace(/\n/g, ' ').substring(0, 80);
-                lines.push(`  ${icon} ${c.code} — ${preview}`);
-            }
-            lines.push('');
-        }
-    }
-
-    // ── Pillar 1a: preflight AST scan results embedded in response ──
-    // This is the key change: instead of just hinting "you should check your code",
-    // we actually run the check and show results. Agent always sees the response.
+    // ── Preflight AST scan results ──
     if (file && preflightResult && cfg.mode !== 'passive') {
-        // Extract only the AST scan section (the "代码静态扫描" part) from preflight output
         const astSectionMatch = preflightResult.match(/### 🔍 代码静态扫描\n\n([\s\S]*?)(?=\n## |\n---|\n$)/);
         if (astSectionMatch) {
             const astLines = astSectionMatch[1].trim();
@@ -124,46 +70,27 @@ async function preCode(input, level, cfg, file = null) {
         }
     }
 
-    // ── Pillar 1a (continued): file path hint when no file provided ──
-    if (!file && cfg.mode !== 'passive') {
-        lines.push('---');
-        lines.push('### 🔍 建议：传入文件路径以启用预编译扫描');
-        lines.push('调用 `specmate_guide(phase="pre_code", input="...", file="路径.bsv")` 传入你的 .bsv 文件——');
-        lines.push('specmate 会用 AST 直接扫描 P0030/P0005/T0043/G0053/G0005 五种高频错误，**不用等 bsc 编译**。');
-        lines.push('');
+    // ── Error memory (from database) — still shown as passive context ──
+    if (cfg.mode !== 'passive') {
+        try {
+            const recentCaps = await queryRecentCaptures(5);
+            if (recentCaps.length > 0) {
+                const relevant = recentCaps.filter(c => c.status !== 'resolved');
+                if (relevant.length > 0) {
+                    lines.push('---');
+                    lines.push('### 📝 未解决的编译错误');
+                    for (const c of relevant) {
+                        const preview = (c.bsc_output || '').replace(/\n/g, ' ').substring(0, 80);
+                        lines.push(`  ⏳ ${c.code} — ${preview}`);
+                    }
+                    lines.push('');
+                }
+            }
+        } catch (_) { /* non-critical */ }
     }
 
-    // ── Pillar 3: structured NEXT STEPS — proactive guidance embedded in response ──
-    const nextSteps = [];
-
-    // Always suggest decide for common design choices
-    nextSteps.push('`specmate_guide(phase="decide", input="选项A vs 选项B")` — 不确定选哪个模块/方案时');
-
-    // Suggest check when file available
-    if (file) {
-        nextSteps.push('`specmate_check(files=["' + file + '"])` — 运行更多静态检查（位宽溢出、Bool误用等）');
-    }
-
-    // Suggest analyze for schedule/rule-related tasks
-    const hasScheduleMatch = keywords.some(k => ['schedule', 'rule', 'method', 'regfile', 'arbiter'].includes(k));
-    if (hasScheduleMatch) {
-        nextSteps.push('`specmate_analyze(files=["..."], question="调度冲突分析")` — 写完 rule 后做跨 rule 冲突检查');
-    }
-
-    if (nextSteps.length > 0 && cfg.mode !== 'passive') {
-        lines.push('---');
-        lines.push('### 📋 接下来可以做什么');
-        for (const step of nextSteps) {
-            lines.push(`- ${step}`);
-        }
-        lines.push('');
-    }
-
-    // Defensive: with UNIVERSAL_TRAPS always injected, this branch is unlikely to trigger,
-    // but kept as a safety net in case UNIVERSAL_TRAPS is ever empty or filtered out.
     if (lines.length === 0) {
-        if (LEVEL_LIMITS[level].mode === 'passive') return '没有匹配到已知陷阱。提升 SPECMATE_LEVEL 查看详细分析。';
-        return `没有匹配到 "${input}" 的已知陷阱。尝试更具体的描述，或调 suggest。`;
+        return 'specmate 当前不做主动指导。请用最保守的 BSV 写法自主完成架构，编码完成后运行 `npx specmate check --full` 验证。';
     }
     return lines.join('\n');
 }
@@ -503,32 +430,9 @@ const DECISIONS = [
 ];
 
 async function decide(input, level, cfg) {
-    const lower = input.toLowerCase();
-
-    // First try the expanded decision map (pillar 1b)
-    for (const decision of DECISIONS) {
-        // All keywords must be present
-        const allMatch = decision.keywords.every(kw => lower.includes(kw));
-        if (allMatch) {
-            return [
-                `### ${decision.title}`,
-                '',
-                ...decision.body,
-            ].join('\n');
-        }
-    }
-
-    // Fallback to keyword matching from GRAPH — show relevant reference topics
-    const keywords = extractKeywords(input);
-    const m = match(keywords);
-
-    if (m.refs.length > 0) {
-        return `对你的场景 ("${input.slice(0, 60)}")，参考:\n` +
-            m.refs.map(r => `  📖 lookup_ref(topic="${r}")`).join('\n') +
-            '\n\n没有明确的方案对比规则。具体描述两个选项我来分析。';
-    }
-
-    return `没有匹配到方案选择规则。描述两个具体选项，比如 "mkFIFO vs mkBypassFIFO"。`;
+    return '设计决策指导功能当前不可用。specmate 已从"建议系统"重构为"验证层"——' +
+        '请自主完成架构设计，编码完成后用 `npx specmate check --full` 验证代码正确性。' +
+        '\n\n编译失败时用 `npx specmate guide on_error "<bsc 错误输出>"` 获取修复方案。';
 }
 
 function patternPhase(input, level, cfg) {
@@ -609,73 +513,41 @@ function checkDecisions(input, cfg) {
 
 /**
  * Unified scan — the main entry point for CLI/MCP.
- * Replaces the old `pre_code` → manually call `decide` → manually call `preflight` workflow
- * with a single call that does everything automatically.
+ * Post-refactor (2026-07-14): specmate no longer does active guidance.
+ * Only shows UNIVERSAL_TRAPS (core safety rules) + preflight AST scan results.
+ * Agent is told to write code autonomously and verify with specmate check.
  *
  * @param {string} taskDescription — what the Agent is about to code
  * @param {string|null} filePath — optional .bsv file for AST preflight scan
- * @returns {string} structured text output (Agent sees via CLI stdout or MCP response)
+ * @returns {string} structured text output
  */
 export async function scan(taskDescription, filePath = null) {
     const level = getLevel();
     const cfg = LEVEL_LIMITS[level];
-    const keywords = extractKeywords(taskDescription);
-    const m = match(keywords);
     const lines = [];
 
-    // Phase inference (Pillar 2)
-    const agentPhase = inferPhase(taskDescription);
-
-    // ── SECTION 1: Traps (phase-aware, from GRAPH + UNIVERSAL_TRAPS) ──
-    if (m.traps.length > 0) {
-        const grouped = filterTrapsByPhase(m.traps, cfg.mode, agentPhase);
-        const totalVisible = grouped.hard.length + grouped.quality.length + grouped.style.length;
-
-        if (totalVisible > 0) {
-            const phaseLabel = agentPhase === 'design' ? '架构阶段' : '编码阶段';
-            lines.push(`> 🎯 检测到你在 **${phaseLabel}** — 只展示该阶段相关的陷阱。`);
-            lines.push('');
-            lines.push(formatTrapsOutput(grouped, cfg.mode));
-        } else if (cfg.mode === 'passive') {
-            lines.push('没有匹配到编译级硬约束。提升 SPECMATE_LEVEL 查看代码质量和风格建议。');
-            lines.push('');
+    // ── UNIVERSAL_TRAPS: core safety rules ──
+    const groupedByMode = filterTrapsByMode(UNIVERSAL_TRAPS, cfg.mode);
+    const universalTraps = groupedByMode.hard;
+    if (universalTraps.length > 0) {
+        lines.push('## ⚠ 编译硬约束（必须遵守）');
+        lines.push('');
+        for (let i = 0; i < universalTraps.length; i++) {
+            lines.push(`  ${i + 1}. ${universalTraps[i].text}`);
         }
-    }
-
-    // ── SECTION 2: DECISIONS (auto-check) — Task 4 ──
-    const decisionResult = checkDecisions(taskDescription, cfg);
-    if (decisionResult) {
-        lines.push('---');
-        lines.push('### 📐 设计决策建议');
-        lines.push('');
-        lines.push(decisionResult);
         lines.push('');
     }
 
-    // ── SECTION 3: Error memory (from database) ──
-    if (m.errors.length > 0 && cfg.mode !== 'passive') {
-        const topRules = await queryTopRules(10);
-        const relevant = topRules.filter(r => m.errors.includes(r.code));
-        if (relevant.length > 0) {
-            lines.push('📊 相关编码记忆:');
-            for (const r of relevant.slice(0, cfg.errors)) {
-                lines.push(`  ${r.code} — ${r.title} (×${r.count})`);
-            }
-            lines.push('');
-        }
-    }
+    // ── Message: specmate does not do active guidance ──
+    lines.push('---');
+    lines.push('');
+    lines.push('> **specmate 当前不做主动设计指导。**');
+    lines.push('> 请用最保守的 BSV 写法自主完成架构：Bit#(1) 不用 Bool、显式 guard 不用 always_ready、');
+    lines.push('> 子接口组织、手写 state register 不用 StmtFSM、跨 rule 数据用 FIFOF 传递。');
+    lines.push('> **编码完成后运行 `npx specmate check --full` 验证代码正确性。**');
+    lines.push('');
 
-    if (m.refs.length > 0 && cfg.mode !== 'passive') {
-        lines.push(`📖 参考: ${m.refs.map(r => `lookup_ref(topic="${r}")`).join(', ')}`);
-        lines.push('');
-    }
-
-    if (m.styles.length > 0 && cfg.styleHint) {
-        lines.push(`🎨 推荐风格: ${m.styles.join(', ')}`);
-        lines.push('');
-    }
-
-    // ── SECTION 4: Preflight AST scan (auto-capture issues) — Task 3 ──
+    // ── Preflight AST scan (auto-capture issues) ──
     if (filePath && cfg.mode !== 'passive') {
         try {
             const parsed = parseFile(filePath);
@@ -698,7 +570,7 @@ export async function scan(taskDescription, filePath = null) {
                     lines.push('> 修完这些问题再编译，首编通过率大幅提升。');
                     lines.push('');
 
-                    // Task 3: auto-capture preflight issues — Agent doesn't need to know
+                    // Auto-capture preflight issues
                     for (const issue of astIssues) {
                         addCapture({
                             code: issue.code,
@@ -710,133 +582,28 @@ export async function scan(taskDescription, filePath = null) {
                     lines.push('---');
                     lines.push('### 🔍 预编译扫描结果');
                     lines.push('');
-                    lines.push('未发现 P0030/P0005/T0043/G0053/G0005 模式。');
+                    lines.push('未发现 P0030/P0005/T0043/G0053/G0005/G0004 模式。');
                     lines.push('');
                 }
             }
         } catch (_) { /* preflight is non-critical */ }
     }
 
-    // ── SECTION 5: Project memory (recent captures) ──
+    // ── NEXT STEPS: only passive verification ──
     if (cfg.mode !== 'passive') {
-        const recentCaps = await queryRecentCaptures(5);
-        if (recentCaps.length > 0) {
-            lines.push('📝 本项目近期捕获的错误:');
-            for (const c of recentCaps) {
-                const icon = c.status === 'resolved' ? '✅' : '⏳';
-                const preview = (c.bsc_output || '').replace(/\n/g, ' ').substring(0, 80);
-                lines.push(`  ${icon} ${c.code} — ${preview}`);
-            }
-            lines.push('');
-        }
-    }
-
-    // ── SECTION 6: NEXT STEPS (Pillar 3) ──
-    const nextSteps = [];
-
-    // Always suggest decide for common design choices
-    if (!decisionResult) {
-        nextSteps.push('`specmate scan "选项A vs 选项B"` — 不确定选哪个方案时，用 scan 会自动给出设计建议');
-    }
-
-    if (filePath) {
-        nextSteps.push('`specmate check "' + filePath + '"` — 运行更多静态检查（位宽溢出、Bool误用等）');
-    }
-
-    const hasScheduleMatch = keywords.some(k => ['schedule', 'rule', 'method', 'regfile', 'arbiter'].includes(k));
-    if (hasScheduleMatch) {
-        nextSteps.push('`specmate_analyze(files=["..."], question="调度冲突分析")` — 写完 rule 后做跨 rule 冲突检查');
-    }
-
-    // ── lookup_example integration: keyword → example recommendation ──
-    const exampleKeywordMap = {
-        fifo: 'fifo', mkfifo: 'fifo', bypass: 'fifo', pipeline: 'fifo', syncfifo: 'fifo',
-        i2c: 'i2c', spi: 'spi', uart: 'uart', gpio: 'gpio',
-        bram: 'bram', sram: 'bram', memory: 'bram',
-        fsm: 'fsm', state: 'fsm', 'state machine': 'fsm', stmtfsm: 'fsm',
-        crc: 'crc', checksum: 'crc',
-        arbiter: 'arbiter', arbitration: 'arbiter', priority: 'arbiter',
-        axi: 'axi', axilite: 'axi', axistream: 'axi',
-        register: 'register', regfile: 'register', control: 'register',
-        dma: 'dma', 'direct memory': 'dma',
-        counter: 'counter', timer: 'counter',
-        shift: 'shifter', barrel: 'shifter',
-        encoder: 'encoder', decoder: 'decoder',
-        gray: 'gray', 'grey code': 'gray', cdc: 'gray',
-    };
-    const seenExamples = new Set();
-    const exampleRecs = [];
-    for (const kw of keywords) {
-        const mapped = exampleKeywordMap[kw.toLowerCase()];
-        if (mapped && !seenExamples.has(mapped)) {
-            seenExamples.add(mapped);
-            exampleRecs.push('`npx specmate example ' + mapped + '`');
-        }
-    }
-    // Also check taskDescription for extra domain keywords
-    const taskLower = taskDescription.toLowerCase();
-    for (const [domainKw, exampleKw] of Object.entries(exampleKeywordMap)) {
-        if (taskLower.includes(domainKw) && !seenExamples.has(exampleKw)) {
-            seenExamples.add(exampleKw);
-            exampleRecs.push('`npx specmate example ' + exampleKw + '`');
-        }
-    }
-    if (exampleRecs.length > 0 && cfg.mode !== 'passive') {
-        const maxRecs = 3;
-        const displayRecs = exampleRecs.slice(0, maxRecs);
-        nextSteps.push(displayRecs.join(' | ') + ' — 搜索 BSC 官方示例参考');
-    }
-
-    // ── suggest routing: matched error codes → lookup_ref recommendation ──
-    const errorTopicMap = {
-        G0004: 'schedule', G0005: 'schedule', G0010: 'schedule',
-        T0061: 'types',
-        P0005: 'keywords',
-        P0030: 'module', P0032: 'module',
-        T0004: 'stdlib', T0011: 'stdlib',
-    };
-    const topicLabels = {
-        schedule: '调度注解和 G0004 修复模式',
-        types: 'Bool vs Bit#(1) 类型系统',
-        keywords: 'BSV 保留字和 SV 关键字黑名单',
-        module: '标准模块结构和 method 语法',
-        stdlib: 'FIFO/Reg/Vector 标准库速查',
-    };
-    const seenTopics = new Set();
-    // From matched errors
-    for (const e of (m.errors || [])) {
-        const topic = errorTopicMap[e.code];
-        if (topic && !seenTopics.has(topic)) {
-            seenTopics.add(topic);
-        }
-    }
-    // From taskDescription directly
-    const errorCodePattern = /\b(G\d{4}|P\d{4}|T\d{4})\b/g;
-    for (const match of taskDescription.matchAll(errorCodePattern)) {
-        const topic = errorTopicMap[match[0]];
-        if (topic && !seenTopics.has(topic)) seenTopics.add(topic);
-    }
-    if (seenTopics.size > 0 && cfg.mode !== 'passive') {
-        for (const topic of seenTopics) {
-            const label = topicLabels[topic] || topic;
-            nextSteps.push('`lookup_ref(topic="' + topic + '")` — 查看' + label);
-        }
-    }
-
-    if (nextSteps.length > 0 && cfg.mode !== 'passive') {
         lines.push('---');
-        lines.push('### 📋 接下来可以做什么');
-        for (const step of nextSteps) {
-            lines.push(`- ${step}`);
+        lines.push('### 📋 接下来');
+        if (filePath) {
+            lines.push(`- 编码完成后运行 \`npx specmate check ${filePath} --full\` 验证代码正确性`);
+        } else {
+            lines.push('- 编码完成后运行 `npx specmate check <文件路径> --full` 验证代码正确性');
         }
+        lines.push('- 编译失败时运行 `npx specmate guide on_error "<bsc 错误输出>"` 获取修复方案');
         lines.push('');
     }
 
-    // Safety net
     if (lines.length === 0) {
-        if (cfg.mode === 'passive') return '没有匹配到已知陷阱。提升 SPECMATE_LEVEL 查看详细分析。';
-        return `没有匹配到 "${taskDescription}" 的已知陷阱。尝试更具体的描述。`;
+        return 'specmate 当前不做主动指导。请用最保守的 BSV 写法自主完成架构，编码完成后运行 `npx specmate check --full` 验证。';
     }
-
     return lines.join('\n');
 }

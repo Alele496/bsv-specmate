@@ -222,7 +222,7 @@ function scanG0005(tree, source, issues) {
             issues.push({
                 code: 'G0005',
                 title: '缺少 no_implicit_conditions 属性',
-                detail: '代码中有 if/case 语句但未找到 `(* no_implicit_conditions *)` 属性。建议在模块定义前添加该属性以确保完备性检查。',
+                detail: '代码中有 if/case 语句但未找到 `(* no_implicit_conditions *)` 属性。对需要完备性检查的每个 rule 定义前添加 `(* no_implicit_conditions *) rule ...`。**注意**：此属性只能用于 rule，不能用于 module 或 method（module 上使用会触发 P0155）。',
                 line: 0,
             });
         }
