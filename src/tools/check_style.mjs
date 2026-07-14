@@ -723,7 +723,6 @@ function checkInterfaceBoolReturn(filename, content, issues) {
         const methodMatches = block.matchAll(/method\s+(Bool)\s+(\w+)\s*[\(;]/g);
         for (const m of methodMatches) {
             const methodName = m[2];
-            const blockLineEst = content.substring(0, content.indexOf(block)).split('\n').length;
             const methodLineEst = content.substring(0, content.indexOf(m[0])).split('\n').length + 1;
             issues.push({
                 file: filename,
@@ -777,36 +776,53 @@ function checkAlwaysAttrMisuse(filename, content, issues) {
         const hasAlwaysEnabled = /\balways_enabled\b/.test(attrs) || /\balwaysenabled\b/.test(attrs);
         if (!hasAlwaysReady && !hasAlwaysEnabled) continue;
 
-        // Look forward for the method declaration (within next 3 lines)
-        for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+        // Look forward for the method declaration. Accumulate lines until
+        // semicolon (end of method signature) to handle multi-line declarations.
+        let methodLines = [];
+        let foundMethod = false;
+        for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
             const nextLine = lines[j].trim();
-            if (nextLine.startsWith('//') || nextLine === '') continue;
+            if (nextLine.startsWith('//')) continue;
 
-            // Check if this is a method with a guard: method ... if (guard);
-            const hasGuard = /\bif\s*\(/.test(nextLine);
-            // Check for method keyword
-            const isMethod = /^\s*method\s+/.test(nextLine);
-
-            if (isMethod) {
-                const methodNameMatch = nextLine.match(/method\s+(?:Action\s+)?(?:\S+\s+)?(\w+)/);
-                const methodName = methodNameMatch ? methodNameMatch[1] : 'unknown';
-
-                if (hasGuard) {
-                    issues.push({
-                        file: filename,
-                        line: i + 1,
-                        check: 'always-attr-guard-conflict',
-                        severity: 'warning',
-                        message: `方法 "${methodName}" 有 guard 条件但标记了 always_ready/enabled — 属性与实际语义矛盾`,
-                        suggestion: '移除 always_ready/enabled 属性，或移除 guard 条件。有 guard 的 method 不是每周期可用，不应标 always。'
-                    });
-                }
-                break; // Found the method, move on
+            // Check for method keyword to start accumulation
+            if (!foundMethod && /^\s*method\s+/.test(nextLine)) {
+                foundMethod = true;
+                methodLines.push(nextLine);
+                // If this single line already ends with ;, check immediately
+                if (/;\s*$/.test(nextLine)) break;
+                continue;
             }
 
-            // If we hit another attribute, module, interface, or rule, stop looking
+            if (foundMethod) {
+                methodLines.push(nextLine);
+                // Stop accumulating at semicolon or encountering another keyword
+                if (/;\s*$/.test(nextLine) || /\(\*\s*.*\s*\*\)/.test(nextLine) ||
+                    /^\s*(module|interface|rule|endinterface|method)\b/.test(nextLine)) {
+                    break;
+                }
+                continue;
+            }
+
+            // If we hit another attribute, module, interface, or rule before finding method, stop
             if (/\(\*\s*.*\s*\*\)/.test(nextLine) || /^\s*(module|interface|rule|endinterface)\b/.test(nextLine)) {
                 break;
+            }
+        }
+
+        if (foundMethod && methodLines.length > 0) {
+            const fullDecl = methodLines.join(' ');
+            const hasGuard = /\bif\s*\(/.test(fullDecl);
+            if (hasGuard) {
+                const methodNameMatch = fullDecl.match(/method\s+(?:Action\s+)?(?:\S+\s+)?(\w+)/);
+                const methodName = methodNameMatch ? methodNameMatch[1] : 'unknown';
+                issues.push({
+                    file: filename,
+                    line: i + 1,
+                    check: 'always-attr-guard-conflict',
+                    severity: 'warning',
+                    message: `方法 "${methodName}" 有 guard 条件但标记了 always_ready/enabled — 属性与实际语义矛盾`,
+                    suggestion: '移除 always_ready/enabled 属性，或移除 guard 条件。有 guard 的 method 不是每周期可用，不应标 always。'
+                });
             }
         }
     }
