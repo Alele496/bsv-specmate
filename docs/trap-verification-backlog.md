@@ -1,0 +1,216 @@
+# trap 验证 backlog
+
+> 导出日期：2026-07-14
+> 来源：`src/tools/_matcher.mjs` — 所有 `verified: false` 的 GRAPH trap
+> 总计：65 条
+
+---
+
+## 验证流程
+
+每条 trap 验证通过（从 backlog 迁移回 `_matcher.mjs`）必须满足：
+
+1. **建 `test/fixtures/traps/<node>-<seq>.bsv`** — 最小 BSV 示例（不超过 30 行），演示 trap 描述的场景
+2. **bsc 2025.07 编译通过，生成 .v 文件** — 编译命令：`wsl -e bash -c 'export PATH=/home/seek_kinetic/projects/myproject/MIT-tools/bsc/bsc-2025.07-ubuntu-22.04/bin:$PATH && cd /mnt/d/Desktop/bsv-agent/bsv-agent-server && bsc -u -verilog -g <topModule> test/fixtures/traps/<node>-<seq>.bsv'`
+3. **trap 的 severity/phase 字段审查通过** — severity（hard/quality/style）和 phase（design/code/both）与实际场景匹配
+4. **`_matcher.mjs` 中 verified 改为 true，添加 verifiedAt 字段** — 格式：`verified: true, verifiedAt: '2026-07-XX'`
+5. **showFilter 自动放行** — trap 重新出现在 Agent 输出中（`formatTrapsOutput()` 中 `showFilter` 只过滤 `verified !== false` 的条目）
+
+---
+
+## 优先级分类
+
+| 优先级 | 节点 | 理由 |
+|--------|------|------|
+| P0 — 高影响 | axi, fifo, fsm, schedule, arbiter | 直接影响实验最常见的任务类型 |
+| P1 — 中影响 | bram, spi, uart, crc, interrupt, dma, gpio | 专项领域，特定任务触发 |
+| P2 — 低影响 | types, struct, union, method, encoder, decoder, timer, clock, reset, regfile, pipeline, bvi, attribute, interface, rule, vector, serialize, synthesize | 通用语法/风格，不影响架构决策 |
+
+---
+
+## P0 — 高影响（8 条）
+
+### axi（1 条）
+
+- [ ] **axi-1** | quality | design | `AXI4 接口 port 名与 BSV method 名不一致 — 用 Verilog wrapper`
+
+### fifo（1 条）
+
+- [x] **fifo-1** | quality | design | `mkFIFO vs mkFIFO1 — mkFIFO1 允许同周期 enq/deq（旁路 FIFO），但满时有调度冲突风险（G0010）。数据缓冲用 mkFIFO，握手信号/控制路径用 mkFIFO1`
+  - 原文：`mkFIFO vs mkBypassFIFO — BypassFIFO 允许同周期 enq/deq 但会触发 G0010`
+  - 修订原因：mkBypassFIFO 在 BSC 2025.07 中不存在，替换为 mkFIFO1（实际存在的旁路 FIFO）
+  - fixture: `test/fixtures/traps/fifo-1.bsv`（使用 mkFIFO1，编译通过）
+
+### fsm（2 条）
+
+- [ ] **fsm-1** | quality | design | `StmtFSM 隐式并行写 — 避免同一 cycle 写同一 Reg`
+- [ ] **fsm-2** | hard | code | `value method 不用 if-return，用 ?: 三元链`
+
+### schedule（2 条）
+
+- [ ] **schedule-1** | hard | design | `descending_urgency 不循环`
+- [ ] **schedule-2** | quality | design | `execution_order 用于 SE 而非 SB`
+
+### arbiter（2 条）
+
+- [ ] **arbiter-1** | hard | design | `同一 cycle 超 5 读端口 → G0002`
+- [ ] **arbiter-2** | quality | design | `winner 丢失 → 需缓冲 FIFO`
+
+---
+
+## P1 — 中影响（16 条）
+
+### bram（2 条）
+
+- [ ] **bram-1** | quality | design | `BRAMCore: 读/写端口分离, BRAM: 单端口 — 选对类型`
+- [ ] **bram-2** | quality | design | `BRAM 数据位宽 vs 外部总线位宽对齐`
+
+### spi（2 条）
+
+- [ ] **spi-1** | quality | design | `SPI 命令字 Bit#(8), 移位寄存器匹配`
+- [ ] **spi-2** | style | design | `CS/SCK/MOSI/MISO 信号命名统一`
+
+### uart（2 条）
+
+- [ ] **uart-1** | quality | design | `波特率分频用 Bit#(n) 而非 Integer`
+- [ ] **uart-2** | quality | design | `UART 帧格式 start + 8bit + stop`
+
+### crc（2 条）
+
+- [ ] **crc-1** | quality | design | `CRC 多项式位宽确认`
+- [ ] **crc-2** | quality | code | `Bool vs Bit#(1) 区分 — 硬件控制信号如 'done' 用 Bit#(1)，方便 interface 连接和位拼接`
+
+### interrupt（2 条）
+
+- [ ] **interrupt-1** | quality | design | `IRQ 信号用 Bit#(n) 便于多中断检测`
+- [ ] **interrupt-2** | hard | code | `mask 位宽 vs pending 位宽对齐`
+
+### dma（3 条）
+
+- [ ] **dma-1** | quality | design | `DMA 描述符链用 FIFO 传递 — 不用 Wire`
+- [ ] **dma-2** | quality | design | `burst 传输注意地址对齐`
+- [ ] **dma-3** | quality | code | `DMA 控制信号（done、error、valid）统一用 Bit#(1)，便于多通道状态总线拼接`
+
+### gpio（3 条）
+
+- [ ] **gpio-1** | quality | design | `GPIO 方向寄存器用 Bool 还是 Bit#(1) — 建议 Bit#(1) 可拼总线`
+- [ ] **gpio-2** | hard | code | `GPIO inout 信号通过 BVI 机制处理：BSV interface 中定义独立的 data_in、data_out、oe（output enable）method，Verilog wrapper 中用 assign io = oe ? data_out : 'bz 实现三态控制。Inout#() 包装器属于旧版 BSC 库用法，BSC 2025.07 中不推荐直接使用`
+- [ ] **gpio-3** | quality | code | `输出端口在顶层模块直接接 method`
+
+---
+
+## P2 — 低影响（41 条）
+
+### types（3 条）
+
+- [ ] **types-1** | hard | code | `Bool 用 ! 不用 ~`
+- [ ] **types-2** | hard | code | `Bit#(n) 位宽一致性`
+- [ ] **types-3** | hard | code | `sized literal 不超位宽`
+
+### struct（2 条）
+
+- [ ] **struct-1** | hard | code | `struct 字段名拼写`
+- [ ] **struct-2** | hard | code | `struct 字面量用 MyStruct { field: val } 格式`
+
+### union（2 条）
+
+- [ ] **union-1** | hard | code | `tagged 构造带数据的 tag 必须传参`
+- [ ] **union-2** | hard | code | `union 字段不能 .field 直接访问 — 用 case matches`
+
+### method（2 条）
+
+- [ ] **method-1** | hard | code | `method 必须在所有 rule 之后`
+- [ ] **method-2** | hard | code | `value method 用 = 而非 if-return`
+
+### encoder（4 条）
+
+- [ ] **encoder-1** | quality | design | `编码器输出位宽 = ceil(log2(input_width))`
+- [ ] **encoder-2** | quality | code | `优先编码器用 findIndex 查 Vector 中第一个满足条件的位（不用 foldl 手工遍历）`
+- [ ] **encoder-3** | quality | code | `输出 valid 信号用 Bit#(1) 不用 Bool`
+- [ ] **encoder-4** | quality | code | `索引用 UInt#(n) 不用 Integer`
+
+### decoder（3 条）
+
+- [ ] **decoder-1** | quality | design | `译码输出位宽 = 2^input_width`
+- [ ] **decoder-2** | quality | design | `one-hot 输出注意位宽膨胀`
+- [ ] **decoder-3** | quality | code | `组合逻辑 decoder 用 function 而非 rule`
+
+### timer（3 条）
+
+- [ ] **timer-1** | quality | design | `计数器位宽 = ceil(log2(max_count))`
+- [ ] **timer-2** | quality | design | `预分频器用 Bit#(n) 分频`
+- [ ] **timer-3** | quality | code | `timer 控制信号（done、overflow、tick）用 Bit#(1)，状态寄存器位拼接时无类型冲突`
+
+### clock（2 条）
+
+- [ ] **clock-1** | hard | code | `Clock 类型需要 import Clocks::*`
+- [ ] **clock-2** | quality | design | `跨时钟域用 mkSyncFIFO / mkSyncBRAMFIFO`
+
+### reset（2 条）
+
+- [ ] **reset-1** | hard | code | `Reset 类型需要显式 import`
+- [ ] **reset-2** | hard | code | `default_reset 在 BVI 中是 RST_N 而非 RST`
+
+### regfile（3 条）
+
+- [ ] **regfile-1** | hard | design | `RegFile 最多 5 读端口 — 超出触发 G0002`
+- [ ] **regfile-2** | quality | design | `mkRegFileFull vs mkRegFile 选型`
+- [ ] **regfile-3** | hard | code | `同 cycle 读写同地址 → G0004`
+
+### pipeline（1 条）
+
+- [ ] **pipeline-1** | quality | design | `级联模块间用 FIFO 传递 data，不要用 Wire + handshake`
+
+### bvi（2 条）
+
+- [ ] **bvi-1** | hard | code | `default_clock / default_reset 必须写`
+- [ ] **bvi-2** | hard | code | `parameter width = valueOf(sz_a) — 位宽参数模板`
+
+### attribute（2 条）
+
+- [ ] **attribute-1** | hard | code | `synthesize 不拼写成 synthesized`
+- [ ] **attribute-2** | hard | code | `urgency 规则名必须在本模块中存在`
+
+### interface（2 条）
+
+- [ ] **interface-1** | hard | design | `接口方法名不能重复`
+- [ ] **interface-2** | hard | code | `interface instance 用 <- 而非 =`
+
+### rule（2 条）
+
+- [ ] **rule-1** | hard | code | `同一 rule 内同一 Reg 只写一次`
+- [ ] **rule-2** | hard | design | `urgency 属性避免循环`
+
+### vector（2 条）
+
+- [ ] **vector-1** | hard | code | `vec() 在 BSC 2025.07 不可用 — 构造 Vector 用 genWith(fromInteger)`
+- [ ] **vector-2** | quality | code | `Vector 索引/遍历 用 findIndex/map/fold 等标准库函数，索引用 UInt 而非 Integer`
+
+### serialize（2 条）
+
+- [ ] **serialize-1** | hard | design | `shift reg 位宽对齐`
+- [ ] **serialize-2** | quality | code | `cnt = log2(data_width) 位宽计算`
+
+### synthesize（2 条）
+
+- [ ] **synthesize-1** | hard | design | `多态模块不能直接 synthesize — 用具体类型包裹`
+- [ ] **synthesize-2** | hard | code | `顶层模块加 (* synthesize *)`
+
+---
+
+## 进度统计
+
+| 优先级 | 总计 | 已验证 | 未通过 | 待验证 |
+|--------|------|--------|--------|--------|
+| P0 | 8 | 1 | 0 | 7 |
+| P1 | 16 | 0 | 0 | 16 |
+| P2 | 41 | 0 | 0 | 41 |
+| **合计** | **65** | **1** | **0** | **64** |
+
+---
+
+## 验证日志
+
+| 日期 | trap-id | 结果 | 备注 |
+|------|---------|------|------|
+| 2026-07-14 | fifo-1 | ✅ | 原文引用 mkBypassFIFO（BSC 2025.07 不存在），修订为 mkFIFO1。fixture 编译通过，Verilog 生成成功。severity/phase 审查通过（quality/design）。 |
