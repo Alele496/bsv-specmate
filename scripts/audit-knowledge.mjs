@@ -18,89 +18,14 @@
 import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
+import { parseErrorFile } from '../src/db/parser.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = resolve(__dirname, '..');
 const ERRORS_DIR = join(PKG_ROOT, 'docs', 'errors');
 
 // ── Helpers ──
-
-/**
- * Parse error file using the same logic as parser.mjs.
- * This is a re-implementation to avoid depending on ESM dynamic imports
- * that may fail if the DB is not initialized.
- */
-function parseErrorFile(content) {
-    const lines = content.split('\n');
-
-    let code = '';
-    let title = '';
-    let phenomena = '';
-    let cause = '';
-    let solution = '';
-    let rules = '';
-    let count = 1;
-
-    const firstLine = lines[0] || '';
-    const match = firstLine.match(/^#\s+(\S+)\s*[—-]\s*(.+?)\s*(?:\(\u00d7(\d+)\))?$/);
-    if (match) {
-        code = match[1].trim();
-        title = match[2].trim();
-        if (match[3]) count = parseInt(match[3], 10);
-    }
-
-    let section = '';
-    for (let i = 1; i < lines.length; i++) {
-        const line = lines[i];
-        if (/^\*\*(?:bsc\s*输出|现象)\*\*/.test(line) || /^##\s+(?:现象|bsc\s*输出)/.test(line)) {
-            section = 'phenomena';
-            continue;
-        }
-        if (/^\*\*原因\*\*/.test(line) || /^##\s+原因\b/.test(line)) {
-            section = 'cause';
-            continue;
-        }
-        if (/^\*\*解决\*\*/.test(line) || /^##\s+解决/.test(line)) {
-            section = 'solution';
-            continue;
-        }
-        if (/^##\s+规则\b/.test(line)) {
-            section = 'rules';
-            continue;
-        }
-        if (line.startsWith('> **规则**:')) {
-            rules += line.replace(/^>\s*\*\*规则\*\*:\s*/, '').trim();
-            rules += '\n';
-            continue;
-        }
-        if (line.startsWith('> ') && section === 'rules') {
-            rules += line.replace(/^>\s*/, '');
-            continue;
-        }
-
-        if (section === 'phenomena') {
-            phenomena += line + '\n';
-        } else if (section === 'cause') {
-            if (!line.startsWith('#') && line.trim()) {
-                cause += line + '\n';
-            }
-        } else if (section === 'solution') {
-            if (!line.startsWith('#') && !line.startsWith('> **规则')) {
-                solution += line + '\n';
-            }
-        }
-    }
-
-    return {
-        code: code.trim(),
-        title: title.trim(),
-        phenomena: phenomena.trim(),
-        cause: cause.trim(),
-        solution: solution.trim(),
-        rules: rules.trim(),
-        count
-    };
-}
+// parseErrorFile imported from src/db/parser.mjs (P2-2: no more local reimplementation)
 
 /**
  * Check if content has a version annotation line.

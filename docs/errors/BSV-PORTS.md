@@ -2,7 +2,9 @@
 
 > 适用版本: BSC 2025.07 | 自动生成: 2026-07-15 | 来源: 1 captures
 
-**bsc 输出**：Vivado `get_ports uart_rx` 找不到端口。
+**bsc 输出**：
+
+Vivado `get_ports uart_rx` 找不到端口。
 
 **原因**：
 

@@ -13,7 +13,7 @@
  *   格式化的 Markdown 诊断报告
  */
 
-import { queryError, addCapture, queryErrorCodeStats } from '../db/query.mjs';
+import { queryError, addCapture, addCapturesBatch, queryErrorCodeStats } from '../db/query.mjs';
 
 /**
  * 解析单个 BSC 诊断条目。
@@ -133,42 +133,37 @@ function detectAutoFixability(rules, code) {
 
     const r = rules.toLowerCase();
 
-    // 可自动修复的模式：
-    // - P0200: BVI schedule 声明 — 纯语法，可以自动生成 CF 展开
-    // - P0005/P0030: 保留字/语法约束 — 有明确的 before/after 模式
-    const autoPatterns = [
-        'bvi schedule',    // P0200 schedule 声明
-        'cf ',             // CF 关键字展开
-        '部分应用',         // P0005 语法替换
-        '\\\\==',          // 部分应用操作符
-        'let 绑定',        // P0005 let 绑定替换
+    // P2-3: 双因子判断 — 不仅看错误码前缀，还解析 rules 文本关键词
+    // Auto 信号词：明确的机械操作，可程序化执行
+    const autoSignals = [
+        '添加', '加上', '替换为', '改为', '展开', '逐对',
+        'bvi schedule', 'cf ', '部分应用', '\\\\==', 'let 绑定',
+        'pragma', 'suffix', '去掉', '删除',
     ];
 
-    for (const pattern of autoPatterns) {
-        if (r.includes(pattern)) return 'auto';
-    }
-
-    // 需要手动判断的模式：
-    // - G0010/G0036: 调度冲突 — 需要理解设计意图
-    // - G0004: 规则内重复写入 — 需要理解数据流
-    const manualPatterns = [
-        '调度冲突',
-        'method-rule',
-        'urgency',
-        '规则内',
-        '数据依赖',
+    // Manual 信号词：需要设计判断，不能机械执行
+    const manualSignals = [
+        '需检查', '取决于', '需确认', '设计层', '接受或',
+        '调度冲突', 'method-rule', '数据依赖', '规则内',
+        'urgency', '评估', '权衡',
     ];
 
-    for (const pattern of manualPatterns) {
-        if (r.includes(pattern)) return 'manual';
+    let autoScore = 0;
+    let manualScore = 0;
+
+    for (const signal of autoSignals) {
+        if (r.includes(signal)) autoScore++;
+    }
+    for (const signal of manualSignals) {
+        if (r.includes(signal)) manualScore++;
     }
 
-    // 默认：按错误码系列推断
-    // P 系列（解析错误）：通常是语法问题，可自动
-    // G 系列（生成错误）：通常是调度/资源问题，需手动
-    // T 系列（类型错误）：类型推导，需手动
-    // B 系列（BSV 特有）：语法/模式问题，可能可自动
-    // S 系列（调度）：需手动
+    // 有明确操作指令且无设计判断 → auto
+    if (autoScore > 0 && manualScore === 0) return 'auto';
+    // 有设计判断 → manual（无论 auto 得分多少）
+    if (manualScore > 0) return 'manual';
+
+    // Fallback：按错误码系列推断
     if (code.startsWith('G') || code.startsWith('T') || code.startsWith('S')) {
         return 'manual';
     }
@@ -395,52 +390,32 @@ export async function diagnose(bscOutput, sessionId, files = null) {
         }
     }
 
-    // ── Auto-capture ──
-    // 在后台记录所有诊断出的错误码到 captures 表
+    // ── Auto-capture (batch) ──
+    // P2-1: 收集所有条目，一次性批量写入，替代 O(codes×files) 循环
+    const batchEntries = [];
     for (const code of allCodes) {
-        try {
-            const codeEntries = groups.get(code);
-            const sampleOutput = codeEntries.map(e =>
-                `${e.severity === 'error' ? 'Error' : 'Warning'}: "${e.file}", line ${e.line}: (${e.code})\n  "${e.message}"`
-            ).join('\n');
+        const codeEntries = groups.get(code);
+        const sampleOutput = codeEntries.map(e =>
+            `${e.severity === 'error' ? 'Error' : 'Warning'}: "${e.file}", line ${e.line}: (${e.code})\n  "${e.message}"`
+        ).join('\n');
 
-            if (files && files.length > 0) {
-                for (const f of files) {
-                    await addCapture({
-                        code,
-                        bsc_output: sampleOutput,
-                        files: f,
-                        file: f,
-                        source: 'bsc',
-                        session_id: sessionId,
-                    });
+        if (files && files.length > 0) {
+            for (const f of files) {
+                batchEntries.push({ code, bsc_output: sampleOutput, files: f, file: f, source: 'bsc', session_id: sessionId });
+            }
+        } else {
+            const inferredFiles = [...new Set(codeEntries.map(e => e.file).filter(Boolean))];
+            if (inferredFiles.length > 0) {
+                for (const f of inferredFiles) {
+                    batchEntries.push({ code, bsc_output: sampleOutput, files: f, file: f, source: 'bsc', session_id: sessionId });
                 }
             } else {
-                // 尝试从诊断条目中推断文件
-                const inferredFiles = [...new Set(codeEntries.map(e => e.file).filter(Boolean))];
-                if (inferredFiles.length > 0) {
-                    for (const f of inferredFiles) {
-                        await addCapture({
-                            code,
-                            bsc_output: sampleOutput,
-                            files: f,
-                            file: f,
-                            source: 'bsc',
-                            session_id: sessionId,
-                        });
-                    }
-                } else {
-                    await addCapture({
-                        code,
-                        bsc_output: sampleOutput,
-                        source: 'bsc',
-                        session_id: sessionId,
-                    });
-                }
+                batchEntries.push({ code, bsc_output: sampleOutput, source: 'bsc', session_id: sessionId });
             }
-        } catch (_) {
-            /* auto-capture is non-critical — don't fail the diagnose */
         }
+    }
+    if (batchEntries.length > 0) {
+        try { await addCapturesBatch(batchEntries); } catch (_) { /* non-critical */ }
     }
 
     // ── 下一步建议 ──

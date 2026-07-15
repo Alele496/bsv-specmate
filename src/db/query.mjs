@@ -221,6 +221,34 @@ export async function addCapture({ code, bsc_output, files, file = null, source 
     return result;
 }
 
+/**
+ * Batch insert captures — opens DB once, inserts all, saves once.
+ * P2-1 fix: replaces O(codes×files) individual addCapture calls.
+ */
+export async function addCapturesBatch(entries) {
+    if (!entries || entries.length === 0) return [];
+    const db = await ensureDB();
+    const timestamp = new Date().toISOString();
+    const sid = _currentSessionId;
+    const results = [];
+    for (const entry of entries) {
+        const result = upsertCapture(db, {
+            code: entry.code,
+            timestamp,
+            bsc_output: entry.bsc_output || '',
+            files: entry.files || null,
+            file: entry.file || null,
+            source: entry.source || 'bsc',
+            session_id: entry.session_id || sid,
+            cause: entry.cause || null,
+            status: 'unresolved',
+        });
+        results.push(result);
+    }
+    await saveDB();
+    return results;
+}
+
 export async function resolveCaptureById(id, { cause, solution }) {
     const db = await ensureDB();
     resolveCapture(db, id, { cause, solution });
