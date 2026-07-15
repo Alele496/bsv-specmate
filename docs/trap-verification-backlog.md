@@ -32,7 +32,9 @@
 
 ### axi（1 条）
 
-- [ ] **axi-1** | quality | design | `AXI4 接口 port 名与 BSV method 名不一致 — 用 Verilog wrapper`
+- [x] **axi-1** | quality | design | `AXI4 接口 port 名与 BSV method 名不一致 — 用 Verilog wrapper`
+  - fixture: `test/fixtures/traps/axi-1.bsv` + `test/fixtures/traps/axi_slave.v`（编译通过）
+  - 修复记录：`default_clock (ACLK)` 需括号（大写 port 名），schedule 语法需逐方法声明或省略
 
 ### fifo（1 条）
 
@@ -43,7 +45,9 @@
 
 ### fsm（2 条）
 
-- [ ] **fsm-1** | quality | design | `StmtFSM 隐式并行写 — 避免同一 cycle 写同一 Reg`
+- [x] **fsm-1** | quality | design | `StmtFSM 隐式并行写 — 避免同一 cycle 写同一 Reg`
+  - fixture: `test/fixtures/traps/fsm-1.bsv`（编译通过）
+  - 修复记录：`StmtFSM` 是 package 名，mkFSM 返回的接口类型应为 `FSM`，非 `StmtFSM`
 - [ ] **fsm-2** | hard | code | `value method 不用 if-return，用 ?: 三元链`
 
 ### schedule（2 条）
@@ -202,10 +206,10 @@
 
 | 优先级 | 总计 | 已验证 | 未通过 | 待验证 |
 |--------|------|--------|--------|--------|
-| P0 | 8 | 1 | 0 | 7 |
+| P0 | 8 | 3 | 0 | 5 |
 | P1 | 16 | 0 | 0 | 16 |
 | P2 | 41 | 0 | 0 | 41 |
-| **合计** | **65** | **1** | **0** | **64** |
+| **合计** | **65** | **3** | **0** | **62** |
 
 ---
 
@@ -214,3 +218,5 @@
 | 日期 | trap-id | 结果 | 备注 |
 |------|---------|------|------|
 | 2026-07-14 | fifo-1 | ✅ | 原文引用 mkBypassFIFO（BSC 2025.07 不存在），修订为 mkFIFO1。fixture 编译通过，Verilog 生成成功。severity/phase 审查通过（quality/design）。 |
+| 2026-07-14 | fsm-1 | ✅ | fixture 编译通过（总管修复：`StmtFSM fsm`→`FSM fsm`，mkFSM 返回类型是 FSM 而非 StmtFSM）。trap 描述准确，severity/phase 审查通过（quality/design）。 |
+| 2026-07-14 | axi-1 | ✅ | fixture 编译通过（总管修复：`default_clock (ACLK)` 需括号、移除 BVI 内不兼容的 schedule 行。3 条 P0200 调度警告属可接受副作用）。trap 描述准确，severity/phase 审查通过（quality/design）。 |

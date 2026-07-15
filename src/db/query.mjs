@@ -76,12 +76,11 @@ export async function ensureDB() {
 
     if (existsSync(_dbPath)) {
         const buf = readFileSync(_dbPath);
-        _db = new SQL.Database(buf);
+        const db = new SQL.Database(buf);
         // Ensure new tables and columns exist (migration for existing DBs)
         // New tables (idempotent)
-        _db.run(CAPTURES_DDL);
-        _db.run(`CREATE INDEX IF NOT EXISTS idx_captures_dedup ON captures(code, file, session_id)`);
-        _db.run(`CREATE TABLE IF NOT EXISTS sessions (
+        db.run(CAPTURES_DDL);
+        db.run(`CREATE TABLE IF NOT EXISTS sessions (
             id              TEXT PRIMARY KEY,
             task_name       TEXT,
             started_at      TEXT NOT NULL,
@@ -90,16 +89,25 @@ export async function ensureDB() {
             compile_failures INTEGER DEFAULT 0
         )`);
         // Add new columns to existing captures table (ignore errors if already exist)
+        // MUST run BEFORE creating the dedup index, because the index references
+        // file and session_id columns that may not exist yet in old databases.
         const migrateCols = [
             "ALTER TABLE captures ADD COLUMN file TEXT",
             "ALTER TABLE captures ADD COLUMN source TEXT DEFAULT 'bsc'",
             "ALTER TABLE captures ADD COLUMN session_id TEXT",
             "ALTER TABLE captures ADD COLUMN repeat_count INTEGER DEFAULT 1",
+            "ALTER TABLE captures ADD COLUMN cause TEXT",
+            "ALTER TABLE captures ADD COLUMN solution TEXT",
         ];
         for (const sql of migrateCols) {
-            try { _db.run(sql); } catch (_) { /* column already exists */ }
+            try { db.run(sql); } catch (_) { /* column already exists */ }
         }
-        _db.run(`CREATE TABLE IF NOT EXISTS warnings (
+        // Index must come AFTER ALTER TABLE — otherwise it fails referencing
+        // non-existent columns in old databases.
+        try {
+            db.run(`CREATE INDEX IF NOT EXISTS idx_captures_dedup ON captures(code, file, session_id)`);
+        } catch (_) { /* index creation failed (e.g. columns still missing) */ }
+        db.run(`CREATE TABLE IF NOT EXISTS warnings (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             snapshot_id TEXT NOT NULL,
             timestamp   TEXT NOT NULL,
@@ -110,7 +118,7 @@ export async function ensureDB() {
             UNIQUE(snapshot_id, file, line, code)
         )`);
         // Ensure errors table exists (old DBs may not have it — missing from earlier migration)
-        _db.run(`CREATE TABLE IF NOT EXISTS errors (
+        db.run(`CREATE TABLE IF NOT EXISTS errors (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             code        TEXT NOT NULL UNIQUE,
             title       TEXT NOT NULL,
@@ -122,7 +130,10 @@ export async function ensureDB() {
             count       INTEGER DEFAULT 1
         )`);
         // Auto-seed errors table if empty (e.g. migrated from old schema)
-        const seeded = await autoSeedIfEmpty(_db);
+        const seeded = await autoSeedIfEmpty(db);
+        // Only assign to _db after ALL migration steps succeed, so a failed
+        // migration doesn't permanently cache a broken database handle.
+        _db = db;
         if (seeded > 0) {
             await saveDB();
         }

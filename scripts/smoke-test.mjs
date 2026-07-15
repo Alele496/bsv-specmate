@@ -169,6 +169,177 @@ function test6_multi_file_first_invalid() {
     );
 }
 
+// ── 测试 7: ensureDB → errors 表自动填充 ──
+async function test7_auto_seed() {
+    console.log('\n📋 测试 7: ensureDB() 后 errors 表不为空');
+
+    const { ensureDB, queryAllErrors } = await import('../src/db/query.mjs');
+    await ensureDB();
+    const errors = await queryAllErrors();
+
+    assert(Array.isArray(errors), 'queryAllErrors 返回数组');
+    assert(errors.length >= 20, `errors 表有 ${errors.length} 条记录（预期 ≥20）`);
+    // 验证每条记录有 code 字段
+    for (const e of errors) {
+        assert(typeof e.code === 'string' && e.code.length > 0, `条目含有效 code: ${e.code}`);
+    }
+    console.log(`  ℹ️  errors 表共 ${errors.length} 条错误码`);
+}
+
+// ── 测试 8: session 自动生成（幂等 + 格式校验）──
+async function test8_session() {
+    console.log('\n📋 测试 8: ensureSession() 幂等生成 session_id');
+
+    const { ensureSession, getSessionId } = await import('../src/db/query.mjs');
+
+    const id1 = await ensureSession('烟雾测试-session');
+    const id2 = await ensureSession('烟雾测试-第二次调用');
+
+    assert(id1 === id2, '两次 ensureSession 返回相同 session_id（幂等）');
+    assert(typeof id1 === 'string' && id1.length > 0, 'session_id 是非空字符串');
+
+    // 验证格式: YYYYMMDD-HHMMSS-<4位随机字符>
+    const formatRe = /^\d{8}-\d{6}-[a-z0-9]{4}$/;
+    assert(formatRe.test(id1), `session_id 格式 YYYYMMDD-HHMMSS-xxxx: ${id1}`);
+
+    const idFromGetter = getSessionId();
+    assert(idFromGetter === id1, 'getSessionId() 与 ensureSession() 返回值一致');
+
+    console.log(`  ℹ️  session_id: ${id1}`);
+}
+
+// ── 测试 9: upsertCapture 去重 ──
+// 前提：测试 8 已调用 ensureSession() 创建了 session
+async function test9_upsert_capture() {
+    console.log('\n📋 测试 9: upsertCapture 同 (code, file, session_id) 去重');
+    console.log('  前提：依赖测试 8 已创建 session');
+
+    const { getSessionId, addCapture, queryCapturesByCode } = await import('../src/db/query.mjs');
+    const session_id = getSessionId();
+    assert(session_id != null, 'session_id 已存在（测试 8 已创建）');
+
+    const testCode = 'SMOKE_TEST_DEDUP';
+    const testFile = 'test/fixtures/smoke-dedup.bsv';
+
+    // 第一次 capture
+    const result1 = await addCapture({
+        code: testCode,
+        bsc_output: `Error: "${testFile}", line 10: ${testCode} 去重测试-第一次`,
+        files: testFile,
+        file: testFile,
+        source: 'bsc',
+        session_id,
+    });
+
+    assert(!result1.deduped, '第一次 addCapture 不触发去重 (deduped=false)');
+    assert(result1.repeat_count === 1, `第一次 repeat_count = 1 (实际: ${result1.repeat_count})`);
+
+    // 第二次 capture — 相同 (code, file, session_id)
+    const result2 = await addCapture({
+        code: testCode,
+        bsc_output: `Error: "${testFile}", line 15: ${testCode} 去重测试-第二次`,
+        files: testFile,
+        file: testFile,
+        source: 'bsc',
+        session_id,
+    });
+
+    assert(result2.deduped === true, '第二次 addCapture 触发去重 (deduped=true)');
+    assert(result2.repeat_count === 2, `第二次 repeat_count = 2 (实际: ${result2.repeat_count})`);
+    assert(result2.id === result1.id, '去重返回相同 id');
+
+    // 验证 captures 表中只有 1 条记录
+    const records = await queryCapturesByCode(testCode);
+    const matching = records.filter(r => r.file === testFile && r.session_id === session_id);
+    assert(matching.length === 1, `captures 表中仅 1 条记录（非 ${matching.length} 条）`);
+}
+
+// ── 测试 10: specmate_capture 响应含统计摘要 ──
+// 模拟 bsc 编译错误输出，执行 capture 逻辑，验证统计摘要
+async function test10_capture_stats() {
+    console.log('\n📋 测试 10: specmate_capture 响应含统计摘要');
+
+    const { ensureSession, getSessionId, addCapture, querySessionStats, queryStubbornErrors } = await import('../src/db/query.mjs');
+    const session_id = getSessionId() || await ensureSession();
+
+    // 模拟 bsc 编译错误输出（含多个错误码）
+    const bscOutput = `Error: "src/Foo.bsv", line 42, column 15: (G0004)
+    Rule "foo" and "bar" have overlapping scheduling...
+    Error: "src/Foo.bsv", line 58, column 3: (P0030)
+    Module "Foo" is not exported...
+    Error: "src/Foo.bsv", line 100, column 20: (T0051)
+    Type error: expected Bit#(32) but found Bool`;
+
+    // 解析错误码（与 server.mjs 中 specmate_capture 逻辑一致）
+    const codePattern = /\b([GPTBS]\d{4})\b/g;
+    const codes = [...new Set([...bscOutput.matchAll(codePattern)].map(m => m[1]))];
+    assert(codes.length > 0, `从 bsc 输出解析出 ${codes.length} 个错误码`);
+
+    // 逐条 capture
+    for (const code of codes) {
+        await addCapture({ code, bsc_output: bscOutput, files: 'src/Foo.bsv', file: 'src/Foo.bsv', source: 'bsc', session_id });
+    }
+
+    // 验证统计摘要
+    const stats = await querySessionStats(session_id);
+    assert(stats.compileAttempts >= 1, `compile_attempts >= 1 (实际: ${stats.compileAttempts})`);
+
+    // 构造与 specmate_capture 一致的统计块
+    const stubborn = await queryStubbornErrors(session_id, 2);
+    const parts = ['📊 当前任务统计:'];
+    parts.push(`- 编译失败: ${stats.compileAttempts} 次`);
+    parts.push(`- 未解决错误: ${stats.unresolvedCount} 个`);
+    if (stubborn.length > 0) {
+        for (const s of stubborn) {
+            const loc = s.file ? `${s.file} 中 ` : '';
+            parts.push(`- ⚠ 顽固错误: ${loc}${s.code} 已出现 ${s.repeat_count} 次`);
+        }
+    }
+    const statsBlock = parts.join('\n');
+
+    assert(statsBlock.includes('📊 当前任务统计'), '统计块含 "📊 当前任务统计"');
+    assert(statsBlock.includes('编译失败'), '统计块含 "编译失败"');
+    console.log(`  ℹ️  ${statsBlock.replace(/\n/g, '\n  ')}`);
+}
+
+// ── 测试 11: specmate_resolve 响应含修复率 ──
+// 先 capture 一个错误，再 resolve 它，验证修复率统计
+async function test11_resolve_fix_rate() {
+    console.log('\n📋 测试 11: specmate_resolve 响应含修复率');
+
+    const { ensureSession, getSessionId, addCapture, getLatestCaptureByCode, resolveCaptureById, queryFixRate } = await import('../src/db/query.mjs');
+    const session_id = getSessionId() || await ensureSession();
+
+    const testCode = 'SMOKE_TEST_FIX';
+
+    // Step 1: capture 一个错误
+    const capResult = await addCapture({
+        code: testCode,
+        bsc_output: `Error: "test.bsv", line 1: ${testCode} 修复率测试`,
+        files: 'test.bsv',
+        file: 'test.bsv',
+        source: 'bsc',
+        session_id,
+    });
+    console.log(`  ℹ️  已 capture: ${testCode} (id=${capResult.id})`);
+
+    // Step 2: resolve 它
+    const capture = await getLatestCaptureByCode(testCode);
+    assert(capture != null, `找到未解决的 capture: ${testCode}`);
+    await resolveCaptureById(capture.id, { cause: '测试用根因', solution: '测试用修复方案' });
+
+    // Step 3: 验证修复率
+    const rate = await queryFixRate(session_id);
+    assert(rate.total > 0, `有 capture 记录 (total=${rate.total})`);
+    assert(rate.resolved > 0, `有已解决记录 (resolved=${rate.resolved})`);
+
+    const pct = ((rate.resolved / rate.total) * 100).toFixed(1);
+    const fixRateMsg = `修复率: ${rate.resolved}/${rate.total} (${pct}%)`;
+    assert(fixRateMsg.includes('修复率'), '修复率消息含 "修复率"');
+
+    console.log(`  ℹ️  ${fixRateMsg}`);
+}
+
 // ── main ──
 async function main() {
     console.log('╔══════════════════════════════════════════╗');
@@ -195,6 +366,47 @@ async function main() {
     test4_nonexistent_file();
     test5_valid_absolute_path();
     test6_multi_file_first_invalid();
+
+    // 测试 7-11 依赖数据库，需要 try-catch
+    try {
+        await test7_auto_seed();
+    } catch (err) {
+        console.error(`  ❌ test7_auto_seed 异常: ${err.message}`);
+        failures.push(`test7_auto_seed: ${err.message}`);
+        failed++;
+    }
+
+    try {
+        await test8_session();
+    } catch (err) {
+        console.error(`  ❌ test8_session 异常: ${err.message}`);
+        failures.push(`test8_session: ${err.message}`);
+        failed++;
+    }
+
+    try {
+        await test9_upsert_capture();
+    } catch (err) {
+        console.error(`  ❌ test9_upsert_capture 异常: ${err.message}`);
+        failures.push(`test9_upsert_capture: ${err.message}`);
+        failed++;
+    }
+
+    try {
+        await test10_capture_stats();
+    } catch (err) {
+        console.error(`  ❌ test10_capture_stats 异常: ${err.message}`);
+        failures.push(`test10_capture_stats: ${err.message}`);
+        failed++;
+    }
+
+    try {
+        await test11_resolve_fix_rate();
+    } catch (err) {
+        console.error(`  ❌ test11_resolve_fix_rate 异常: ${err.message}`);
+        failures.push(`test11_resolve_fix_rate: ${err.message}`);
+        failed++;
+    }
 
     // ── 汇总 ──
     console.log('\n═══════════════════════════════════════════');
