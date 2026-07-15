@@ -567,9 +567,15 @@ function checkUrgencyCycle(filename, content, issues) {
 }
 
 function checkAttrBadRule(filename, content, issues) {
+    // Collect rule names
     const ruleNames = new Set([
         ...content.matchAll(/\brule\s+(["\\].*?["\\]|\w+)/g)
     ].map(m => m[1].replace(/["\\]/g, '')));
+    // Also collect method declaration names — they can appear in urgency annotations
+    // Pattern: method [Type] name( or method [Type] name;
+    for (const m of content.matchAll(/\bmethod\s+(?:\w+(?:#\([^)]*\))?\s+)?(\w+)\s*[\(;]/g)) {
+        ruleNames.add(m[1]);
+    }
 
     const urgencyRe = /(?:descending_urgency|execution_order|preempts)\s*=\s*"([^"]+)"/g;
     let um;
@@ -693,6 +699,9 @@ function checkG0053(filename, lines, issues) {
             init.startsWith('unpack(') || init.startsWith('fromInteger(') ||
             init.startsWith('truncate(') || init.startsWith('extend(') ||
             init === 'False' || init === 'True') continue;
+        // Uppercase-first identifiers are enum constructors (e.g. IDLE, ACTIVE) —
+        // compile-time constants that are valid mkReg initializers
+        if (/^[A-Z][a-zA-Z0-9_]*$/.test(init)) continue;
         // 包含标识符 → 可能是模块参数或变量 → 警告
         if (/[a-zA-Z_]/.test(init)) {
             issues.push({

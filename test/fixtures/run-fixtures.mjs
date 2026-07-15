@@ -23,6 +23,8 @@ const CHECK_DIR = join(__dirname, 'check');
 const EXPECTED_CHECKS = {
     'bool-interface-return': ['interface-bool-return', 'interface-bool-param'],
     'always-attr-misuse': ['always-attr-guard-conflict', 'always-attr-cond-body'],
+    'G0054': ['G0054'],
+    'G0053': ['G0053'],
 };
 
 function runFixtures() {
