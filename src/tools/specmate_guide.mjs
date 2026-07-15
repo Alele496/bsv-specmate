@@ -49,7 +49,7 @@ async function preCode(input, level, cfg, file = null) {
     lines.push('> **specmate 当前不做主动设计指导。**');
     lines.push('> 请用最保守的 BSV 写法自主完成架构：Bit#(1) 不用 Bool、显式 guard 不用 always_ready、');
     lines.push('> 子接口组织、手写 state register 不用 StmtFSM、跨 rule 数据用 FIFOF 传递。');
-    lines.push('> **编码完成后运行 `npx specmate check --full` 验证代码正确性。**');
+    lines.push('> **编码完成后调 `mcp__bsv-specmate__specmate_check`（参数 files: ["<绝对路径>"], full: true）验证代码正确性。**');
     lines.push('');
 
     // ── Preflight AST scan results ──
@@ -90,7 +90,7 @@ async function preCode(input, level, cfg, file = null) {
     }
 
     if (lines.length === 0) {
-        return 'specmate 当前不做主动指导。请用最保守的 BSV 写法自主完成架构，编码完成后运行 `npx specmate check --full` 验证。';
+        return 'specmate 当前不做主动指导。请用最保守的 BSV 写法自主完成架构，编码完成后调 `mcp__bsv-specmate__specmate_check`（参数 files: ["<绝对路径>"], full: true）验证。';
     }
     return lines.join('\n');
 }
@@ -134,9 +134,9 @@ async function onError(input, level, cfg) {
         if (candidates.length > 0) {
             return `错误码 "${code}" 未找到。相近条目:\n` +
                 candidates.map(c => `  ${c.code}: ${c.title}`).join('\n') +
-                '\n\n如果确实是新错误: specmate_learn(...)';
+                '\n\n如果确实是新错误: specmate_capture(bsc_output="<完整 bsc 输出>")';
         }
-        return `错误码 "${code}" 未找到。如果是新错误，用 specmate_learn 加入编码记忆。`;
+        return `错误码 "${code}" 未找到。如果是新错误，用 specmate_capture 记录编译输出。`;
     }
 
     if (LEVEL_LIMITS[level].mode === 'passive') {
@@ -431,8 +431,8 @@ const DECISIONS = [
 
 async function decide(input, level, cfg) {
     return '设计决策指导功能当前不可用。specmate 已从"建议系统"重构为"验证层"——' +
-        '请自主完成架构设计，编码完成后用 `npx specmate check --full` 验证代码正确性。' +
-        '\n\n编译失败时用 `npx specmate guide on_error "<bsc 错误输出>"` 获取修复方案。';
+        '请自主完成架构设计，编码完成后调 `mcp__bsv-specmate__specmate_check`（参数 files: ["<绝对路径>"], full: true）验证代码正确性。' +
+        '\n\n编译失败时调 `mcp__bsv-specmate__specmate_guide`（参数 phase: "on_error", input: "<错误码>"）获取修复方案。';
 }
 
 function patternPhase(input, level, cfg) {
@@ -544,7 +544,7 @@ export async function scan(taskDescription, filePath = null) {
     lines.push('> **specmate 当前不做主动设计指导。**');
     lines.push('> 请用最保守的 BSV 写法自主完成架构：Bit#(1) 不用 Bool、显式 guard 不用 always_ready、');
     lines.push('> 子接口组织、手写 state register 不用 StmtFSM、跨 rule 数据用 FIFOF 传递。');
-    lines.push('> **编码完成后运行 `npx specmate check --full` 验证代码正确性。**');
+    lines.push('> **编码完成后调 `mcp__bsv-specmate__specmate_check`（参数 files: ["<绝对路径>"], full: true）验证代码正确性。**');
     lines.push('');
 
     // ── Preflight AST scan (auto-capture issues) ──
@@ -594,16 +594,16 @@ export async function scan(taskDescription, filePath = null) {
         lines.push('---');
         lines.push('### 📋 接下来');
         if (filePath) {
-            lines.push(`- 编码完成后运行 \`npx specmate check ${filePath} --full\` 验证代码正确性`);
+            lines.push(`- 编码完成后调 \`mcp__bsv-specmate__specmate_check\`（参数 files: ["${filePath}"], full: true）验证代码正确性`);
         } else {
-            lines.push('- 编码完成后运行 `npx specmate check <文件路径> --full` 验证代码正确性');
+            lines.push('- 编码完成后调 `mcp__bsv-specmate__specmate_check`（参数 files: ["<绝对路径>"], full: true）验证代码正确性');
         }
-        lines.push('- 编译失败时运行 `npx specmate guide on_error "<bsc 错误输出>"` 获取修复方案');
+        lines.push('- 编译失败时调 `mcp__bsv-specmate__specmate_guide`（参数 phase: "on_error", input: "<错误码>"）获取修复方案');
         lines.push('');
     }
 
     if (lines.length === 0) {
-        return 'specmate 当前不做主动指导。请用最保守的 BSV 写法自主完成架构，编码完成后运行 `npx specmate check --full` 验证。';
+        return 'specmate 当前不做主动指导。请用最保守的 BSV 写法自主完成架构，编码完成后调 `mcp__bsv-specmate__specmate_check`（参数 files: ["<绝对路径>"], full: true）验证。';
     }
     return lines.join('\n');
 }

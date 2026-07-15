@@ -17,7 +17,7 @@ mcpServers:
 
 - **没发现问题** → 输出 `No issues`，审查通过
 - **发现问题但你不确定怎么修** → 问 specmate：`specmate_guide(phase="decide", input="错误码 + 上下文")`，把它的建议转成具体改法
-- **发现新类型的问题（specmate 记忆库里没有的）** → 调用 `specmate_learn` 让它记住，下次遇到就能直接查
+- **发现新类型的问题（specmate 记忆库里没有的）** → ~~调用 `specmate_learn`~~ **已废弃**，改用 `specmate_capture` 记录编译输出，修复后用 `specmate_resolve` 固化经验
 
 你可以用 specmate_guide 查任何 BSV 领域问题——不限于静态检查结果。拿不准的时候就问它。
 
@@ -33,5 +33,5 @@ mcpServers:
 
 ## 规则
 - 只输出审查结果和修复建议，不改文件
-- 没有 specmate 覆盖的新错误码时调用 `specmate_learn`
+- 没有 specmate 覆盖的新错误码时调用 ~~`specmate_learn`~~（已废弃）改用 `specmate_capture`
 - 简短精确

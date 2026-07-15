@@ -13,9 +13,33 @@ import { getLevel, LEVEL_LIMITS } from "../src/config.mjs";
 import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots } from "../src/db/query.mjs";
 import { parseBSCWarnings } from "../src/tools/warning_diff.mjs";
 import { parseFile, extractAll, analyzeScheduling, buildCallGraph, buildDependencyGraph, findConflictPairs, extractMethods, extractRegWrites, extractRegDeclarations, queryNodeAt, analyzeRuleConflicts, analyzeMethodOrder, findImplicitConflicts } from "../src/tools/ast_query.mjs";
+import { existsSync } from "fs";
+import { isAbsolute } from "path";
 import { extractKeywords, match as matchKeywords } from "../src/tools/_matcher.mjs";
 import { init as initNotify } from "../src/notify.mjs";
 import * as alerts from "../src/push/alerts.mjs";
+
+/**
+ * 校验文件路径：必须是绝对路径，且文件必须存在。
+ * 返回 { valid: true } 或 { valid: false, error: "PATH_NOT_ABSOLUTE: ..." | "FILE_NOT_FOUND: ..." }
+ */
+function validateFilePaths(files) {
+    for (const f of files) {
+        if (!isAbsolute(f)) {
+            return {
+                valid: false,
+                error: `PATH_NOT_ABSOLUTE: 请提供绝对路径，当前收到的路径：'${f}'。建议使用 <workspace>/bsv/xxx.bsv 格式。`
+            };
+        }
+        if (!existsSync(f)) {
+            return {
+                valid: false,
+                error: `FILE_NOT_FOUND: 文件 '${f}' 不存在。`
+            };
+        }
+    }
+    return { valid: true };
+}
 
 const server = new McpServer({
     name: "bsv-specmate",
@@ -96,6 +120,12 @@ server.tool(
         full: z.boolean().optional().default(false).describe("设为 true 运行全部检查（含正则类，误报率较高）。默认只运行 3 项高精度检查。"),
     },
     async ({ files, full }) => {
+        // P0: 路径校验 — 必须绝对路径，文件必须存在
+        const pathCheck = validateFilePaths(files);
+        if (!pathCheck.valid) {
+            return { content: [{ type: "text", text: pathCheck.error }] };
+        }
+
         const level = getLevel();
         const cfg = LEVEL_LIMITS[level];
         const results = checkStyle({ files, full });
@@ -233,6 +263,14 @@ server.tool(
         question: z.string().describe("想问什么？如 '调度冲突分析' / '模块依赖图' / 'rule 调用关系' / '寄存器读写分析' / '第156行是什么'"),
     },
     async ({ files, question }) => {
+        // P0: 路径校验 — 必须绝对路径，文件必须存在
+        if (files.length > 0) {
+            const pathCheck = validateFilePaths(files);
+            if (!pathCheck.valid) {
+                return { content: [{ type: "text", text: pathCheck.error }] };
+            }
+        }
+
         const q = (question || '').toLowerCase();
 
         if (files.length === 0) {
