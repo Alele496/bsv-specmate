@@ -1,3 +1,5 @@
+> ⚠️ **已废弃**：3 工具模型（specmate_guide/check/learn）已被当前 7 工具 MCP 体系替代。当前 Agent 工作流见 `docs/agent-integration.md`。保留作为协作模式演进的历史记录——Supervisor + Developer 角色分工是 bench 模板设计的灵感来源。
+
 # 协作开发模式
 
 ## specmate 3 工具速查

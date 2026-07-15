@@ -1,3 +1,5 @@
+> ⚠️ **已过时**：旧版教程，使用旧工具名和旧 level 名。当前使用指南见 `docs/getting-started.md`（人类读者）和 `docs/agent-integration.md`（Agent 读者）。保留作为 specmate 发展过程中工具演进、CCB 魔改、npm 计划的完整记录。
+
 # specmate 详细教程
 
 ## 1. 能力等级 (SPECMATE_LEVEL)

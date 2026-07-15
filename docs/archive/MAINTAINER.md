@@ -1,3 +1,5 @@
+> ⚠️ **已过时**：最后更新于 2026-07-05。旧架构（8 工具、旧 level 名 silicon/wafer/tapeout、bsvtest 平台）已被替代。这是 specmate 最初的项目架构文档，对标当时的 README。当前维护信息见 `README.md` + `CLAUDE.md` + `docs/internal-overview.md`。
+
 # 项目维护指南
 
 > 新 Agent 接手 specmate / Kova / bsvtest 三个仓库时，先读这个文件。

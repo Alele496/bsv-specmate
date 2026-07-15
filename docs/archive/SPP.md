@@ -1,3 +1,5 @@
+> ⚠️ **已废弃**：WebSocket 推送通道已被 MCP Notification 替代（2026-07-14 议会 S02E03）。保留作为 SPP 协议语义设计参考——alert/memory/diff 三种消息类型是当前 push/ 层的设计基础。
+
 # specmate Push Protocol (SPP) v0.1.0
 
 基于 WebSocket 的主动推送通道，与 MCP request-response 通道并行运行。
