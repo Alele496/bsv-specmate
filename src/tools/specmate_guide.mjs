@@ -570,12 +570,14 @@ export async function scan(taskDescription, filePath = null) {
                     lines.push('> 修完这些问题再编译，首编通过率大幅提升。');
                     lines.push('');
 
-                    // Auto-capture preflight issues
+                    // Auto-capture preflight issues (source='bsc' for preflight origin)
                     for (const issue of astIssues) {
                         addCapture({
                             code: issue.code,
                             bsc_output: `preflight: ${issue.title} — ${issue.detail}`,
                             files: filePath,
+                            file: filePath,
+                            source: 'bsc',
                         }).catch(() => {});
                     }
                 } else {

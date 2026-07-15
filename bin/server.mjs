@@ -10,7 +10,7 @@ import { checkStyle } from "../src/tools/check_style.mjs";
 import { guide, scan } from "../src/tools/specmate_guide.mjs";
 // specmate_learn.mjs import removed — deprecated. add_error.mjs retained for db:seed script only.
 import { getLevel, LEVEL_LIMITS } from "../src/config.mjs";
-import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots } from "../src/db/query.mjs";
+import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots, ensureSession, getSessionId } from "../src/db/query.mjs";
 import { parseBSCWarnings } from "../src/tools/warning_diff.mjs";
 import { parseFile, extractAll, analyzeScheduling, buildCallGraph, buildDependencyGraph, findConflictPairs, extractMethods, extractRegWrites, extractRegDeclarations, queryNodeAt, analyzeRuleConflicts, analyzeMethodOrder, findImplicitConflicts } from "../src/tools/ast_query.mjs";
 import { existsSync } from "fs";
@@ -56,6 +56,11 @@ server.tool(
         file: z.string().optional().describe("Optional .bsv file path. When set with pre_code, specmate runs AST preflight scan on the file and embeds results in the response — catches P0030/P0005/T0043/G0053/G0005 without bsc compilation."),
     },
     async ({ phase, input, file }) => {
+        // Lazily create session on first tool interaction (idempotent)
+        if (phase === 'pre_code' || phase === 'continue' || phase === 'on_error') {
+            await ensureSession(input);
+        }
+
         const result = await guide({ phase, input, file });
 
         // Push alerts: extract traps from pre_code and pattern phases
@@ -96,6 +101,9 @@ server.tool(
         file: z.string().optional().describe("可选 .bsv 文件路径。传入后 specmate 自动运行 AST 预编译扫描 (P0030/P0005/T0043/G0053/G0005)"),
     },
     async ({ task, file }) => {
+        // Lazily create session (idempotent; Agent never sees session_id)
+        await ensureSession(task);
+
         const result = await scan(task, file || null);
 
         // Push alerts for pre_code-like behavior (phase-aware)
@@ -126,6 +134,9 @@ server.tool(
             return { content: [{ type: "text", text: pathCheck.error }] };
         }
 
+        // Lazily create session (idempotent)
+        const session_id = await ensureSession();
+
         const level = getLevel();
         const cfg = LEVEL_LIMITS[level];
         const results = checkStyle({ files, full });
@@ -137,6 +148,20 @@ server.tool(
 
         // Auto-count: every check_style hit increments the error's count
         [...new Set(results.map(r => r.check))].forEach(c => hitError(c).catch(err => console.error('[specmate] hitError failed:', err.message)));
+
+        // Auto-capture check findings into captures table (source='check')
+        // so check discoveries join the unified pipeline alongside bsc captures
+        for (const r of results) {
+            await addCapture({
+                code: r.check,
+                bsc_output: r.message,
+                files: r.file,
+                file: r.file,
+                source: 'check',
+                session_id,
+                cause: r.message,
+            }).catch(err => console.error('[specmate] addCapture(check) failed:', err.message));
+        }
 
         if (results.length === 0) {
             const msg = cfg.collabHint
@@ -193,6 +218,9 @@ server.tool(
         files: z.array(z.string()).optional().describe("当前编译相关的 .bsv 文件路径"),
     },
     async ({ bsc_output, files }) => {
+        // Lazily create session (idempotent)
+        const session_id = await ensureSession();
+
         // Parse all error codes from bsc output
         const codePattern = /\b([GPTBS]\d{4})\b/g;
         const codes = [...new Set([...bsc_output.matchAll(codePattern)].map(m => m[1]))];
@@ -201,15 +229,40 @@ server.tool(
             // Try to find error-like patterns even without standard codes
             const hasError = /error|warning/i.test(bsc_output);
             if (hasError) {
-                addCapture({ code: "UNKNOWN", bsc_output, files: files?.join(", ") }).catch(err => console.error('[specmate] addCapture(UNKNOWN) failed:', err.message));
+                if (files && files.length > 0) {
+                    for (const f of files) {
+                        addCapture({ code: "UNKNOWN", bsc_output, files: f, file: f, source: 'bsc', session_id }).catch(err => console.error('[specmate] addCapture(UNKNOWN) failed:', err.message));
+                    }
+                } else {
+                    addCapture({ code: "UNKNOWN", bsc_output, source: 'bsc', session_id }).catch(err => console.error('[specmate] addCapture(UNKNOWN) failed:', err.message));
+                }
                 return { content: [{ type: "text", text: "未识别出标准错误码，已以 UNKNOWN 暂存。" }] };
             }
             return { content: [{ type: "text", text: "未在输出中检测到编译错误码。" }] };
         }
 
-        // Fire-and-forget capture for each unique error code
+        // Per-file granularity: each (code, file) pair gets its own capture row
+        const dedupSummary = [];
         for (const code of codes) {
-            addCapture({ code, bsc_output, files: files?.join(", ") }).catch(err => console.error('[specmate] addCapture failed:', err.message));
+            if (files && files.length > 0) {
+                for (const f of files) {
+                    const result = await addCapture({ code, bsc_output, files: f, file: f, source: 'bsc', session_id }).catch(err => {
+                        console.error('[specmate] addCapture failed:', err.message);
+                        return null;
+                    });
+                    if (result && result.deduped) {
+                        dedupSummary.push(`${code}@${f} (重复 x${result.repeat_count || '+'})`);
+                    }
+                }
+            } else {
+                const result = await addCapture({ code, bsc_output, source: 'bsc', session_id }).catch(err => {
+                    console.error('[specmate] addCapture failed:', err.message);
+                    return null;
+                });
+                if (result && result.deduped) {
+                    dedupSummary.push(`${code} (重复)`);
+                }
+            }
         }
 
         // Push alerts for captured errors
@@ -218,9 +271,12 @@ server.tool(
         }
 
         const list = codes.map(c => `  • ${c}`).join('\n');
+        const dedupNote = dedupSummary.length > 0
+            ? `\n\n${dedupSummary.length} 条已在本次 session 中重复出现（count+1）。`
+            : '';
         const unresolvedMsg = codes.length === 1
-            ? `错误码 ${codes[0]} 已记录。修好后调 specmate_resolve(code="${codes[0]}", cause="...", solution="...") 保存经验。`
-            : `共 ${codes.length} 个错误码已记录:\n${list}\n\n修好后逐条调 specmate_resolve 保存修复经验。`;
+            ? `错误码 ${codes[0]} 已记录。修好后调 specmate_resolve(code="${codes[0]}", cause="...", solution="...") 保存经验。${dedupNote}`
+            : `共 ${codes.length} 个错误码已记录:\n${list}\n\n修好后逐条调 specmate_resolve 保存修复经验。${dedupNote}`;
 
         return { content: [{ type: "text", text: unresolvedMsg }] };
     }

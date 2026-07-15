@@ -22,9 +22,24 @@ CREATE TABLE IF NOT EXISTS captures (
     timestamp   TEXT NOT NULL,
     bsc_output  TEXT NOT NULL,
     files       TEXT,
+    file        TEXT,
+    source      TEXT DEFAULT 'bsc',
+    session_id  TEXT,
+    repeat_count INTEGER DEFAULT 1,
     cause       TEXT,
     solution    TEXT,
     status      TEXT DEFAULT 'unresolved'
+);
+
+CREATE INDEX IF NOT EXISTS idx_captures_dedup ON captures(code, file, session_id);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    id              TEXT PRIMARY KEY,
+    task_name       TEXT,
+    started_at      TEXT NOT NULL,
+    ended_at        TEXT,
+    compile_attempts INTEGER DEFAULT 0,
+    compile_failures INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS warnings (
@@ -38,6 +53,23 @@ CREATE TABLE IF NOT EXISTS warnings (
     UNIQUE(snapshot_id, file, line, code)
 );
 `;
+
+// Captures table DDL, also used by ensureDB() migration path in query.mjs.
+// Keep in sync with the captures entry in SCHEMA above.
+export const CAPTURES_DDL = `CREATE TABLE IF NOT EXISTS captures (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    code        TEXT NOT NULL,
+    timestamp   TEXT NOT NULL,
+    bsc_output  TEXT NOT NULL,
+    files       TEXT,
+    file        TEXT,
+    source      TEXT DEFAULT 'bsc',
+    session_id  TEXT,
+    repeat_count INTEGER DEFAULT 1,
+    cause       TEXT,
+    solution    TEXT,
+    status      TEXT DEFAULT 'unresolved'
+)`;
 
 export function initDB(db) {
     db.run(SCHEMA);
@@ -129,6 +161,57 @@ export function insertCapture(db, { code, timestamp, bsc_output, files, status =
         `INSERT INTO captures (code, timestamp, bsc_output, files, status)
          VALUES (?, ?, ?, ?, ?)`,
         [code, timestamp, bsc_output, files || null, status]
+    );
+}
+
+/**
+ * Upsert a capture record. If a capture with the same (code, file, session_id)
+ * already exists with status='unresolved', increment its repeat_count instead of
+ * inserting a new row.
+ * @returns {{ id: number, deduped: boolean, repeat_count: number }}
+ */
+export function upsertCapture(db, { code, timestamp, bsc_output, files, status = 'unresolved', file = null, source = 'bsc', session_id = null }) {
+    // Check for existing unresolved capture with same dedup key
+    const stmt = db.prepare(
+        `SELECT id, repeat_count FROM captures
+         WHERE code = ? AND file IS ? AND session_id IS ? AND status = 'unresolved'
+         LIMIT 1`
+    );
+    stmt.bind([code, file, session_id]);
+    let existing = null;
+    if (stmt.step()) existing = stmt.getAsObject();
+    stmt.free();
+
+    if (existing) {
+        // Dedup: increment repeat_count on the existing row
+        const newCount = existing.repeat_count + 1;
+        db.run('UPDATE captures SET repeat_count = ? WHERE id = ?', [newCount, existing.id]);
+        return { id: existing.id, deduped: true, repeat_count: newCount };
+    }
+
+    // New capture
+    db.run(
+        `INSERT INTO captures (code, timestamp, bsc_output, files, file, source, session_id, status, repeat_count)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+        [code, timestamp, bsc_output, files || null, file, source, session_id, status]
+    );
+    const result = db.exec('SELECT last_insert_rowid()');
+    const id = result[0].values[0][0];
+    return { id, deduped: false, repeat_count: 1 };
+}
+
+export function createSession(db, { id, task_name = null, started_at }) {
+    db.run(
+        `INSERT OR REPLACE INTO sessions (id, task_name, started_at)
+         VALUES (?, ?, ?)`,
+        [id, task_name, started_at]
+    );
+}
+
+export function endSession(db, id) {
+    db.run(
+        `UPDATE sessions SET ended_at = ? WHERE id = ?`,
+        [new Date().toISOString(), id]
     );
 }
 
