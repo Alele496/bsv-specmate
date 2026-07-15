@@ -10,7 +10,7 @@ import { checkStyle } from "../src/tools/check_style.mjs";
 import { guide, scan } from "../src/tools/specmate_guide.mjs";
 // specmate_learn.mjs import removed — deprecated. add_error.mjs retained for db:seed script only.
 import { getLevel, LEVEL_LIMITS } from "../src/config.mjs";
-import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots, ensureSession, getSessionId, querySessionStats, queryStubbornErrors, queryFixRate } from "../src/db/query.mjs";
+import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots, ensureSession, getSessionId, endCurrentSession, querySessionStats, queryStubbornErrors, queryFixRate, queryErrorCodeStats, queryTopErrorCodes, queryUnresolvedCount } from "../src/db/query.mjs";
 import { parseBSCWarnings } from "../src/tools/warning_diff.mjs";
 import { parseFile, extractAll, analyzeScheduling, buildCallGraph, buildDependencyGraph, findConflictPairs, extractMethods, extractRegWrites, extractRegDeclarations, queryNodeAt, analyzeRuleConflicts, analyzeMethodOrder, findImplicitConflicts } from "../src/tools/ast_query.mjs";
 import { existsSync } from "fs";
@@ -106,6 +106,31 @@ server.tool(
 
         const result = await scan(task, file || null);
 
+        // Append cross-session historical statistics
+        let historyBlock = '';
+        try {
+            const topErrors = await queryTopErrorCodes(5);
+            const unresolvedCount = await queryUnresolvedCount();
+            if (topErrors.length > 0 || unresolvedCount > 0) {
+                const parts = ['\n---', '### 📊 历史统计（跨任务）', ''];
+                if (topErrors.length > 0) {
+                    parts.push('**近期高频错误码 TOP 5:**');
+                    for (const e of topErrors) {
+                        parts.push(`  \u2022 ${e.code}: ${e.total_count} 次（跨 ${e.session_count} 个 session）`);
+                    }
+                    parts.push('');
+                }
+                if (unresolvedCount > 0) {
+                    parts.push(`**未解决 capture 数:** ${unresolvedCount} 个`);
+                    parts.push(`> 调 \`mcp__bsv-specmate__specmate_resolve\` 逐条固化修复经验。`);
+                    parts.push('');
+                }
+                historyBlock = parts.join('\n');
+            }
+        } catch (_) { /* non-critical */ }
+
+        const responseText = result + historyBlock;
+
         // Push alerts for pre_code-like behavior (phase-aware)
         try {
             const keywords = extractKeywords(task);
@@ -116,7 +141,7 @@ server.tool(
             }
         } catch (_) { /* push is non-critical */ }
 
-        return { content: [{ type: "text", text: result }] };
+        return { content: [{ type: "text", text: responseText }] };
     }
 );
 
@@ -270,13 +295,29 @@ server.tool(
             try { alerts.onCapture(codes); } catch (_) {}
         }
 
-        const list = codes.map(c => `  • ${c}`).join('\n');
+        const list = codes.map(c => `  \u2022 ${c}`).join('\n');
         const dedupNote = dedupSummary.length > 0
             ? `\n\n${dedupSummary.length} 条已在本次 session 中重复出现（count+1）。`
             : '';
+
+        // Cross-session stats: "该错误码已累计 N 次（跨 M 个 session）"
+        let crossSessionBlock = '';
+        try {
+            const crossStats = await Promise.all(codes.map(async (c) => {
+                const s = await queryErrorCodeStats(c);
+                return { code: c, ...s };
+            }));
+            crossStats.sort((a, b) => b.totalCount - a.totalCount);
+            if (crossStats.length > 0 && crossStats[0].totalCount > 1) {
+                const parts = crossStats.map(s =>
+                    `  \u2022 ${s.code}: 累计 ${s.totalCount} 次（跨 ${s.sessionCount} 个 session）`
+                );
+                crossSessionBlock = `\n\n📊 跨任务统计:\n${parts.join('\n')}`;
+            }
+        } catch (_) { /* non-critical */ }
         const unresolvedMsg = codes.length === 1
-            ? `错误码 ${codes[0]} 已记录。修好后调 specmate_resolve(code="${codes[0]}", cause="...", solution="...") 保存经验。${dedupNote}`
-            : `共 ${codes.length} 个错误码已记录:\n${list}\n\n修好后逐条调 specmate_resolve 保存修复经验。${dedupNote}`;
+            ? `错误码 ${codes[0]} 已记录。修好后调 specmate_resolve(code="${codes[0]}", cause="...", solution="...") 保存经验。${dedupNote}${crossSessionBlock}`
+            : `共 ${codes.length} 个错误码已记录:\n${list}\n\n修好后逐条调 specmate_resolve 保存修复经验。${dedupNote}${crossSessionBlock}`;
 
         // P1: append session statistics
         let statsBlock = '';
@@ -717,11 +758,38 @@ server.tool(
 
 const TRANSPORT = (process.env.SPECMATE_TRANSPORT || 'stdio').toLowerCase();
 
+// ── Auto-create session on server start ──
+await ensureSession().then(sid => {
+    console.error(`[specmate] Session started: ${sid}`);
+}).catch(err => {
+    console.error(`[specmate] Session creation failed: ${err.message}`);
+});
+
+// ── Graceful shutdown: end session ──
+async function shutdown() {
+    console.error('[specmate] Shutting down...');
+    try {
+        await endCurrentSession();
+        console.error('[specmate] Session ended.');
+    } catch (err) {
+        console.error(`[specmate] Session end failed: ${err.message}`);
+    }
+    process.exit(0);
+}
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+
 if (TRANSPORT === 'stdio') {
   // stdio fallback — keep existing behavior
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('[specmate] MCP stdio transport ready');
+
+  // Graceful close on stdio stream end
+  process.stdin.on('end', () => {
+      console.error('[specmate] stdio stream ended, closing...');
+      shutdown();
+  });
 } else {
   // Streamable HTTP — supports bidirectional communication + SSE push
   const PORT = parseInt(process.env.SPECMATE_PORT || '9339', 10);
@@ -765,6 +833,11 @@ if (TRANSPORT === 'stdio') {
     httpServer.listen(PORT, '127.0.0.1', resolve);
   });
   console.error(`[specmate] MCP Streamable HTTP on http://127.0.0.1:${PORT}/mcp`);
+
+  // Graceful close on HTTP server shutdown
+  httpServer.on('close', () => {
+      console.error('[specmate] HTTP server closed.');
+  });
 }
 
 // Initialize MCP notification bridge — replaces WebSocket push

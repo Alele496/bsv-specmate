@@ -2,7 +2,7 @@ import { readFileSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import initSqlJs from 'sql.js';
 import { initDataDir, getDBPath } from '../config.mjs';
-import { initDB, insertError, getError, getAllErrors, getTopRules, searchErrors, incrementCount, getHotTopics, incrementRefHit, insertCapture, upsertCapture, resolveCapture, getCapturesByCode, getRecentCaptures, getUnresolvedCaptures, getLatestUnresolvedByCode, insertWarning, getWarningsBySnapshot, getLatestSnapshots, createSession, getSessionStats, getStubbornErrors, getFixRate, CAPTURES_DDL } from './schema.mjs';
+import { initDB, insertError, getError, getAllErrors, getTopRules, searchErrors, incrementCount, getHotTopics, incrementRefHit, insertCapture, upsertCapture, resolveCapture, getCapturesByCode, getRecentCaptures, getUnresolvedCaptures, getLatestUnresolvedByCode, insertWarning, getWarningsBySnapshot, getLatestSnapshots, createSession, endSession, getSessionStats, getStubbornErrors, getFixRate, getErrorCodeStats, getTopErrorCodes, getUnresolvedCount, getClusteredCaptures, setCaptureReviewStatus, getAllCapturesByCode, CAPTURES_DDL } from './schema.mjs';
 import { collectErrorFiles, parseErrorFile } from './parser.mjs';
 
 let _db = null;
@@ -44,6 +44,17 @@ export async function ensureSession(taskName = null) {
     // If saveDB() throws, _currentSessionId stays null so the next call will retry.
     _currentSessionId = id;
     return _currentSessionId;
+}
+
+/**
+ * End the current session — mark ended_at in the sessions table.
+ * Called on MCP server shutdown. Idempotent.
+ */
+export async function endCurrentSession() {
+    if (!_currentSessionId) return;
+    const db = await ensureDB();
+    endSession(db, _currentSessionId);
+    await saveDB();
 }
 
 async function autoSeedIfEmpty(db) {
@@ -95,9 +106,13 @@ export async function ensureDB() {
             "ALTER TABLE captures ADD COLUMN file TEXT",
             "ALTER TABLE captures ADD COLUMN source TEXT DEFAULT 'bsc'",
             "ALTER TABLE captures ADD COLUMN session_id TEXT",
+            "ALTER TABLE captures ADD COLUMN error_token TEXT",
             "ALTER TABLE captures ADD COLUMN repeat_count INTEGER DEFAULT 1",
             "ALTER TABLE captures ADD COLUMN cause TEXT",
             "ALTER TABLE captures ADD COLUMN solution TEXT",
+            // ── Phase 1: review status fields ──
+            "ALTER TABLE captures ADD COLUMN review_status TEXT DEFAULT 'unreviewed'",
+            "ALTER TABLE captures ADD COLUMN reviewed_at TEXT",
         ];
         for (const sql of migrateCols) {
             try { db.run(sql); } catch (_) { /* column already exists */ }
@@ -107,6 +122,9 @@ export async function ensureDB() {
         try {
             db.run(`CREATE INDEX IF NOT EXISTS idx_captures_dedup ON captures(code, file, session_id)`);
         } catch (_) { /* index creation failed (e.g. columns still missing) */ }
+        try {
+            db.run(`CREATE INDEX IF NOT EXISTS idx_captures_token ON captures(error_token, code)`);
+        } catch (_) { /* index creation failed */ }
         db.run(`CREATE TABLE IF NOT EXISTS warnings (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             snapshot_id TEXT NOT NULL,
@@ -303,6 +321,91 @@ export async function queryStubbornErrors(sessionId, minCount = 2) {
 export async function queryFixRate(sessionId) {
     const db = await ensureDB();
     return getFixRate(db, sessionId);
+}
+
+// ── Cross-session aggregation queries (Phase 0) ──
+
+/**
+ * Get total occurrence count and distinct session count for a specific error code.
+ * Used by specmate_capture response: "该错误码已累计 N 次（跨 M 个 session）"
+ * @param {string} code
+ * @returns {Promise<{ totalCount: number, sessionCount: number }>}
+ */
+export async function queryErrorCodeStats(code) {
+    const db = await ensureDB();
+    return getErrorCodeStats(db, code);
+}
+
+/**
+ * Get TOP N most frequently captured error codes (cross-session).
+ * Used by specmate_scan history section.
+ * @param {number} limit
+ * @returns {Promise<Array<{ code: string, total_count: number, session_count: number }>>}
+ */
+export async function queryTopErrorCodes(limit = 5) {
+    const db = await ensureDB();
+    return getTopErrorCodes(db, limit);
+}
+
+/**
+ * Get count of unresolved captures (cross-session).
+ * Used by specmate_scan history section.
+ * @returns {Promise<number>}
+ */
+export async function queryUnresolvedCount() {
+    const db = await ensureDB();
+    return getUnresolvedCount(db);
+}
+
+// ── Phase 1: auto-cluster + review CLI ──
+
+/**
+ * Get clustered captures for review.
+ * Groups unreviewed captures by error code, filtering by minimum repeat count
+ * and minimum number of distinct sessions.
+ * @param {number} minRepeatCount - minimum total repeat_count (default 3)
+ * @param {number} minSessions - minimum distinct sessions (default 2)
+ * @returns {Promise<Array<{ code, total_repeat, session_count, files, samples, latest_cause, latest_solution }>>}
+ */
+export async function queryClusteredCaptures(minRepeatCount = 3, minSessions = 2) {
+    const db = await ensureDB();
+    return getClusteredCaptures(db, minRepeatCount, minSessions);
+}
+
+/**
+ * Approve captures for a given error code: mark all captures as 'approved'
+ * and return the aggregated capture data for doc generation.
+ * @param {string} code - error code to approve
+ * @returns {Promise<{ updated: number, captures: Array<object> }>}
+ */
+export async function approveCapturesByCode(code) {
+    const db = await ensureDB();
+    const captures = getAllCapturesByCode(db, code);
+    const updated = setCaptureReviewStatus(db, code, 'approved');
+    await saveDB();
+    return { updated, captures };
+}
+
+/**
+ * Reject captures for a given error code: mark all captures as 'rejected'.
+ * @param {string} code - error code to reject
+ * @returns {Promise<number>} number of rows updated
+ */
+export async function rejectCapturesByCode(code) {
+    const db = await ensureDB();
+    const updated = setCaptureReviewStatus(db, code, 'rejected');
+    await saveDB();
+    return updated;
+}
+
+/**
+ * Get all captures for a specific error code (any review_status).
+ * @param {string} code
+ * @returns {Promise<Array<object>>}
+ */
+export async function queryAllCapturesByCode(code) {
+    const db = await ensureDB();
+    return getAllCapturesByCode(db, code);
 }
 
 export function closeDB() {

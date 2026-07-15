@@ -25,13 +25,17 @@ CREATE TABLE IF NOT EXISTS captures (
     file        TEXT,
     source      TEXT DEFAULT 'bsc',
     session_id  TEXT,
+    error_token TEXT,
     repeat_count INTEGER DEFAULT 1,
     cause       TEXT,
     solution    TEXT,
-    status      TEXT DEFAULT 'unresolved'
+    status      TEXT DEFAULT 'unresolved',
+    review_status TEXT DEFAULT 'unreviewed',
+    reviewed_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_captures_dedup ON captures(code, file, session_id);
+CREATE INDEX IF NOT EXISTS idx_captures_token ON captures(error_token, code);
 
 CREATE TABLE IF NOT EXISTS sessions (
     id              TEXT PRIMARY KEY,
@@ -65,10 +69,13 @@ export const CAPTURES_DDL = `CREATE TABLE IF NOT EXISTS captures (
     file        TEXT,
     source      TEXT DEFAULT 'bsc',
     session_id  TEXT,
+    error_token TEXT,
     repeat_count INTEGER DEFAULT 1,
     cause       TEXT,
     solution    TEXT,
-    status      TEXT DEFAULT 'unresolved'
+    status      TEXT DEFAULT 'unresolved',
+    review_status TEXT DEFAULT 'unreviewed',
+    reviewed_at TEXT
 )`;
 
 export function initDB(db) {
@@ -165,12 +172,24 @@ export function insertCapture(db, { code, timestamp, bsc_output, files, status =
 }
 
 /**
+ * Extract a key token from bsc_output for error clustering.
+ * Regex: Unexpected\s+(?:identifier\s+)?`(\w+)`
+ * Returns the captured token or null.
+ */
+export function extractErrorToken(bsc_output) {
+    const m = bsc_output.match(/Unexpected\s+(?:identifier\s+)?`(\w+)`/);
+    return m ? m[1] : null;
+}
+
+/**
  * Upsert a capture record. If a capture with the same (code, file, session_id)
  * already exists with status='unresolved', increment its repeat_count instead of
  * inserting a new row.
  * @returns {{ id: number, deduped: boolean, repeat_count: number }}
  */
 export function upsertCapture(db, { code, timestamp, bsc_output, files, status = 'unresolved', file = null, source = 'bsc', session_id = null }) {
+    const error_token = extractErrorToken(bsc_output);
+
     // Check for existing unresolved capture with same dedup key
     const stmt = db.prepare(
         `SELECT id, repeat_count FROM captures
@@ -185,15 +204,15 @@ export function upsertCapture(db, { code, timestamp, bsc_output, files, status =
     if (existing) {
         // Dedup: increment repeat_count on the existing row
         const newCount = existing.repeat_count + 1;
-        db.run('UPDATE captures SET repeat_count = ? WHERE id = ?', [newCount, existing.id]);
+        db.run('UPDATE captures SET repeat_count = ?, error_token = COALESCE(error_token, ?) WHERE id = ?', [newCount, error_token, existing.id]);
         return { id: existing.id, deduped: true, repeat_count: newCount };
     }
 
     // New capture
     db.run(
-        `INSERT INTO captures (code, timestamp, bsc_output, files, file, source, session_id, status, repeat_count)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-        [code, timestamp, bsc_output, files || null, file, source, session_id, status]
+        `INSERT INTO captures (code, timestamp, bsc_output, files, file, source, session_id, error_token, status, repeat_count)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+        [code, timestamp, bsc_output, files || null, file, source, session_id, error_token, status]
     );
     const result = db.exec('SELECT last_insert_rowid()');
     const id = result[0].values[0][0];
@@ -366,4 +385,140 @@ export function getFixRate(db, sessionId) {
     }
     stmt.free();
     return row;
+}
+
+// ── Cross-session aggregation queries (Phase 0) ──
+
+/**
+ * Get total occurrence count and distinct session count for a specific error code.
+ * "该错误码已累计 N 次（跨 M 个 session）"
+ * @param {object} db
+ * @param {string} code
+ * @returns {{ totalCount: number, sessionCount: number }}
+ */
+export function getErrorCodeStats(db, code) {
+    const stmt = db.prepare(
+        `SELECT
+            COUNT(*) as total_count,
+            COUNT(DISTINCT session_id) as session_count
+         FROM captures WHERE code = ?`
+    );
+    stmt.bind([code]);
+    let row = { totalCount: 0, sessionCount: 0 };
+    if (stmt.step()) {
+        const obj = stmt.getAsObject();
+        row = { totalCount: obj.total_count || 0, sessionCount: obj.session_count || 0 };
+    }
+    stmt.free();
+    return row;
+}
+
+/**
+ * Get TOP N most frequently captured error codes (cross-session).
+ * @param {object} db
+ * @param {number} limit
+ * @returns {Array<{ code: string, total_count: number, session_count: number }>}
+ */
+export function getTopErrorCodes(db, limit = 5) {
+    const results = [];
+    const stmt = db.prepare(
+        `SELECT
+            code,
+            COUNT(*) as total_count,
+            COUNT(DISTINCT session_id) as session_count
+         FROM captures
+         GROUP BY code
+         ORDER BY total_count DESC
+         LIMIT ?`
+    );
+    stmt.bind([limit]);
+    while (stmt.step()) {
+        results.push(stmt.getAsObject());
+    }
+    stmt.free();
+    return results;
+}
+
+/**
+ * Get count of unresolved captures (cross-session).
+ * @param {object} db
+ * @returns {number}
+ */
+export function getUnresolvedCount(db) {
+    const stmt = db.prepare("SELECT COUNT(*) as cnt FROM captures WHERE status = 'unresolved'");
+    let count = 0;
+    if (stmt.step()) {
+        count = stmt.getAsObject().cnt || 0;
+    }
+    stmt.free();
+    return count;
+}
+
+// ── Phase 1: auto-cluster + review CLI ──
+
+/**
+ * Get clustered captures grouped by error code for review.
+ * Criteria: repeat_count >= minRepeatCount AND count(distinct session_id) >= minSessions
+ * Only returns unreviewed captures.
+ * @param {object} db
+ * @param {number} minRepeatCount - minimum total repeat_count (default 3)
+ * @param {number} minSessions - minimum distinct sessions (default 2)
+ * @returns {Array<{ code, total_repeat, session_count, files, samples, latest_cause, latest_solution }>}
+ */
+export function getClusteredCaptures(db, minRepeatCount = 3, minSessions = 2) {
+    const results = [];
+    const stmt = db.prepare(
+        `SELECT
+            code,
+            SUM(repeat_count) as total_repeat,
+            COUNT(DISTINCT session_id) as session_count,
+            GROUP_CONCAT(DISTINCT files) as files,
+            GROUP_CONCAT(bsc_output, '\n---\n') as samples,
+            (SELECT cause FROM captures c2 WHERE c2.code = captures.code AND c2.cause IS NOT NULL AND c2.cause != '' ORDER BY c2.id DESC LIMIT 1) as latest_cause,
+            (SELECT solution FROM captures c2 WHERE c2.code = captures.code AND c2.solution IS NOT NULL AND c2.solution != '' ORDER BY c2.id DESC LIMIT 1) as latest_solution
+         FROM captures
+         WHERE review_status = 'unreviewed'
+         GROUP BY code
+         HAVING SUM(repeat_count) >= ? AND COUNT(DISTINCT session_id) >= ?
+         ORDER BY total_repeat DESC`
+    );
+    stmt.bind([minRepeatCount, minSessions]);
+    while (stmt.step()) {
+        results.push(stmt.getAsObject());
+    }
+    stmt.free();
+    return results;
+}
+
+/**
+ * Update review_status for all captures with the given error code.
+ * @param {object} db
+ * @param {string} code - error code
+ * @param {string} status - 'approved' or 'rejected'
+ * @returns {number} number of rows updated
+ */
+export function setCaptureReviewStatus(db, code, status) {
+    db.run(
+        `UPDATE captures SET review_status = ?, reviewed_at = ? WHERE code = ?`,
+        [status, new Date().toISOString(), code]
+    );
+    const result = db.exec('SELECT changes()');
+    return result[0].values[0][0];
+}
+
+/**
+ * Get all captures for a specific error code, ordered by most recent first.
+ * @param {object} db
+ * @param {string} code
+ * @returns {Array<object>}
+ */
+export function getAllCapturesByCode(db, code) {
+    const results = [];
+    const stmt = db.prepare(
+        'SELECT * FROM captures WHERE code = ? ORDER BY id DESC'
+    );
+    stmt.bind([code]);
+    while (stmt.step()) results.push(stmt.getAsObject());
+    stmt.free();
+    return results;
 }
