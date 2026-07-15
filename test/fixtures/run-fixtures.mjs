@@ -25,6 +25,10 @@ const EXPECTED_CHECKS = {
     'always-attr-misuse': ['always-attr-guard-conflict', 'always-attr-cond-body'],
     'G0054': ['G0054'],
     'G0053': ['G0053'],
+    'P0022': ['P0022'],
+    'P0200': ['P0200'],
+    'synthesize-annotation-order': ['G0010'],
+    'G0004': ['G0004'],
 };
 
 function runFixtures() {

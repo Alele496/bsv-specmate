@@ -71,7 +71,7 @@ const GRAPH = {
         traps: [],
     },
     bvi: {
-        errors: ['P0005', 'G0124'],
+        errors: ['P0005', 'G0124', 'P0022', 'P0200'],
         refs: ['attributes'],
         pattern: 'bvi',
         traps: [],
@@ -105,7 +105,7 @@ const GRAPH = {
         traps: [],
     },
     attribute: {
-        errors: ['P0085', 'G0054', 'G0030', 'G0040'],
+        errors: ['P0085', 'G0054', 'G0030', 'G0040', 'P0022'],
         refs: ['attributes'],
         traps: [],
     },
@@ -120,7 +120,7 @@ const GRAPH = {
         traps: [],
     },
     method: {
-        errors: ['P0032', 'P0030', 'T0011'],
+        errors: ['P0032', 'P0030', 'T0011', 'P0022'],
         refs: ['module'],
         traps: [],
     },
@@ -135,7 +135,7 @@ const GRAPH = {
         traps: [],
     },
     schedule: {
-        errors: ['G0004', 'G0010', 'G0030', 'G0040', 'G0054', 'G0005'],
+        errors: ['G0004', 'G0010', 'G0030', 'G0040', 'G0054', 'G0005', 'G0036'],
         refs: ['schedule'],
         traps: [],
     },
@@ -190,7 +190,7 @@ const GRAPH = {
         traps: [],
     },
     synthesize: {
-        errors: ['T0030', 'P0085', 'T0043'],
+        errors: ['T0030', 'P0085', 'T0043', 'G0010'],
         refs: ['module', 'attributes'],
         traps: [],
     },

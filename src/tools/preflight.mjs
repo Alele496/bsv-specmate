@@ -387,6 +387,9 @@ function summarizeRule(code) {
         'T0004': 'Vector 构造用 `genWith` 而非 `vec()`。',
         'P0030': 'Value method 用 `= expr` 或 `? :` 三元链，不能用 if-return。function 内 for 循环也不可直接 return——用 flag + 末尾 return。',
         'T0011': '寄存器名不要和方法名重名，寄存器加后缀 _reg 或 _r。',
+        'P0022': 'Module 内 method 实现不能用 (* attr *) pragma 形式 — 改用 suffix 关键字（如 always_enabled）。调用 lookup_error("P0022") 获取截断面对比表。',
+        'P0200': 'BVI schedule 不支持分组语法 schedule A CF (B, C) — 必须展开为逐对声明。调用 lookup_error("P0200") 获取详情。',
+        'G0036': 'Write-vs-write 信息性警告 — 编译器已按 urgency 处理执行顺序，审查确认后接受。调用 lookup_error("G0036") 获取消除策略。',
     };
     return rules[code] || '见 lookup_error 详情。';
 }

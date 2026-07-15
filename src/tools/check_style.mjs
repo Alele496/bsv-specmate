@@ -45,6 +45,7 @@ function checkFile(filename, content, full = false) {
     checkValueMethodSyntax(filename, lines, issues);  // value method 语法 — P0030
     checkInterfaceBoolReturn(filename, content, issues);  // interface method Bool 返回 — 2026-07-14
     checkAlwaysAttrMisuse(filename, content, issues);     // always_ready/enabled 滥用 — 2026-07-14
+    checkP0022AttrOnMethod(filename, lines, issues);      // (* always_enabled *) pragma on module method → P0022
 
     // Full-scan: 仅在显式 full=true 时启用
     if (full) {
@@ -54,6 +55,8 @@ function checkFile(filename, content, full = false) {
         checkUrgencyCycle(filename, content, issues);
         checkAttrBadRule(filename, content, issues);
         checkArgCountMismatch(filename, lines, issues);
+        checkBVIScheduleGroupSyntax(filename, content, issues);       // P0200 — BVI schedule 分组语法
+        checkSynthesizeAnnotationOrder(filename, content, issues);    // G0010 — urgency 在 synthesize 之后
         // 以下 BSC 100% 覆盖，不再默认：
         // checkMethodOrder, checkReservedWords, checkMethodRegNaming,
         // checkDupValueParams, checkDupInterfaceMembers, checkStructField
@@ -250,9 +253,9 @@ function checkRuleDoubleWrite(filename, content, issues) {
                     file: filename,
                     line: lineEstimate,
                     check: 'G0004',
-                    severity: 'error',
-                    message: `Rule "${ruleName}" 内对 "${reg}" 写入多次`,
-                    suggestion: '同一 rule 内每个寄存器只能写入一次。检查 case default 分支。'
+                    severity: 'warning',
+                    message: `Rule "${ruleName}" 内对 "${reg}" 写入多次 — 若是 case 不同分支写同一寄存器则安全（所有分支都写视为一次），否则是真正的 G0004 冲突`,
+                    suggestion: '检查是否是 case/if 分支导致的重复检测。如果是真正多次写入，拆分寄存器或拆分为独立 rule。'
                 });
                 break;
             }
@@ -833,6 +836,154 @@ function checkAlwaysAttrMisuse(filename, content, issues) {
                     suggestion: '移除 always_ready/enabled 属性，或移除 guard 条件。有 guard 的 method 不是每周期可用，不应标 always。'
                 });
             }
+        }
+    }
+}
+
+/**
+ * checkP0022AttrOnMethod — detect (* always_enabled/ready *) pragma on module
+ * method implementations. BSC requires suffix keyword instead:
+ *   method Action foo() always_enabled;
+ * The pragma form (* always_enabled *) is only valid on:
+ *   - Interface method declarations
+ *   - BVI import methods
+ * Not on module method implementations (triggers P0022).
+ * Always-on rule (added 2026-07-15).
+ */
+function checkP0022AttrOnMethod(filename, lines, issues) {
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.startsWith('//')) continue;
+
+        // Match attribute pragma with always_enabled or always_ready
+        const attr = line.match(/\(\*\s*(.+?)\s*\*\)/);
+        if (!attr) continue;
+        const attrs = attr[1].toLowerCase();
+        if (!/\balways_enabled\b/.test(attrs) && !/\balways_ready\b/.test(attrs)) continue;
+
+        // Look for method keyword on this line or next 2 lines
+        for (let j = i; j < Math.min(i + 3, lines.length); j++) {
+            const next = lines[j].trim();
+            if (next.startsWith('//')) continue;
+
+            const methodMatch = next.match(/^\s*method\s+(?:\w+(?:#\([^)]*\))?\s+)?(\w+)/);
+            if (!methodMatch) {
+                // Stop if we hit another attribute or structural keyword
+                if (/\(\*\s*.*\s*\*\)/.test(next) && j > i) break;
+                if (/^\s*(?:module|interface|rule|endmodule|endinterface)\b/.test(next)) break;
+                continue;
+            }
+
+            const methodName = methodMatch[1];
+
+            // Distinguish module implementation (has endmethod) from
+            // interface declaration (ends with ;)
+            let hasEndmethod = false;
+            for (let k = j + 1; k < Math.min(j + 40, lines.length); k++) {
+                const bodyLine = lines[k].trim();
+                if (/^\s*endmethod\b/.test(bodyLine)) {
+                    hasEndmethod = true;
+                    break;
+                }
+                // Semicolon without body keywords suggests interface declaration
+                if (/;\s*$/.test(bodyLine) && !/\b(begin|case|if|for|action|endaction)\b/i.test(bodyLine)) {
+                    break;
+                }
+            }
+
+            if (hasEndmethod) {
+                issues.push({
+                    file: filename,
+                    line: i + 1,
+                    check: 'P0022',
+                    severity: 'warning',
+                    message: `方法 "${methodName}" 在 module 实现上使用了 (* always_enabled/always_ready *) pragma — module 内 method 不能用 pragma 形式`,
+                    suggestion: `删除 (* always_enabled *) pragma，改为 method Action ${methodName}(...) always_enabled;（suffix 关键字形式）`
+                });
+            }
+            break;
+        }
+    }
+}
+
+/**
+ * checkBVIScheduleGroupSyntax — detect BVI schedule group syntax.
+ * BSC does NOT support `schedule A CF (B, C, D)` grouping — must be
+ * expanded to pair-wise `schedule A CF B; schedule A CF C; schedule A CF D;`.
+ * Full-scan rule (added 2026-07-15).
+ */
+function checkBVIScheduleGroupSyntax(filename, content, issues) {
+    // Find BVI import blocks: import "BVI" ... endmodule
+    const bviBlockRe = /import\s+"BVI"[\s\S]*?endmodule/g;
+    let blockMatch;
+    while ((blockMatch = bviBlockRe.exec(content)) !== null) {
+        const block = blockMatch[0];
+        const blockStartIdx = blockMatch.index;
+
+        // Find schedule declarations with parenthesized method list (group syntax)
+        // Pattern: schedule methodName CF (methodA, methodB, ...)
+        const schedRe = /schedule\s+(\w+)\s+(CF|SB|SBR|C)\s*\(([^)]+)\)/g;
+        let schedMatch;
+        while ((schedMatch = schedRe.exec(block)) !== null) {
+            const methods = schedMatch[3].split(',').map(s => s.trim()).filter(Boolean);
+            if (methods.length >= 2) {
+                const lineEst = content.substring(0, blockStartIdx + schedMatch.index).split('\n').length;
+                issues.push({
+                    file: filename,
+                    line: lineEst,
+                    check: 'P0200',
+                    severity: 'warning',
+                    message: `BVI schedule 使用了分组语法 schedule ${schedMatch[1]} ${schedMatch[2]} (${methods.join(', ')}) — BSC 不支持分组，必须逐对声明`,
+                    suggestion: `展开为逐对声明：${methods.map(m => `schedule ${schedMatch[1]} ${schedMatch[2]} ${m}`).join('; ')}`
+                });
+            }
+        }
+    }
+}
+
+/**
+ * checkSynthesizeAnnotationOrder — detect urgency/execution_order annotations
+ * placed AFTER (* synthesize *) in module body.
+ * (* synthesize *) creates a scheduling annotation boundary — annotations
+ * inside the module body after synthesize may not reach bsc's code generation
+ * phase (where G0010 is produced). Method-vs-rule conflicts are especially affected.
+ * Full-scan rule (added 2026-07-15).
+ */
+function checkSynthesizeAnnotationOrder(filename, content, issues) {
+    const lines = content.split('\n');
+    let inSynthModule = false;
+    let modName = '';
+
+    for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        if (trimmed.startsWith('//')) continue;
+
+        // Check for (* synthesize *) module entry
+        const modMatch = trimmed.match(/^module\s+(\w+)/);
+        if (modMatch) {
+            modName = modMatch[1];
+            // Check if previous line had (* synthesize *)
+            const prevLine = i > 0 ? lines[i - 1].trim() : '';
+            inSynthModule = /\(\*\s*synthesize\s*\*\)/.test(prevLine) || /\(\*\s*synthesize\s*\*\)/.test(trimmed);
+            continue;
+        }
+        if (/^endmodule/.test(trimmed)) {
+            inSynthModule = false;
+            continue;
+        }
+
+        if (!inSynthModule) continue;
+
+        // Detect urgency/execution_order annotations inside synthesize module body
+        if (/(?:descending_urgency|execution_order|preempts)\s*=\s*"/.test(trimmed)) {
+            issues.push({
+                file: filename,
+                line: i + 1,
+                check: 'G0010',
+                severity: 'warning',
+                message: `模块 "${modName}" 的调度注解在 (* synthesize *) 模块体内 — synthesize 创建调度边界，跨 method/rule 冲突的 G0010 可能不会消除`,
+                suggestion: `将 (* descending_urgency = "..." *) 移到 (* synthesize *) 之前作为模块级属性，使注解传递给代码生成阶段`
+            });
         }
     }
 }
