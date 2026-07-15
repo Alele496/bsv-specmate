@@ -12,6 +12,7 @@ import { guide, scan } from "../src/tools/specmate_guide.mjs";
 import { getLevel, LEVEL_LIMITS } from "../src/config.mjs";
 import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots, ensureSession, getSessionId, endCurrentSession, querySessionStats, queryStubbornErrors, queryFixRate, queryErrorCodeStats, queryTopErrorCodes, queryUnresolvedCount } from "../src/db/query.mjs";
 import { parseBSCWarnings } from "../src/tools/warning_diff.mjs";
+import { diagnose } from "../src/tools/specmate_diagnose.mjs";
 import { parseFile, extractAll, analyzeScheduling, buildCallGraph, buildDependencyGraph, findConflictPairs, extractMethods, extractRegWrites, extractRegDeclarations, queryNodeAt, analyzeRuleConflicts, analyzeMethodOrder, findImplicitConflicts } from "../src/tools/ast_query.mjs";
 import { existsSync } from "fs";
 import { isAbsolute } from "path";
@@ -48,10 +49,10 @@ const server = new McpServer({
 
 server.tool(
     "specmate_guide",
-    "Multi-phase BSV coding guide. Call with phase=pre_code before writing, phase=on_error when compilation fails with a specific error code, phase=decide when choosing between approaches, phase=pattern for code skeletons. Both specmate_guide(pre_code) and npx specmate scan are first-class pre-code entry points.",
+    "分阶段 BSV 编码指导。pre_code=编码前陷阱提醒 + 可选 AST 预编译扫描（传 file 参数），on_error=编译失败后按错误码查修复方案，continue=继续写下一模块，pattern=获取代码骨架模板。注意：decide 已关闭，设计决策请自主完成。推荐入口用 specmate_scan 替代 pre_code。",
     {
         phase: z.enum(["pre_code", "on_error", "continue", "decide", "pattern"])
-            .describe("When you are: pre_code=about to write a module | on_error=compilation failed with error code | continue=writing next module | decide=choosing between two approaches | pattern=need a standard module skeleton"),
+            .describe("pre_code=准备写模块 | on_error=编译失败，传错误码 | continue=继续下一模块 | pattern=获取代码骨架。decide 已关闭（返回不可用提示）。"),
         input: z.string().describe("Brief: task description (pre_code) | error code (on_error) | next task (continue) | two options (decide) | what module (pattern)"),
         file: z.string().optional().describe("Optional .bsv file path. When set with pre_code, specmate runs AST preflight scan on the file and embeds results in the response — catches P0030/P0005/T0043/G0053/G0005 without bsc compilation."),
     },
@@ -95,7 +96,7 @@ server.tool(
 
 server.tool(
     "specmate_scan",
-    "【推荐】统一预编码检查 — 替代旧的 specmate_guide(pre_code)+decide+preflight 三步调用。一次性返回陷阱、设计决策建议、AST预编译扫描结果、下一步建议。传入任务描述和可选的 .bsv 文件路径。",
+    "【推荐】统一预编码检查 — 替代旧的 specmate_guide(pre_code)+preflight 两步调用。一次性返回：编译硬约束（UNIVERSAL_TRAPS）、AST 预编译扫描结果（传 file 参数后自动运行）、下一步建议（编码完成后调 specmate_check）。注意：specmate 当前不做主动设计指导，请自主完成架构。",
     {
         task: z.string().describe("任务描述，如 '写一个SPI主控制器' 或 'mkFIFO vs mkBypassFIFO'"),
         file: z.string().optional().describe("可选 .bsv 文件路径。传入后 specmate 自动运行 AST 预编译扫描 (P0030/P0005/T0043/G0053/G0005)"),
@@ -147,10 +148,10 @@ server.tool(
 
 server.tool(
     "specmate_check",
-    "Run static checks on .bsv files. By default runs 3 high-precision checks (literal overflow, zero-width literal, Bool misuse). Set full=true to run all checks including regex-based ones.",
+    "对 .bsv 文件运行静态检查。默认 11 项 always-on 规则：位宽溢出、零位宽、Bool 误用、G0053 动态参数、多子模块冲突、vec() 用法、Bool 位拼接、value method 语法、interface Bool 返回、always_ready 滥用、P0022 pragma 位置。设 full=true 追加 8 项深度检查。编码完成后必调。",
     {
         files: z.array(z.string()).describe("要检查的 .bsv 文件路径列表"),
-        full: z.boolean().optional().default(false).describe("设为 true 运行全部检查（含正则类，误报率较高）。默认只运行 3 项高精度检查。"),
+        full: z.boolean().optional().default(false).describe("设为 true 运行全部 19 项检查（含正则类深度规则）。默认运行 11 项高精度 always-on 规则。"),
     },
     async ({ files, full }) => {
         // P0: 路径校验 — 必须绝对路径，文件必须存在
@@ -753,6 +754,40 @@ server.tool(
             return { content: [{ type: "text", text: lines.join('\n') }] };
         }
         return { content: [{ type: "text", text: "未知 action。支持 snapshot 和 diff。" }] };
+    }
+);
+
+server.tool(
+    "specmate_diagnose",
+    "BSC 编译输出全量诊断 — 接受 bsc 编译器的完整 stdout+stderr，解析所有错误码，逐一查知识库（现象/根因/修复方案），按错误码分类展示，标记可自动修复 vs 需手动修复的问题，同时自动捕获到错误记忆库。一次调用替代人工逐行查错。",
+    {
+        bsc_output: z.string().describe("BSC 编译器的完整输出 (stdout+stderr)"),
+        files: z.array(z.string()).optional().describe("相关的 .bsv 文件路径（可选，用于精确记录捕获来源）"),
+    },
+    async ({ bsc_output, files }) => {
+        // 路径校验
+        if (files && files.length > 0) {
+            const pathCheck = validateFilePaths(files);
+            if (!pathCheck.valid) {
+                return { content: [{ type: "text", text: pathCheck.error }] };
+            }
+        }
+
+        // Lazily create session (idempotent)
+        const session_id = await ensureSession();
+
+        const result = await diagnose(bsc_output, session_id, files || null);
+
+        // Push alerts for captured errors
+        try {
+            const codePattern = /\b([GPTBS]\d{4})\b/g;
+            const codes = [...new Set([...bsc_output.matchAll(codePattern)].map(m => m[1]))];
+            if (codes.length > 0) {
+                alerts.onCapture(codes);
+            }
+        } catch (_) { /* push is non-critical */ }
+
+        return { content: [{ type: "text", text: result }] };
     }
 );
 
