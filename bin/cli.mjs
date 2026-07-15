@@ -1,18 +1,21 @@
 #!/usr/bin/env node
-// specmate CLI — Agent-facing BSV development infrastructure
-// Phase 1: CLI as primary channel. Agent calls `npx specmate scan/check`.
+// specmate CLI — Human-facing BSV development infrastructure
+// Phase 2: Quality-enhanced review pipeline (L1/L2/L3 conflict detection)
 //
 // Usage:
 //   npx specmate scan <task-description> [--file=MyModule.bsv]
 //   npx specmate check <files...>
 //   npx specmate example <keyword> [--dir=<subdirectory>]
-//   npx specmate review                        List pending items for review
-//   npx specmate review --approve=<CODE>       Approve: aggregate → draft → mark approved → seed
-//   npx specmate review --reject=<CODE>        Reject: mark rejected
+//   npx specmate review                                    List pending items for review (with [CONFLICT] flag)
+//   npx specmate review --show=<CODE>                      Show conflict details for a code
+//   npx specmate review --approve=<CODE>                   Approve (blocked if CONFLICT exists)
+//   npx specmate review --reject=<CODE>                    Reject
+//   npx specmate review --resolve-conflict=<CODE> --keep=new|old|merge  Resolve conflict
 
 import { resolve } from 'path';
 import { pathToFileURL } from 'url';
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync, readdirSync } from 'fs';
+import { join } from 'path';
 import { execSync } from 'child_process';
 
 // Resolve project root relative to this file
@@ -40,8 +43,10 @@ if (!command || command === 'help' || command === '--help' || command === '-h') 
   console.log('  check   <files...>                                Quick static check (literal overflow, zero-width, Bool misuse)');
   console.log('  example <keyword> [--dir=<subdir>]                Search official BSC examples for keyword usage snippets');
   console.log('  review                                            List pending error clusters for human review');
+  console.log('  review  --show=<CODE>                             Show conflict details for a code');
   console.log('  review  --approve=<CODE>                          Approve cluster: aggregate → draft → mark approved → seed');
   console.log('  review  --reject=<CODE>                           Reject cluster: mark as rejected');
+  console.log('  review  --resolve-conflict=<CODE> --keep=new|old|merge  Resolve a semantic conflict');
   console.log('');
   process.exit(0);
 }
@@ -148,16 +153,117 @@ async function runReview(reviewArgs) {
   // Parse flags
   const approveArg = reviewArgs.find(a => a.startsWith('--approve='));
   const rejectArg = reviewArgs.find(a => a.startsWith('--reject='));
+  const showArg = reviewArgs.find(a => a.startsWith('--show='));
+  const resolveConflictArg = reviewArgs.find(a => a.startsWith('--resolve-conflict='));
+  const keepArg = reviewArgs.find(a => a.startsWith('--keep='));
 
   // Load DB modules
   const { queryClusteredCaptures, approveCapturesByCode, rejectCapturesByCode, queryAllCapturesByCode } = await loadModule('src/db/query.mjs');
-  const { writeDraft } = await loadModule('scripts/generate-error-doc.mjs');
+  const { writeDraft, resolveConflict } = await loadModule('scripts/generate-error-doc.mjs');
+
+  // Path to conflict drafts
+  const draftsDir = resolve(PKG_ROOT, 'docs', 'errors', '_drafts');
+
+  /**
+   * Helper: read conflict file if it exists.
+   * @param {string} code
+   * @returns {string|null}
+   */
+  function readConflictFile(code) {
+    const conflictPath = join(draftsDir, `${code}_CONFLICT.md`);
+    if (existsSync(conflictPath)) {
+      return readFileSync(conflictPath, 'utf-8');
+    }
+    return null;
+  }
+
+  if (showArg) {
+    // ── Show conflict details sub-command ──
+    const code = showArg.replace('--show=', '').trim();
+    if (!code) {
+      console.error('Error: --show requires an error code (e.g. --show=P0030)');
+      process.exit(1);
+    }
+
+    const conflictContent = readConflictFile(code);
+    if (!conflictContent) {
+      console.log(`No conflict file found for ${code}.`);
+      console.log('');
+      console.log('To check pending clusters: npx specmate review');
+      process.exit(0);
+    }
+
+    console.log('');
+    console.log(`=== Conflict Details: ${code} ===`);
+    console.log('');
+    console.log(conflictContent);
+    return;
+  }
+
+  if (resolveConflictArg) {
+    // ── Resolve conflict sub-command ──
+    const code = resolveConflictArg.replace('--resolve-conflict=', '').trim();
+    if (!code) {
+      console.error('Error: --resolve-conflict requires an error code (e.g. --resolve-conflict=P0030)');
+      process.exit(1);
+    }
+
+    const keep = keepArg ? keepArg.replace('--keep=', '').trim() : '';
+    if (!['new', 'old', 'merge'].includes(keep)) {
+      console.error('Error: --keep must be one of: new, old, merge');
+      console.error('Usage: npx specmate review --resolve-conflict=<CODE> --keep=new|old|merge');
+      process.exit(1);
+    }
+
+    // Check if the conflict file exists
+    const conflictContent = readConflictFile(code);
+    if (!conflictContent) {
+      console.error(`Error: No conflict file found for ${code}.`);
+      console.error(`Check: ${join(draftsDir, `${code}_CONFLICT.md`)}`);
+      process.exit(1);
+    }
+
+    // Get capture data for the resolution
+    const captures = await queryAllCapturesByCode(code);
+    if (captures.length === 0) {
+      console.error(`Error: No captures found for code "${code}". Resolution requires capture data.`);
+      process.exit(1);
+    }
+
+    const totalRepeat = captures.reduce((sum, c) => sum + (c.repeat_count || 1), 0);
+    const sessions = new Set(captures.map(c => c.session_id).filter(Boolean));
+    const sessionCount = sessions.size || 1;
+    const samples = captures.map(c => c.bsc_output || '').join('\n---\n');
+    const latestCause = [...captures].reverse().find(c => c.cause && c.cause.trim())?.cause || '';
+    const latestSolution = [...captures].reverse().find(c => c.solution && c.solution.trim())?.solution || '';
+
+    const result = resolveConflict(code, keep, {
+      totalRepeat, sessionCount, samples, latestCause, latestSolution,
+    });
+
+    console.log(result.message);
+    return;
+  }
 
   if (approveArg) {
     // ── Approve sub-command ──
     const code = approveArg.replace('--approve=', '').trim();
     if (!code) {
       console.error('Error: --approve requires an error code (e.g. --approve=P0030)');
+      process.exit(1);
+    }
+
+    // Check for unresolved conflict
+    const conflictContent = readConflictFile(code);
+    if (conflictContent) {
+      console.error('');
+      console.error(`Error: ${code} has an unresolved CONFLICT.`);
+      console.error(`Conflicts must be resolved before approving.`);
+      console.error('');
+      console.error('Available actions:');
+      console.error(`  npx specmate review --show=${code}                  View conflict details`);
+      console.error(`  npx specmate review --resolve-conflict=${code} --keep=new|old|merge  Resolve conflict`);
+      console.error('');
       process.exit(1);
     }
 
@@ -178,8 +284,25 @@ async function runReview(reviewArgs) {
     const latestCause = [...captures].reverse().find(c => c.cause && c.cause.trim())?.cause || '';
     const latestSolution = [...captures].reverse().find(c => c.solution && c.solution.trim())?.solution || '';
 
-    // Step 3: Generate draft .md
+    // Step 3: Generate draft .md (L1/L2/L3 quality pipeline)
     const draftResult = writeDraft({ code, totalRepeat, sessionCount, samples, latestCause, latestSolution });
+
+    if (draftResult.conflict === true) {
+      // L2 caught a conflict — block approval
+      console.log('');
+      console.log(`CONFLICT detected: ${draftResult.filePath}`);
+      console.log(`  Similarity: ${draftResult.similarity}`);
+      console.log('');
+      console.log('The conflict must be resolved before approving:');
+      console.log(`  npx specmate review --show=${code}`);
+      console.log(`  npx specmate review --resolve-conflict=${code} --keep=new|old|merge`);
+      process.exit(1);
+    }
+
+    if (draftResult.conflict === 'gray') {
+      console.log(`  NOTE: Gray zone detected — needs human review.`);
+    }
+
     console.log(`  Draft: ${draftResult.filePath} (${draftResult.isAppend ? 'appended sub-scenario' : 'new'})`);
 
     // Step 4: Mark as approved in DB
@@ -218,6 +341,31 @@ async function runReview(reviewArgs) {
   // ── List pending clusters (default behavior) ──
   const clusters = await queryClusteredCaptures();
 
+  // Also check for conflict files for codes not in current clusters
+  if (existsSync(draftsDir)) {
+    const conflictFiles = readdirSync(draftsDir).filter(f => f.endsWith('_CONFLICT.md'));
+    const conflictCodes = conflictFiles.map(f => f.replace('_CONFLICT.md', ''));
+
+    // If there are clusters AND conflicts, mention conflicts
+    if (conflictCodes.length > 0 && clusters.length === 0) {
+      console.log('');
+      console.log('Unresolved conflicts:');
+      console.log('');
+      console.log('CODE        STATUS');
+      console.log('--------    ------');
+      for (const c of conflictCodes) {
+        console.log(`${c.padEnd(10)}  [CONFLICT]`);
+      }
+      console.log('');
+      console.log(`Total: ${conflictCodes.length} unresolved conflict(s)`);
+      console.log('');
+      console.log('Actions:');
+      console.log('  npx specmate review --show=<CODE>                  View conflict details');
+      console.log('  npx specmate review --resolve-conflict=<CODE> --keep=new|old|merge  Resolve');
+      return;
+    }
+  }
+
   if (clusters.length === 0) {
     console.log('No pending error clusters for review.');
     console.log('');
@@ -226,16 +374,26 @@ async function runReview(reviewArgs) {
     return;
   }
 
+  // Collect conflict codes for flagging
+  const conflictCodes = new Set();
+  if (existsSync(draftsDir)) {
+    const conflictFiles = readdirSync(draftsDir).filter(f => f.endsWith('_CONFLICT.md'));
+    for (const f of conflictFiles) {
+      conflictCodes.add(f.replace('_CONFLICT.md', ''));
+    }
+  }
+
   // Print table header
   console.log('');
   console.log('Pending error clusters for review:');
   console.log('');
-  // code | total_repeat | session_count | brief
-  console.log('CODE      REPEATS  SESSIONS  SUMMARY');
-  console.log('--------  -------  --------  -------');
+  console.log('CODE         REPEATS  SESSIONS  SUMMARY');
+  console.log('---------    -------  --------  -------');
 
   for (const c of clusters) {
-    const code = (c.code || '???').padEnd(10);
+    let code = (c.code || '???');
+    const flag = conflictCodes.has(code) ? ' [CONFLICT]' : '';
+    const paddedCode = (code + flag).padEnd(13);
     const repeats = String(c.total_repeat || 0).padStart(7);
     const sessions = String(c.session_count || 0).padStart(8);
 
@@ -254,15 +412,22 @@ async function runReview(reviewArgs) {
     }
     if (!summary) summary = c.latest_cause ? c.latest_cause.substring(0, 50) : '(no summary)';
 
-    console.log(`${code} ${repeats}  ${sessions}  ${summary}`);
+    console.log(`${paddedCode} ${repeats}  ${sessions}  ${summary}`);
   }
 
   console.log('');
   console.log(`Total: ${clusters.length} cluster(s) pending`);
+
+  if (conflictCodes.size > 0) {
+    console.log(`Conflicts: ${conflictCodes.size} marked [CONFLICT] — resolve before approving`);
+  }
+
   console.log('');
   console.log('Actions:');
-  console.log('  npx specmate review --approve=<CODE>    Approve and generate draft');
-  console.log('  npx specmate review --reject=<CODE>     Reject and skip');
+  console.log('  npx specmate review --approve=<CODE>                Approve and generate draft');
+  console.log('  npx specmate review --reject=<CODE>                 Reject and skip');
+  console.log('  npx specmate review --show=<CODE>                  Show conflict details');
+  console.log('  npx specmate review --resolve-conflict=<CODE> --keep=new|old|merge  Resolve conflict');
 }
 
 main().catch(err => {
