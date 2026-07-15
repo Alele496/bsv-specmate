@@ -254,7 +254,7 @@ function checkRuleDoubleWrite(filename, content, issues) {
                     line: lineEstimate,
                     check: 'G0004',
                     severity: 'warning',
-                    message: `Rule "${ruleName}" 内对 "${reg}" 写入多次 — 若是 case 不同分支写同一寄存器则安全（所有分支都写视为一次），否则是真正的 G0004 冲突`,
+                    message: `同一寄存器有多次 \`<=\` 赋值 — 如果在不同互斥 case 分支中，BSC 可正确处理；如果在同一无条件路径中会触发 G0004`,
                     suggestion: '检查是否是 case/if 分支导致的重复检测。如果是真正多次写入，拆分寄存器或拆分为独立 rule。'
                 });
                 break;

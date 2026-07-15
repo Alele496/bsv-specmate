@@ -32,6 +32,28 @@ async function main() {
         return;
     }
 
+    // === 自动化护栏：全量解析验证（在写入 DB 之前） ===
+    // 任何 .md 文件解析失败 → 立即退出，不进 DB
+    // 防止格式不兼容的文档被静默跳过（parser 格式兼容性 bug 教训）
+    let parseErrors = [];
+    for (const filePath of errorPaths.sort()) {
+        const content = readFileSync(filePath, 'utf-8');
+        const err = parseErrorFile(content);
+        if (!err.code) {
+            parseErrors.push(filePath);
+        }
+    }
+    if (parseErrors.length > 0) {
+        console.error(`\n❌ 护栏拦截：${parseErrors.length} 个文件解析失败（缺少 code 字段）:`);
+        for (const f of parseErrors) console.error(`   - ${f}`);
+        console.error('\n请检查文档格式是否兼容 parser.mjs 的正则表达式。');
+        console.error('支持的格式：**现象**/**原因**/**解决** 或 ## 现象/## 原因/## 解决方案');
+        db.close();
+        process.exit(1);
+    }
+    console.log(`✅ 护栏通过：${errorPaths.length} 个文件全部可解析\n`);
+    // === 护栏结束 ===
+
     let inserted = 0;
     for (const filePath of errorPaths.sort()) {
         const content = readFileSync(filePath, 'utf-8');
