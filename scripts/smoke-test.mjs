@@ -10,7 +10,7 @@
  */
 
 import { isAbsolute } from 'path';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -340,6 +340,54 @@ async function test11_resolve_fix_rate() {
     console.log(`  ℹ️  ${fixRateMsg}`);
 }
 
+// ── 测试 12: parseErrorFile 全量验证 — 所有 error doc 必须可解析 ──
+async function test12_parse_all_errors() {
+    console.log('\n📋 测试 12: parseErrorFile 解析所有 error doc');
+
+    const { collectErrorFiles, parseErrorFile } = await import('../src/db/parser.mjs');
+
+    const files = collectErrorFiles();
+    assert(files.length >= 20, `收集到 ${files.length} 个 error doc（预期 ≥20）`);
+
+    let failCount = 0;
+    for (const filePath of files) {
+        const fileName = filePath.split(/[/\\]/).pop();
+        let content;
+        try {
+            content = readFileSync(filePath, 'utf-8');
+        } catch (err) {
+            failCount++;
+            console.error(`  ❌ ${fileName}: 文件读取失败 — ${err.message}`);
+            continue;
+        }
+
+        const result = parseErrorFile(content);
+
+        if (!result || !result.code || !result.title) {
+            failCount++;
+            console.error(`  ❌ ${fileName}: 解析失败 — code="${result?.code || ''}" title="${result?.title || ''}"`);
+            continue;
+        }
+
+        const fields = ['phenomena', 'cause', 'solution', 'rules'];
+        let fileOk = true;
+        for (const f of fields) {
+            const val = (result[f] || '').trim();
+            if (!val) {
+                console.error(`  ❌ ${fileName} (${result.code}): ${f} 为空`);
+                fileOk = false;
+            }
+        }
+        if (!fileOk) {
+            failCount++;
+        } else {
+            console.log(`  ✅ ${fileName} (${result.code}): 全部字段解析成功`);
+        }
+    }
+
+    assert(failCount === 0, `所有 ${files.length} 篇 error doc 解析成功（失败 ${failCount} 篇）`);
+}
+
 // ── main ──
 async function main() {
     console.log('╔══════════════════════════════════════════╗');
@@ -405,6 +453,14 @@ async function main() {
     } catch (err) {
         console.error(`  ❌ test11_resolve_fix_rate 异常: ${err.message}`);
         failures.push(`test11_resolve_fix_rate: ${err.message}`);
+        failed++;
+    }
+
+    try {
+        await test12_parse_all_errors();
+    } catch (err) {
+        console.error(`  ❌ test12_parse_all_errors 异常: ${err.message}`);
+        failures.push(`test12_parse_all_errors: ${err.message}`);
         failed++;
     }
 

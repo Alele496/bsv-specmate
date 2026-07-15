@@ -52,16 +52,23 @@ export function parseErrorFile(content) {
     let section = '';
     for (let i = 1; i < lines.length; i++) {
         const line = lines[i];
-        if (/^\*\*(?:bsc\s*输出|现象)\*\*/.test(line)) {
+        // 支持粗体格式 ( **现象** / **bsc 输出** ) 和 Markdown 标题格式 ( ## 现象 / ## bsc 输出 )
+        if (/^\*\*(?:bsc\s*输出|现象)\*\*/.test(line) || /^##\s+(?:现象|bsc\s*输出)/.test(line)) {
             section = 'phenomena';
             continue;
         }
-        if (/^\*\*原因\*\*/.test(line)) {
+        if (/^\*\*原因\*\*/.test(line) || /^##\s+原因\b/.test(line)) {
             section = 'cause';
             continue;
         }
-        if (/^\*\*解决\*\*/.test(line)) {
+        // 粗体: **解决** | 标题: ## 解决 或 ## 解决方案
+        if (/^\*\*解决\*\*/.test(line) || /^##\s+解决/.test(line)) {
             section = 'solution';
+            continue;
+        }
+        // 标题格式的 ## 规则（粗体格式的 > **规则**: 在下方的 inline 检测中处理）
+        if (/^##\s+规则\b/.test(line)) {
+            section = 'rules';
             continue;
         }
         if (line.startsWith('> **规则**:')) {
