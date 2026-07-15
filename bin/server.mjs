@@ -10,7 +10,7 @@ import { checkStyle } from "../src/tools/check_style.mjs";
 import { guide, scan } from "../src/tools/specmate_guide.mjs";
 // specmate_learn.mjs import removed — deprecated. add_error.mjs retained for db:seed script only.
 import { getLevel, LEVEL_LIMITS } from "../src/config.mjs";
-import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots, ensureSession, getSessionId } from "../src/db/query.mjs";
+import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots, ensureSession, getSessionId, querySessionStats, queryStubbornErrors, queryFixRate } from "../src/db/query.mjs";
 import { parseBSCWarnings } from "../src/tools/warning_diff.mjs";
 import { parseFile, extractAll, analyzeScheduling, buildCallGraph, buildDependencyGraph, findConflictPairs, extractMethods, extractRegWrites, extractRegDeclarations, queryNodeAt, analyzeRuleConflicts, analyzeMethodOrder, findImplicitConflicts } from "../src/tools/ast_query.mjs";
 import { existsSync } from "fs";
@@ -278,7 +278,24 @@ server.tool(
             ? `错误码 ${codes[0]} 已记录。修好后调 specmate_resolve(code="${codes[0]}", cause="...", solution="...") 保存经验。${dedupNote}`
             : `共 ${codes.length} 个错误码已记录:\n${list}\n\n修好后逐条调 specmate_resolve 保存修复经验。${dedupNote}`;
 
-        return { content: [{ type: "text", text: unresolvedMsg }] };
+        // P1: append session statistics
+        let statsBlock = '';
+        try {
+            const stats = await querySessionStats(session_id);
+            const stubborn = await queryStubbornErrors(session_id, 2);
+            const parts = [`\n\n📊 当前任务统计:`];
+            parts.push(`- 编译失败: ${stats.compileAttempts} 次`);
+            parts.push(`- 未解决错误: ${stats.unresolvedCount} 个`);
+            if (stubborn.length > 0) {
+                for (const s of stubborn) {
+                    const loc = s.file ? `${s.file} 中 ` : '';
+                    parts.push(`- ⚠ 顽固错误: ${loc}${s.code} 已出现 ${s.repeat_count} 次`);
+                }
+            }
+            statsBlock = parts.join('\n');
+        } catch (_) { /* stats are non-critical */ }
+
+        return { content: [{ type: "text", text: unresolvedMsg + statsBlock }] };
     }
 );
 
@@ -307,7 +324,17 @@ server.tool(
             }
         } catch (_) { /* non-critical */ }
 
-        return { content: [{ type: "text", text: `✅ ${code} 已标记为已解决。原因和方案已记录。` }] };
+        // P1: append fix rate
+        let fixRateBlock = '';
+        try {
+            const rate = await queryFixRate(getSessionId());
+            if (rate.total > 0) {
+                const pct = ((rate.resolved / rate.total) * 100).toFixed(1);
+                fixRateBlock = `修复率: ${rate.resolved}/${rate.total} (${pct}%)`;
+            }
+        } catch (_) { /* stats are non-critical */ }
+
+        return { content: [{ type: "text", text: `✅ ${code} 已标记为已解决。${fixRateBlock}` }] };
     }
 );
 

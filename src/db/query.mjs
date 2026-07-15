@@ -2,7 +2,7 @@ import { readFileSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import initSqlJs from 'sql.js';
 import { initDataDir, getDBPath } from '../config.mjs';
-import { initDB, insertError, getError, getAllErrors, getTopRules, searchErrors, incrementCount, getHotTopics, incrementRefHit, insertCapture, upsertCapture, resolveCapture, getCapturesByCode, getRecentCaptures, getUnresolvedCaptures, getLatestUnresolvedByCode, insertWarning, getWarningsBySnapshot, getLatestSnapshots, createSession, CAPTURES_DDL } from './schema.mjs';
+import { initDB, insertError, getError, getAllErrors, getTopRules, searchErrors, incrementCount, getHotTopics, incrementRefHit, insertCapture, upsertCapture, resolveCapture, getCapturesByCode, getRecentCaptures, getUnresolvedCaptures, getLatestUnresolvedByCode, insertWarning, getWarningsBySnapshot, getLatestSnapshots, createSession, getSessionStats, getStubbornErrors, getFixRate, CAPTURES_DDL } from './schema.mjs';
 import { collectErrorFiles, parseErrorFile } from './parser.mjs';
 
 let _db = null;
@@ -259,6 +259,39 @@ export async function diffWarnings(snapshot_a, snapshot_b) {
         removed: prevWarnings.filter(w => !currKeys.has(key(w))),
         persistent: currWarnings.filter(w => prevKeys.has(key(w))),
     };
+}
+
+// ── P1 statistics: session-level aggregation queries ──
+
+/**
+ * Get compile attempts and unresolved error count for the current session.
+ * @param {string} sessionId
+ * @returns {Promise<{ compileAttempts: number, unresolvedCount: number }>}
+ */
+export async function querySessionStats(sessionId) {
+    const db = await ensureDB();
+    return getSessionStats(db, sessionId);
+}
+
+/**
+ * Get stubborn errors (repeat_count >= minCount) for the current session.
+ * @param {string} sessionId
+ * @param {number} minCount - minimum repeat_count (default 2)
+ * @returns {Promise<Array<{ code: string, file: string, repeat_count: number }>>}
+ */
+export async function queryStubbornErrors(sessionId, minCount = 2) {
+    const db = await ensureDB();
+    return getStubbornErrors(db, sessionId, minCount);
+}
+
+/**
+ * Get fix rate (resolved vs total captures) for the current session.
+ * @param {string} sessionId
+ * @returns {Promise<{ resolved: number, total: number }>}
+ */
+export async function queryFixRate(sessionId) {
+    const db = await ensureDB();
+    return getFixRate(db, sessionId);
 }
 
 export function closeDB() {

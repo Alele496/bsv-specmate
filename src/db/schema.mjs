@@ -294,3 +294,76 @@ export function getLatestSnapshots(db, limit = 2) {
     stmt.free();
     return results;
 }
+
+// ── P1 statistics: session-level aggregation queries ──
+
+/**
+ * Get session-level statistics: compile attempts (distinct capture count) and unresolved error count.
+ * @param {object} db - SQL.js database handle
+ * @param {string} sessionId
+ * @returns {{ compileAttempts: number, unresolvedCount: number }}
+ */
+export function getSessionStats(db, sessionId) {
+    const stmt = db.prepare(
+        `SELECT
+            COUNT(*) as compile_attempts,
+            SUM(CASE WHEN status = 'unresolved' THEN 1 ELSE 0 END) as unresolved_count
+         FROM captures WHERE session_id = ?`
+    );
+    stmt.bind([sessionId]);
+    let row = { compileAttempts: 0, unresolvedCount: 0 };
+    if (stmt.step()) {
+        const obj = stmt.getAsObject();
+        row = { compileAttempts: obj.compile_attempts || 0, unresolvedCount: obj.unresolved_count || 0 };
+    }
+    stmt.free();
+    return row;
+}
+
+/**
+ * Get stubborn errors: capture entries whose repeat_count >= minCount within the given session.
+ * These are error codes that keep reappearing despite Agent's fix attempts.
+ * @param {object} db
+ * @param {string} sessionId
+ * @param {number} minCount - minimum repeat_count to qualify as stubborn (default 2)
+ * @returns {Array<{ code: string, file: string, repeat_count: number }>}
+ */
+export function getStubbornErrors(db, sessionId, minCount = 2) {
+    const results = [];
+    const stmt = db.prepare(
+        `SELECT code, file, MAX(repeat_count) as repeat_count
+         FROM captures
+         WHERE session_id = ? AND repeat_count >= ?
+         GROUP BY code, file
+         ORDER BY repeat_count DESC`
+    );
+    stmt.bind([sessionId, minCount]);
+    while (stmt.step()) {
+        results.push(stmt.getAsObject());
+    }
+    stmt.free();
+    return results;
+}
+
+/**
+ * Get fix rate for a session: how many captures have been resolved vs total.
+ * @param {object} db
+ * @param {string} sessionId
+ * @returns {{ resolved: number, total: number }}
+ */
+export function getFixRate(db, sessionId) {
+    const stmt = db.prepare(
+        `SELECT
+            COUNT(*) as total,
+            SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) as resolved
+         FROM captures WHERE session_id = ?`
+    );
+    stmt.bind([sessionId]);
+    let row = { resolved: 0, total: 0 };
+    if (stmt.step()) {
+        const obj = stmt.getAsObject();
+        row = { resolved: obj.resolved || 0, total: obj.total || 0 };
+    }
+    stmt.free();
+    return row;
+}
