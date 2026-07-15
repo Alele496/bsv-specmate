@@ -2,10 +2,32 @@ import { readFileSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import initSqlJs from 'sql.js';
 import { initDataDir, getDBPath } from '../config.mjs';
-import { initDB, getError, getAllErrors, getTopRules, searchErrors, incrementCount, getHotTopics, incrementRefHit, insertCapture, resolveCapture, getCapturesByCode, getRecentCaptures, getUnresolvedCaptures, getLatestUnresolvedByCode, insertWarning, getWarningsBySnapshot, getLatestSnapshots } from './schema.mjs';
+import { initDB, insertError, getError, getAllErrors, getTopRules, searchErrors, incrementCount, getHotTopics, incrementRefHit, insertCapture, resolveCapture, getCapturesByCode, getRecentCaptures, getUnresolvedCaptures, getLatestUnresolvedByCode, insertWarning, getWarningsBySnapshot, getLatestSnapshots } from './schema.mjs';
+import { collectErrorFiles, parseErrorFile } from './parser.mjs';
 
 let _db = null;
 let _dbPath = null;
+
+async function autoSeedIfEmpty(db) {
+    const result = db.exec('SELECT COUNT(*) as cnt FROM errors');
+    const count = result.length > 0 ? result[0].values[0][0] : 0;
+    if (count > 0) return 0;
+
+    const errorPaths = collectErrorFiles();
+    if (errorPaths.length === 0) return 0;
+
+    let inserted = 0;
+    for (const filePath of errorPaths.sort()) {
+        const content = readFileSync(filePath, 'utf-8');
+        const err = parseErrorFile(content);
+        if (err.code) {
+            insertError(db, err);
+            console.log(`  [auto-seed] + ${err.code}: ${err.title}`);
+            inserted++;
+        }
+    }
+    return inserted;
+}
 
 export async function ensureDB() {
     if (_db) return _db;
@@ -38,12 +60,20 @@ export async function ensureDB() {
             message     TEXT NOT NULL,
             UNIQUE(snapshot_id, file, line, code)
         )`);
+        // Auto-seed errors table if empty (e.g. migrated from old schema)
+        const seeded = await autoSeedIfEmpty(_db);
+        if (seeded > 0) {
+            await saveDB();
+        }
     } else {
         if (!existsSync(dirname(_dbPath))) {
             mkdirSync(dirname(_dbPath), { recursive: true });
         }
         _db = new SQL.Database();
         initDB(_db);
+        // Auto-seed errors table from Markdown source
+        await autoSeedIfEmpty(_db);
+        await saveDB();
     }
     return _db;
 }
