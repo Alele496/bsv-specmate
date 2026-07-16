@@ -57,6 +57,8 @@ export async function endCurrentSession() {
     await saveDB();
 }
 
+const MAX_SEED_FILES = 100;
+
 async function autoSeedIfEmpty(db) {
     const result = db.exec('SELECT COUNT(*) as cnt FROM errors');
     const count = result.length > 0 ? result[0].values[0][0] : 0;
@@ -65,8 +67,12 @@ async function autoSeedIfEmpty(db) {
     const errorPaths = collectErrorFiles();
     if (errorPaths.length === 0) return 0;
 
+    if (errorPaths.length > MAX_SEED_FILES) {
+        console.warn(`  [auto-seed] WARNING: ${errorPaths.length} files found, limiting to first ${MAX_SEED_FILES}`);
+    }
+
     let inserted = 0;
-    for (const filePath of errorPaths.sort()) {
+    for (const filePath of errorPaths.sort().slice(0, MAX_SEED_FILES)) {
         const content = readFileSync(filePath, 'utf-8');
         const err = parseErrorFile(content);
         if (err.code) {

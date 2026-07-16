@@ -12,6 +12,8 @@
 //   ['2025.07'] — 知识适用于 BSC 2025.07（默认新版本）
 //   ['legacy']  — 知识仅适用于旧版 BSC，保留用于兼容参考
 //
+// alwaysShow: boolean — 即使 verified:false 也强制显示（仅用于 P0030/P0005 等核心安全规则）
+//
 // verified for traps (QA pillar — validation status):
 //   false — 尚未经过编译验证
 //   true  — 已通过 fixture 编译验证，需附带 verifiedAt 字段

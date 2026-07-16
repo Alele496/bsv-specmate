@@ -244,6 +244,14 @@ server.tool(
         files: z.array(z.string()).optional().describe("当前编译相关的 .bsv 文件路径"),
     },
     async ({ bsc_output, files }) => {
+        // P0: 路径校验 — 必须绝对路径，文件必须存在
+        if (files && files.length > 0) {
+            const pathCheck = validateFilePaths(files);
+            if (!pathCheck.valid) {
+                return { content: [{ type: "text", text: pathCheck.error }] };
+            }
+        }
+
         // Lazily create session (idempotent)
         const session_id = await ensureSession();
 
@@ -376,7 +384,7 @@ server.tool(
             }
         } catch (_) { /* stats are non-critical */ }
 
-        return { content: [{ type: "text", text: `✅ ${code} 已标记为已解决。${fixRateBlock}` }] };
+        return { content: [{ type: "text", text: `✅ ${code} 已标记为已解决。\n${fixRateBlock}` }] };
     }
 );
 

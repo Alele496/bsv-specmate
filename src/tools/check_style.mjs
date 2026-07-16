@@ -757,7 +757,7 @@ function checkInterfaceBoolReturn(filename, content, issues) {
                     file: filename,
                     line: methodLineEst,
                     check: 'interface-bool-param',
-                    severity: 'warning',
+                    severity: 'info',
                     message: `接口方法参数 "${paramName}" 使用 Bool 类型 — 硬件接口参数应使用 Bit#(1)`,
                     suggestion: `将 Bool ${paramName} 改为 Bit#(1) ${paramName}`
                 });
