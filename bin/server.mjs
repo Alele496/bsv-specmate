@@ -49,7 +49,7 @@ const server = new McpServer({
 
 server.tool(
     "specmate_guide",
-    "分阶段 BSV 编码指导。pre_code=编码前陷阱提醒 + 可选 AST 预编译扫描（传 file 参数），on_error=编译失败后按错误码查修复方案，continue=继续写下一模块，pattern=获取代码骨架模板。注意：decide 已关闭，设计决策请自主完成。推荐入口用 specmate_scan 替代 pre_code。",
+    "分阶段指导。pre_code=编码前硬约束+AST扫描，on_error=按错误码查修复方案，pattern=代码骨架。注意：decide 已关闭。on_error 仅匹配标准错误码 [GPTBS]\\d{4}，BSC 内部错误无法诊断。",
     {
         phase: z.enum(["pre_code", "on_error", "continue", "decide", "pattern"])
             .describe("pre_code=准备写模块 | on_error=编译失败，传错误码 | continue=继续下一模块 | pattern=获取代码骨架。decide 已关闭（返回不可用提示）。"),
@@ -96,7 +96,7 @@ server.tool(
 
 server.tool(
     "specmate_scan",
-    "【推荐】统一预编码检查 — 替代旧的 specmate_guide(pre_code)+preflight 两步调用。一次性返回：编译硬约束（UNIVERSAL_TRAPS）、AST 预编译扫描结果（传 file 参数后自动运行）、下一步建议（编码完成后调 specmate_check）。注意：specmate 当前不做主动设计指导，请自主完成架构。",
+    "【推荐入口】接收任务描述 + 可选 .bsv 文件路径。返回编译硬约束 + AST 预编译扫描（需传 file）+ 下一步建议。注意：不做主动设计指导，不接收 BSC 编译输出。",
     {
         task: z.string().describe("任务描述，如 '写一个SPI主控制器' 或 'mkFIFO vs mkBypassFIFO'"),
         file: z.string().optional().describe("可选 .bsv 文件路径。传入后 specmate 自动运行 AST 预编译扫描 (P0030/P0005/T0043/G0053/G0005)"),
@@ -148,7 +148,7 @@ server.tool(
 
 server.tool(
     "specmate_check",
-    "对 .bsv 文件运行静态检查。默认 11 项 always-on 规则：位宽溢出、零位宽、Bool 误用、G0053 动态参数、多子模块冲突、vec() 用法、Bool 位拼接、value method 语法、interface Bool 返回、always_ready 滥用、P0022 pragma 位置。设 full=true 追加 8 项深度检查。编码完成后必调。",
+    "接收 .bsv 文件路径，返回静态检查结果（位宽溢出/Bool误用/调度冲突等 11 项，full=true 追加 8 项）。注意：不运行 bsc 编译器，不能替代编译。调度类规则约 40% 误报，需人工甄别。",
     {
         files: z.array(z.string()).describe("要检查的 .bsv 文件路径列表"),
         full: z.boolean().optional().default(false).describe("设为 true 运行全部 19 项检查（含正则类深度规则）。默认运行 11 项高精度 always-on 规则。"),
@@ -238,7 +238,7 @@ server.tool(
 
 server.tool(
     "specmate_capture",
-    "Parse BSC compiler output, extract error codes, and record them into the project error memory. Use after a failed bsc compilation to persist error history for future resolution.",
+    "接收 BSC 编译输出，提取标准错误码 [GPTBS]\\d{4} 记录到知识库。注意：仅做记录，不提供修复方案。查修复请用 specmate_diagnose 或 specmate_guide(on_error)。",
     {
         bsc_output: z.string().describe("bsc 编译器的完整输出 (stdout+stderr)"),
         files: z.array(z.string()).optional().describe("当前编译相关的 .bsv 文件路径"),
@@ -351,7 +351,7 @@ server.tool(
 
 server.tool(
     "specmate_resolve",
-    "Call AFTER you fix a compilation error. Records the cause and solution, linking to the most recent capture. This is how specmate learns from your fixes — the project memory grows with every resolve.",
+    "修复编译错误后调用，记录根因和方案并关联最近的 capture。注意：仅做经验固化，不提供修复建议。需先有 capture 记录。",
     {
         code: z.string().describe("错误码, 如 'G0004'"),
         cause: z.string().describe("根因: 为什么会出现这个错误"),
@@ -390,7 +390,7 @@ server.tool(
 
 server.tool(
     "specmate_analyze",
-    "Parse BSV files with a real AST and answer structural questions. Ask about: scheduling conflicts in rules, module call/dependency graphs, register usage across rules, method implementations, or analyze specific lines of code. Use when you need to understand how rules/methods/modules interact — things that require actually parsing BSV syntax rather than regex matching.",
+    "接收 .bsv 文件路径 + 自然语言问题，返回 AST 结构分析（调度冲突/依赖图/调用图/寄存器分析等）。注意：不接收 BSC 编译输出——编译诊断请用 specmate_diagnose。不支持 BSC 内部错误（如 scanLinePosDirective），method-rule 调度冲突仅能识别不能修复，当前不检测 RAW 冲突。",
     {
         files: z.array(z.string()).describe("要分析的 .bsv 文件路径列表"),
         question: z.string().describe("想问什么？如 '调度冲突分析' / '模块依赖图' / 'rule 调用关系' / '寄存器读写分析' / '第156行是什么'"),
@@ -703,7 +703,7 @@ server.tool(
 
 server.tool(
     "specmate_diff",
-    "追踪 BSC 编译 warning 变化。支持两种模式：1) 提交 BSC 输出来存储快照；2) 对比最近两次快照的 warning 差异。用于编译-修复迭代中追踪哪些 warning 是新增的、哪些已消除。",
+    "追踪编译迭代中 warning 变化。snapshot=存储快照，diff=对比最近两次（新增/消除/持续）。注意：需 2+ 次 snapshot 才能 diff，不做根因分析。",
     {
         bsc_output: z.string().optional().describe("BSC 编译的 stdout/stderr 输出"),
         action: z.enum(["snapshot", "diff"]).describe("snapshot: 存储本次编译的 warning; diff: 对比最近两次快照"),
@@ -767,7 +767,7 @@ server.tool(
 
 server.tool(
     "specmate_diagnose",
-    "BSC 编译输出全量诊断 — 接受 bsc 编译器的完整 stdout+stderr，解析所有错误码，逐一查知识库（现象/根因/修复方案），按错误码分类展示，标记可自动修复 vs 需手动修复的问题，同时自动捕获到错误记忆库。一次调用替代人工逐行查错。",
+    "【编译失败首选】接收 BSC 编译完整输出，批量解析所有错误码，逐一查知识库（现象/根因/修复方案），标记可自动修复 vs 需手动判断，自动记录到知识库。注意：仅解析标准格式 [GPTBS]\\d{4}，BSC 内部错误标记为 UNKNOWN 但无法提供方案。",
     {
         bsc_output: z.string().describe("BSC 编译器的完整输出 (stdout+stderr)"),
         files: z.array(z.string()).optional().describe("相关的 .bsv 文件路径（可选，用于精确记录捕获来源）"),
