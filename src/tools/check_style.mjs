@@ -885,8 +885,13 @@ function checkP0022AttrOnMethod(filename, lines, issues) {
                     hasEndmethod = true;
                     break;
                 }
-                // Semicolon without body keywords suggests interface declaration
-                if (/;\s*$/.test(bodyLine) && !/\b(begin|case|if|for|action|endaction)\b/i.test(bodyLine)) {
+                // Stop at structural boundaries — method is in an interface
+                // declaration (no endmethod within this scope)
+                if (/^\s*(?:endinterface|interface)\b/.test(bodyLine)) {
+                    break;
+                }
+                // Stop at module/endmodule — reached a different scope
+                if (/^\s*(?:module|endmodule)\b/.test(bodyLine)) {
                     break;
                 }
             }

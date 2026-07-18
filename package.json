@@ -36,11 +36,16 @@
     "start": "node bin/server.mjs",
     "db:seed": "node src/db/seed.mjs",
     "db:export": "node src/db/export.mjs",
-    "test": "node --test src/db/query.test.mjs src/tools/_matcher.test.mjs src/tools/ast_query.test.mjs",
+    "test": "node --test src/db/query.test.mjs src/tools/_matcher.test.mjs src/tools/ast_query.test.mjs test/knowledge-validation.test.mjs && node test/fixtures/run-fixtures.mjs && node scripts/smoke-test.mjs",
+    "test:unit": "node --test src/db/query.test.mjs src/tools/_matcher.test.mjs src/tools/ast_query.test.mjs",
+    "test:knowledge": "node --test test/knowledge-validation.test.mjs",
+    "test:fixtures": "node test/fixtures/run-fixtures.mjs",
+    "test:smoke": "node scripts/smoke-test.mjs",
     "health-check": "node scripts/health-check.mjs",
     "knowledge:snapshot": "node src/tools/knowledge_snapshot.mjs",
     "knowledge:validate": "node --test test/knowledge-validation.test.mjs",
-    "verify-traps": "node scripts/verify-traps.mjs"
+    "verify-traps": "node scripts/verify-traps.mjs",
+    "prepare": "husky"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.9.0",
@@ -50,5 +55,8 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
   }
 }
