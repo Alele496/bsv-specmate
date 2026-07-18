@@ -6,7 +6,7 @@
       "command": ["node", "<绝对路径>/bsv-specmate/bin/server.mjs"],
       "enabled": true,
       "environment": {
-        "SPECMATE_LEVEL": "wafer"
+        "SPECMATE_LEVEL": "develop"
       }
     }
   }
