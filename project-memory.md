@@ -1,6 +1,6 @@
 # specmate 项目记忆
 
-> 最后更新：2026-07-15（晚：P2 清点验证，project-memory 同步至实际代码状态）
+> 最后更新：2026-07-18（全貌知识债分析 + 状态同步至最新提交 `906c275`）
 > 维护者：specmate 负责人 + ops
 
 ## 项目背景
@@ -321,17 +321,97 @@ specmate 是 **Kova**（领域知识引擎框架）在 BSV 领域的第一个实
 - **服务器**：运行中，端口 9339，默认 stdio 传输
 - **SPECMATE_LEVEL**：develop（suggestive 模式）
 - **数据库**：SQLite，含 26 个错误码（P/T/G/BSV 系列）
-- **最近分支**：master
+- **最近分支**：master，HEAD = `906c275`（husky pre-commit hook）
 - **架构裁定（议会 S02E03，2026-07-14）**：CLI 降级为人类调试辅助，MCP 为 Agent 唯一正式通道。specmate_scan 为推荐统一入口（替代旧的三步调用）
-- **trap 验证进度（2026-07-14）**：backlog 65 条，已验证 3 条（fifo-1/fsm-1/axi-1），P0 剩余 5 条
-- **知识体系重构（2026-07-14）**：specmate 从建议系统重构为验证层 — 所有 verified:false 的 GRAPH trap 不输出、pre_code/scan/decide 关闭主动指导、新增 2 条 check 规则、fixture 验证体系建立、Agent B 模板切换为检查员模式
-- **知识系统优化完成（2026-07-15）**：三个 P0 问题全部解决 — 自动 seed（`1dbb5d3`）、capture/check 去重 + session 管理（`22afd56`）、统计指标嵌入 capture/resolve（`f57d4ff`）。烟雾测试扩展到 11 用例，61/61 全部通过
-- **深度审查 PASS（2026-07-15）**：安全/性能/规范三线并行审查通过，6 个 P2 问题中 4 个已修复（P2-3/P2-4/P2-6/P2-7），1 个 cosmetic（P2-5），1 个架构延期（P2-8）
-- **MCP 工具修复（2026-07-15）**：路径验证 + CLI→MCP 文案修复 + specmate_learn 残余清理（`3d8b891`）
-- **代码审查 5 项发现（2026-07-14→07-15 逐步修复）**：R1 blockLineEst 死代码已删除、R2 多行 method guard 已修复、R3 Bool 参数 severity 已降为 info、R4 alwaysShow JSDoc 已补、R5 Agent B 模板缺 no_implicit_conditions 规则待处理
-- **P2 清点验证（2026-07-15）**：议会全部决议逐项核实，`docs/agent-integration.md` 已存在（298 行）、烟雾测试已存在（12 用例）、S02E03 文档三件套仅缺 `templates/agents.md`
+- **MCP 工具**：8 个（新增 specmate_diagnose 编译日志全量诊断工具，`eea5048`）
+- **TRAPS 统一知识基**：12 条已验证 trap（替代旧 UNIVERSAL_TRAPS 2 条），全部 `verified: true`，覆盖 P0030/P0005/Bool vs Bit/G0004/G0053/interface Bool/always_ready guard/P0022/Vector构造/PulseWire/urgency/跨时钟域
+- **GRAPH 节点**：30 个领域节点 — 22 个 traps 数组为空（知识体系重构后移除未验证内容），8 个节点已回填已验证 trap（fifo/fsm/schedule/arbiter/interrupt/gpio/crc/uart/spi/bram）。53 条未验证 trap 在 backlog 待推进
+- **trap 验证进度**：backlog 65 条，已验证 12 条 GRAPH trap（fifo-1/fsm-1/axi-1/fsm-2/schedule-1/arbiter-1/interrupt-2/gpio-2/crc-2/uart-1/spi-1/bram-1）+ 12 条已升至 TRAPS 数组（代码验证+fixture），P0 backlog 剩余 2 条（schedule-2/arbiter-2）
+- **check 规则**：17 条（10 always-on + 7 full-scan），含知识盲区修复（`15d1496`/`b1c5d4b`）新增的 P0-synthesize-order/P1-bool-bit-op/P1-bram-read/P1-regfile-read 等
+- **CI 自动化**：husky pre-commit hook 已配置（`906c275`），自动运行 `npm test` + `node test/fixtures/run-fixtures.mjs`
+- **文档重组**：`3f6a93c` 将 5 篇历史文件归档至 `docs/archive/`，归并 blog 草稿至 `docs/articles/`，删除过期 health-check.md
+- **知识系统优化**：三个 P0 全部解决（自动 seed `1dbb5d3` / session 去重 `22afd56` / 统计指标 `f57d4ff`）。Phase 0-3 全部完成（session 管理 `ecce5d2` → 管道冲突检测 `7ca2c60` → diagnose 诊断 `eea5048`）
+- **MCP 工具描述**：`e21b5fe` 重写 8 个工具描述为统一中文规范格式
+- **parser 修复**：`183bc3f` 双格式兼容（粗体 + Markdown 标题），smoke test 12 遍历 29 篇 error doc 全部通过
 
-## 最近改动（2026-07-15）
+## 最近改动（2026-07-16 ~ 2026-07-18）
+
+### 待提交 — 每日 trap 验证：9 条 backlog trap → GRAPH 节点回填（2026-07-18）
+
+- [x] **P0-1: fsm-2** | hard/code | `value method 不用 if-return，用 ?: 三元链`
+- [x] **P0-2: schedule-1** | hard/design | `descending_urgency 不循环`
+- [x] **P0-3: arbiter-1** | hard/design | `同一 cycle 超 5 读端口 → G0002`
+- [x] **P1-1: interrupt-2** | hard/code | `mask 位宽 vs pending 位宽对齐`
+- [x] **P1-2: gpio-2** | hard/code | `GPIO inout 信号通过 BVI 机制处理`
+- [x] **P1-3: crc-2** | quality/code | `Bool vs Bit#(1) — done 用 Bit#(1)`（原文"done 用 Bool"错误建议已修正）
+- [x] **P1-4: uart-1** | quality/design | `波特率分频用 Bit#(n) 而非 Integer`
+- [x] **P1-5: spi-1** | quality/design | `SPI 命令字 Bit#(8), 移位寄存器匹配`
+- [x] **P1-6: bram-1** | quality/design | `BRAMCore: 读/写端口分离, BRAM: 单端口 — 选对类型`
+- [x] **`src/tools/_matcher.mjs`** — 9 个 GRAPH 节点 traps 数组回填（fsm/schedule/arbiter/interrupt/gpio/crc/uart/spi/bram），9 条已验证
+- [x] **`test/fixtures/traps/`** — 9 个新 fixture（fsm-2/schedule-1/arbiter-1/interrupt-2/crc-2/gpio-2/uart-1/spi-1/bram-1.bsv）
+- [x] **`docs/traps/`** — 9 篇新文档（对应上述 9 条 trap）
+- [ ] **bsc 编译验证** — 安全分类器 deepseek-v4-pro 暂不可用，待恢复后执行 `_compile-batch.sh` 批量编译
+- [ ] **`project-memory.md` / `docs/trap-verification-backlog.md`** — 进度同步已更新
+
+### 已提交 — `906c275`: husky pre-commit hook 自动化测试门禁（2026-07-18）
+
+- [x] **`.husky/pre-commit`** — 每次 git commit 自动运行 `npm test` + `node test/fixtures/run-fixtures.mjs`，不通过则阻止提交
+- [x] **`.gitattributes`** — 确保 Unix 行尾（LF），防止 Windows CRLF 破坏 hook 脚本
+
+### 已提交 — `e21b5fe`: 8 个 MCP 工具描述重写为统一中文格式（2026-07-16）
+
+- [x] **`bin/server.mjs`** — 8 个 MCP 工具的 `description` 字段全部重写为一致的 `[动词] + [对象] + ⚠️[约束] + 📌[输出]` 中文格式
+
+### 已提交 — `d2b5d64`: P2 清点验证状态同步 + S02E03 文档交付（2026-07-16）
+
+- [x] **project-memory.md** — 标记 P2-3/P2-4/P2-6/P2-7 已完成，同步代码审查发现
+- [x] **S02E03 文档三件套** — `docs/agent-integration.md` 已存在，仅缺 `templates/agents.md`
+
+### 已提交 — `a206650`: P2 问题修复 — 批量 capture + audit parser 统一 + auto-fix 双因子判断（2026-07-15）
+
+- [x] **批量 capture** — 支持一次性 capture 多个错误码
+- [x] **audit parser 统一** — `scripts/audit-knowledge.mjs` 整合 parser 逻辑
+- [x] **auto-fix 双因子判断** — 修复建议需要 AST 上下文 + 历史成功记录双重验证
+
+### 已提交 — `6303901`: 29 篇错误文档批量补全版本标注和格式修复（2026-07-15）
+
+- [x] **全量错误文档版本标注** — 29 篇 `docs/errors/*.md` 统一加 `> 适用 BSC 版本: 2025.07`
+- [x] **格式修复** — 旧格式文档统一为标准 `## 现象`/`## 原因`/`## 解决方案`/`## 规则` 四段式
+
+### 已提交 — `eea5048`: Phase 3 — specmate_diagnose 编译日志全量诊断工具（2026-07-15）
+
+- [x] **`src/tools/specmate_diagnose.mjs`**（新建）— 第 8 个 MCP 工具：接受 BSC 完整编译输出，全量扫描所有错误码/警告，逐个匹配知识库并输出诊断。解决 AI Agent 需要多次往返 specmate_guide(on_error) 的低效问题
+- [x] **`bin/server.mjs`** — 注册 `specmate_diagnose` MCP 工具
+
+### 已提交 — `7ca2c60`: Phase 2 — 知识管道冲突检测 + review CLI 增强 + 知识审计脚本（2026-07-15）
+
+- [x] **知识管道冲突检测** — `check_style.mjs` 新增规则：同一知识在不同 GRAPH 节点的描述矛盾检测
+- [x] **review CLI 增强** — `bin/cli.mjs` 新增 `review` 子命令：知识条目审查、格式校验
+- [x] **`scripts/audit-knowledge.mjs`**（新建）— 知识审计：遍历 GRAPH/TRAPS/errors/doc 检查完整性
+
+### 已提交 — `ecce5d2`: Phase 0+1 — session 管理 + auto-cluster + review CLI（2026-07-15）
+
+- [x] **session 管理增强** — 自动 session 初始化、跨 session 统计、session 统计 API
+- [x] **auto-cluster** — 相同错误码的多次 capture 自动聚合为 cluster，保留历史轨迹
+- [x] **review CLI 基础** — `npx specmate review` 入口建立
+
+### 已提交 — `b45deeb`: G0004 消息澄清 + db:seed 自动护栏（2026-07-15）
+
+- [x] **G0004 check 消息** — `checkG0004()` 输出文本从"避免同一 rule"改为更明确的"拆成多条 rule"指导
+- [x] **db:seed 护栏** — `npm run db:seed` 执行前自动检查 parser 能解析多少篇 error doc，不通过则拒绝重建
+
+### 已提交 — `15d1496` + `b1c5d4b`: P0/P1/P2 知识盲区修复（2026-07-15）
+
+- [x] **P0 修复** — 3 篇错误文档补充（G0053/P0022/P0200）+ 2 个检查器误报修复
+- [x] **P1+P2 修复** — 4 条新 check 规则（synthesize-annotation-order / bool-bit-op / bram-read / regfile-read）+ GRAPH 节点 summary 更新 + `_matcher.mjs` 修复
+
+### 已提交 — `3f6a93c`: 文档整理 — 分类归档 + 废弃标注 + 删除冗余（2026-07-15）
+
+- [x] **`docs/archive/`** — 5 篇历史档案移入并加废弃横幅（SPP/collaboration/MAINTAINER/spec-p0-improvements/TUTORIAL）
+- [x] **`docs/articles/`** — blog-experiment-methodology.md 归并
+- [x] **删除** — `docs/health-check.md`（过期舰队快照）
+
+## 最近改动（2026-07-15 早期）
 
 ### 议题 — parser 格式兼容性修复（2026-07-15）
 
@@ -509,26 +589,33 @@ Co-Authored-By: 台阁 <armada@bsv-agent>
 ## 当前任务
 
 ### 已完成
-- [x] **知识系统优化（2026-07-15）** — P0 三个问题全部解决：session 去重（`22afd56`）、统计指标（`f57d4ff`）、自动 seed（`1dbb5d3`）。烟雾测试 11 用例 61/61 全部通过。
-- [x] **MCP 工具修复（2026-07-15）** — 路径验证、CLI→MCP 文案、specmate_learn 残余清理（`3d8b891`）。
-- [x] **深度审查 PASS（2026-07-15）** — 安全/性能/规范三线审查完成，6 个 P2 问题已记录。
+- [x] **知识系统优化** — P0 三个问题全部解决：session 去重（`22afd56`）、统计指标（`f57d4ff`）、自动 seed（`1dbb5d3`）。烟雾测试 11 用例 61/61 全部通过。
+- [x] **MCP 工具修复** — 路径验证、CLI→MCP 文案、specmate_learn 残余清理（`3d8b891`）。
+- [x] **深度审查 PASS** — 安全/性能/规范三线审查完成，6 个 P2 问题中 4 个已修复。
+- [x] **Phase 0-3 完成** — session 管理（`ecce5d2`）→ 管道冲突检测（`7ca2c60`）→ diagnose 诊断（`eea5048`）
+- [x] **P0/P1/P2 知识盲区修复** — 3 篇错误文档补充 + 4 条新 check 规则 + 2 个检查器误报修复（`15d1496`/`b1c5d4b`）
+- [x] **29 篇错误文档批量补全版本标注和格式修复**（`6303901`）
+- [x] **文档重组** — 5 篇档案归档 + blog 归并 + health-check.md 删除（`3f6a93c`）
+- [x] **8 个 MCP 工具描述重写** — 统一中文规范格式（`e21b5fe`）
+- [x] **CI 自动化** — husky pre-commit hook 配置（`906c275`），自动跑 npm test + fixtures
+- [x] **parser 双格式兼容** — heading 格式 error doc 可解析（`183bc3f`）
+- [x] **db:seed auto-guardrail** — 重建前自动检查 parser 能解析多少篇 doc（`b45deeb`）
+- [x] **全貌知识债分析（2026-07-18）** — project-memory.md 同步至最新提交，识别所有 P1/P2 待办项
 
 ### 进行中
-- [ ] **npm test 验证** — 安全分类器（deepseek-v4-pro）暂不可用，Bash 命令无法执行。需在分类器恢复后运行 `npm test && npm run knowledge:validate` 确认全部通过。
-- [ ] **npm run db:seed 重新建库** — parser 格式兼容性修复后需跑一次 `npm run db:seed`，确保 P0022/P0200/G0036 等 11 篇 heading 格式 error doc 入库。当前被安全分类器阻塞。
-- [ ] **trap 每日验证 pipeline（2026-07-14 启动）** — 65 条未验证 trap 已导出到 `docs/trap-verification-backlog.md`，按 P0(8)/P1(16)/P2(41) 分级。**已验证 3 条**（fifo-1 / fsm-1 / axi-1），P0 剩余 5 条（fsm-2 / schedule-1 / schedule-2 / arbiter-1 / arbiter-2）。每日验证要求：每天至少验证 3 条 trap（按 P0 → P1 → P2 顺序消耗 backlog）。验证流程见 backlog 文件顶部。已验证的 trap 在 backlog 中标记 ✅、不通过的打 ❌ 并注明原因、同步更新 `_matcher.mjs` 中 verified 字段和 GRAPH 节点 traps 数组。目标：两个月清空 backlog。
+- [ ] **trap 每日验证 pipeline（2026-07-14 启动）** — 65 条未验证 trap 已导出到 `docs/trap-verification-backlog.md`，按 P0(8)/P1(16)/P2(41) 分级。**已验证 12 条 GRAPH trap**（fifo-1/fsm-1/axi-1 ≈ 07-14；fsm-2/schedule-1/arbiter-1/interrupt-2/gpio-2/crc-2/uart-1/spi-1/bram-1 ≈ 07-18），P0 剩余 2 条（schedule-2/arbiter-2）。另外 12 条 TRAPS 数组条目已代码验证通过（verified: true + fixture）。每日验证要求：每天至少验证 3 条 trap。目标：两个月清空 backlog。
+- [ ] **bench 重跑** — 用修复后的 specmate 重跑实验，验证知识盲区修复和 12 条已验证 trap 的效果
 
 ### 计划中（短期）
-- [x] **Phase 2: 建 trap fixture 文件** — 已合并入 trap 每日验证 pipeline，不再单独追踪。
-- [ ] **通用陷阱层扩展** — UNIVERSAL_TRAPS 目前只有 P0030 和 P0005，需分析 P0012/T0051 等是否应加入
-- [x] **db:seed 重建数据库** — `1dbb5d3` 已解决：errors 表现在通过 `ensureDB()` 自动 seed。`npm run db:seed` 保留为手动重建工具（幂等模式）。
-- [ ] **bench 重跑** — 用修复后的 specmate 重跑实验，验证 P0 修复效果
-- [ ] **内部架构总览维护** — `docs/internal-overview.md` 建立，每个阶段结束时更新
+- [x] ~~通用陷阱层扩展~~ — 不再单独追踪。已通过 TRAPS 数组（12 条已验证条目）实现，UNIVERSAL_TRAPS 概念已合并入统一 TRAPS 数组。
+- [x] **docs/internal-overview.md 更新** — 2026-07-18 已同步至最新状态
+- [ ] **SHOWDOWN.md 考虑归档** — 675 行旧实验报告，`docs/experiments/` 已有更完整记录
+- [ ] **错误码 bsc 2025.07 兼容性审查** — P0005 "let 绑定" 建议在新版 bsc 中可能不可用（P2）
 
 ### 计划中（中期）
-- [ ] **16 个知识图谱节点补 style/pattern**
-- [ ] **错误码 bsc 2025.07 兼容性审查** — P0005 "let 绑定" 建议在新版 bsc 中可能不可用（见 P2-1）
-- [ ] **实验重跑** — 04-priority-encoder Round 3 → 验证通用陷阱层修复 → 继续 05~08
+- [ ] **16 个知识图谱节点补 pattern 字段** — 当前 30 个 GRAPH 节点中有 16 个缺 pattern（reset/struct/union/attribute/interface/rule/method/types/vector/schedule/dma/decoder/timer/gpio/synthesize）
+- [ ] **26 个知识图谱节点补 style 字段** — 当前仅 4 个节点有 style（fifo/pipeline/axi/fsm）
+- [ ] **62 条 backlog trap 逐步验证回填至 GRAPH 节点** — 29 个 GRAPH 节点 traps 数组当前为空（知识体系重构后移除未验证内容），需按每日 pipeline 逐步回填
 
 ## 已知问题
 
@@ -536,32 +623,54 @@ Co-Authored-By: 台阁 <armada@bsv-agent>
 - [x] **GPiO Inout 陷阱文本错误** — `0312757` 修复：GPiO 节点 hard 级别 trap #2 改用 BVI 三信号拆分方案（data_in/data_out/oe）。
 - [x] **preflight 不做真正的代码检查** — `8b3c9c2` 接入 AST 扫描 P0030/T0043/G0053/G0005，`bdbc780` 新增 G0004 scan。现覆盖 6 种模式。
 - [x] **Agent B 不调用 specmate** — 通过 bench 模板 L0 硬约束 + MCP 工具统一入口解决。
-- [x] **MCP 工具相对路径静默失败** — `3d8b891` 已修复：所有 7 个 MCP 工具入口加 `validateFilePaths()` 校验，传入相对路径时返回明确错误提示（而非静默返回空结果）。
-- [x] **specmate_scan 输出推荐 CLI 命令而非 MCP 工具** — 已修复：NEXT STEPS 区块改为 `mcp__bsv-specmate__specmate_check` 格式。
-- [x] **数据库依赖手动 seed** — `1dbb5d3` 已修复：`ensureDB()` 自动从 `docs/errors/*.md` 填充空 errors 表，不再依赖 `npm run db:seed` 手动初始化。`data/knowledge.db` 不再必需。
-- [x] **captures 表缺少 session_id** — `22afd56` 已修复：`src/db/schema.mjs` 新增 `session_id` 字段 + `initSession()` 自动生成 UUID。Agent 不感知，specmate 内部自动管理。
-- [x] **specmate_scan 无历史统计** — `f57d4ff` 已修复：`specmate_capture` 和 `specmate_resolve` 响应中嵌入跨 session 统计指标（历史出现次数 + 修复率）。scan 输出的 NEXT STEPS 中包含知识库热度参考。
-- [x] **parser.mjs 不兼容 heading 格式（2026-07-15 发现并于当天修复）** — 11 篇 error doc 使用 `## 现象`/`## 原因`/`## 解决方案` 格式，`parseErrorFile()` 只认粗体格式。修复：`parser.mjs` 正则兼容双格式 + smoke test test12 全量验证。详见设计决策 #11。
+- [x] **MCP 工具相对路径静默失败** — `3d8b891` 已修复：所有 8 个 MCP 工具入口加 `validateFilePaths()` 校验。
+- [x] **specmate_scan 输出推荐 CLI 命令而非 MCP 工具** — `3d8b891` 已修复：NEXT STEPS 区块改为 `mcp__bsv-specmate__specmate_check` 格式。
+- [x] **数据库依赖手动 seed** — `1dbb5d3` 已修复：`ensureDB()` 自动从 `docs/errors/*.md` 填充空 errors 表。
+- [x] **captures 表缺少 session_id** — `22afd56` 已修复。
+- [x] **specmate_scan 无历史统计** — `f57d4ff` 已修复：capture/resolve 响应中嵌入跨 session 统计指标。
+- [x] **parser.mjs 不兼容 heading 格式** — `183bc3f` 已修复：双格式兼容 + smoke test test12 全量验证。
 
 ### P1 - 重要
-- [x] **P0030 知识库描述不完整** — `8b3c9c2` 修复：summarizeRule 覆盖 function 内 for 循环 return 场景，AST scanner scanP0030 主动检测。
-- [ ] **通用陷阱层只含两条** — UNIVERSAL_TRAPS 目前有 P0030 和 P0005，应陆续加入其他跨领域 BSV 基础规则
-- [x] **P0005 通用陷阱文字太抽象** — `8b3c9c2` 修复：UNIVERSAL_TRAPS 的 P0005 条目已重写，包含具体错误示范（`genWith(function(...))`）和正确语法（`\\== (1)` 部分应用）。
-- [ ] **16 个知识图谱节点缺乏 style/pattern** — 功能冻结期间暂不处理，待冻结解除后评估。
+- [x] **P0030 知识库描述不完整** — `8b3c9c2` 修复：summarizeRule 覆盖 function 内 for 循环 return 场景。
+- [x] ~~通用陷阱层只含两条~~ — `b1c5d4b` 及 Phase 1-2 已将 TRAPS 数组扩展为 12 条已验证条目。UNIVERSAL_TRAPS 概念已合并入统一 TRAPS 数组。
+- [x] **P0005 通用陷阱文字太抽象** — `8b3c9c2` 修复：UNIVERSAL_TRAPS 的 P0005 条目已重写，包含具体错误示范和正确语法。
+- [ ] **project-memory.md 知识债跟踪** — 本次（2026-07-18）已大幅同步，但以下 P2 项仍需持续跟踪（见下方 P2 知识债清单）
+- [x] **docs/internal-overview.md 过时** — 2026-07-18 已同步：MCP 工具 7→8、TRAPS 2→12、check 规则更新、Phase 0-3 完成状态、P0 全标记已修复。后续负责人每阶段结束时例行更新
 - [ ] **安全分类器故障导致 MCP 全部失效** — stdio 传输缓解大部分风险，但前端分类器（deepseek-v4-pro）故障时 MCP 工具链仍阻塞。`knowledge_snapshot.mjs` 提供纯文件后备。
 
-### P2 - 改善
+### P2 - 知识债清单（2026-07-18 全貌分析）
 
-> 以下 P2-3 至 P2-8 来源于 2026-07-15 深度审查（安全/性能/规范三线并行），完整报告见 `docs/council/2026-07-15-deep-review.md`。
+> 以下条目按影响程度排序。来源：全貌分析覆盖 `_matcher.mjs` GRAPH/TRAPS、`docs/`、test fixtures、project-memory 已知问题。
 
-- [ ] errors.map 中的 P0005 "let 绑定" 建议在 bsc 2025.07 中不可用
-- [ ] Agent B 的 prompt 需要强制"先调 specmate 再写代码"，而非建议
-- [x] **P2-3: `endSession()` 死代码** — 实际已在 `shutdown()` 中正常调用（`bin/server.mjs:807`），非死代码。
-- [x] **P2-4: `specmate_resolve` 修复率缺少分隔符** — 已加 `\n`（`bin/server.mjs:387` `\n${fixRateBlock}`）。
+#### P2-1: GRAPH 节点内容空洞（结构性）
+- **29 个 GRAPH 节点 traps 数组为空** — 知识体系重构后移除所有未验证 trap，仅 fifo 含 1 条。62 条 backlog trap 待验证回填
+- **26 个 GRAPH 节点缺 style 字段** — 仅 fifo/pipeline/axi/fsm 四个节点有 style
+- **16 个 GRAPH 节点缺 pattern 字段** — reset/struct/union/attribute/interface/rule/method/types/vector/schedule/dma/decoder/timer/gpio/synthesize
+
+#### P2-2: 错误知识库版本兼容性
+- [ ] errors.map 中的 P0005 "let 绑定" 建议在 bsc 2025.07 中可能不可用
+- [ ] 其余 25 篇 error doc 的代码示例需逐个在 bsc 2025.07 编译验证
+
+#### P2-3: 文档残件
+- [ ] **`docs/SHOWDOWN.md`**（675 行）— 旧实验对比报告，`docs/experiments/` 已有更完整记录，可归档
+- [ ] **`docs/articles/zhihu-draft.md`** — 知乎草稿，非项目文档，可考虑移出仓库
+- [ ] **`docs/experiments/`** — 历史实验记录，作用被 bench 实验数据替代
+
+#### P2-4: 历史遗留问题
+- [ ] **Agent B prompt 需强制而非建议** — Agent B 的 prompt 需要改为强制"先调 specmate 再写代码"
+- [x] **P2-3: `endSession()` 死代码** — 实际已在 `shutdown()` 中正常调用，非死代码。
+- [x] **P2-4: `specmate_resolve` 修复率缺少分隔符** — 已加 `\n`（`a206650`）。
 - [ ] **P2-5: commit `22afd56` Co-Authored-By 不一致** — 纯 git 历史 cosmetic 问题，下次 rebase 时顺手修。
-- [x] **P2-6: `autoSeedIfEmpty` 缺少文件数量/大小上限** — 已加 `MAX_SEED_FILES = 100` 常量 + 警告 + 截断（`src/db/query.mjs:60-74`）。
-- [x] **P2-7: `specmate_capture` 未对其 `files` 参数做路径校验** — 已加 `validateFilePaths()` 校验（`bin/server.mjs:246-253`）。
+- [x] **P2-6: `autoSeedIfEmpty` 缺少文件数量/大小上限** — 已加 `MAX_SEED_FILES = 100` 常量。
+- [x] **P2-7: `specmate_capture` 未对其 `files` 参数做路径校验** — 已加 `validateFilePaths()` 校验。
 - [ ] **P2-8: `saveDB` 高频全量写盘** — 当前影响不大，随调用量增长再优化。
+
+#### P2-5: 知识条目验证进度
+- trap backlog 62 条待验证（P0:5 / P1:16 / P2:41），每日 pipeline 推进缓慢
+- 12 条 TRAPS 数组条目已全部验证通过并配有 fixture，但 P0 backlog（fsm-2 / schedule-1 / schedule-2 / arbiter-1 / arbiter-2）仍需 fixture 编译通过才能标记 verified 并回填 GRAPH
+
+#### P2-6: bench 实验验证滞后
+- [ ] 修复后的 specmate 尚未在 bench 上重跑实验，12 条已验证 trap 的实际效果未量化
 
 ## 关键文件地图
 

@@ -11,7 +11,7 @@
  *   node scripts/verify-traps.mjs --hard-only  # 仅列出 hard 级别
  */
 
-import { GRAPH, UNIVERSAL_TRAPS } from '../src/tools/_matcher.mjs';
+import { GRAPH, TRAPS } from '../src/tools/_matcher.mjs';
 
 const args = process.argv.slice(2);
 const asCsv = args.includes('--csv');
@@ -22,8 +22,8 @@ const hardOnly = args.includes('--hard-only');
 // ─── collect ─────────────────────────────────────────────
 
 const all = [];
-for (const [i, t] of UNIVERSAL_TRAPS.entries()) {
-    all.push({ ...t, _source: `UNIVERSAL_TRAPS[${i}]` });
+for (const [i, t] of TRAPS.entries()) {
+    all.push({ ...t, _source: `TRAPS[${i}]` });
 }
 for (const [nodeName, node] of Object.entries(GRAPH)) {
     if (node.traps) {
@@ -63,7 +63,7 @@ if (asJson) {
         severity: t.severity,
         phase: t.phase || 'code',
         bscVersions: t.bscVersions || [],
-        text: t.text,
+        text: t.text || t.oneLiner || '',
     }));
     console.log(JSON.stringify(out, null, 2));
     process.exit(0);
@@ -81,7 +81,7 @@ const sevLabel = (s) => {
 if (asCsv) {
     console.log('source,severity,phase,bscVersions,text');
     for (const t of unverified) {
-        const text = t.text.replace(/"/g, '""');
+        const text = (t.text || t.oneLiner || '').replace(/"/g, '""');
         console.log(`${t._source},${t.severity},${t.phase || ''},"${(t.bscVersions || []).join(';')}","${text}"`);
     }
     process.exit(0);
@@ -105,6 +105,6 @@ for (const t of unverified) {
     }
     const phaseTag = t.phase ? ` [${t.phase}]` : '';
     console.log(`  ${sevLabel(t.severity)} ${t._source.padEnd(28)} ${phaseTag}`);
-    console.log(`          ${t.text}`);
+    console.log(`          ${t.text || t.oneLiner || ''}`);
 }
 console.log('');

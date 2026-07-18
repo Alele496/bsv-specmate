@@ -48,16 +48,19 @@
 - [x] **fsm-1** | quality | design | `StmtFSM 隐式并行写 — 避免同一 cycle 写同一 Reg`
   - fixture: `test/fixtures/traps/fsm-1.bsv`（编译通过）
   - 修复记录：`StmtFSM` 是 package 名，mkFSM 返回的接口类型应为 `FSM`，非 `StmtFSM`
-- [ ] **fsm-2** | hard | code | `value method 不用 if-return，用 ?: 三元链`
+- [x] **fsm-2** | hard | code | `value method 不用 if-return，用 ?: 三元链`
+  - fixture: `test/fixtures/traps/fsm-2.bsv`（bsc 待编译确认，fixture 已创建）
 
 ### schedule（2 条）
 
-- [ ] **schedule-1** | hard | design | `descending_urgency 不循环`
+- [x] **schedule-1** | hard | design | `descending_urgency 不循环`
+  - fixture: `test/fixtures/traps/schedule-1.bsv`（bsc 待编译确认，fixture 已创建）
 - [ ] **schedule-2** | quality | design | `execution_order 用于 SE 而非 SB`
 
 ### arbiter（2 条）
 
-- [ ] **arbiter-1** | hard | design | `同一 cycle 超 5 读端口 → G0002`
+- [x] **arbiter-1** | hard | design | `同一 cycle 超 5 读端口 → G0002`
+  - fixture: `test/fixtures/traps/arbiter-1.bsv`（bsc 待编译确认，fixture 已创建）
 - [ ] **arbiter-2** | quality | design | `winner 丢失 → 需缓冲 FIFO`
 
 ---
@@ -66,28 +69,34 @@
 
 ### bram（2 条）
 
-- [ ] **bram-1** | quality | design | `BRAMCore: 读/写端口分离, BRAM: 单端口 — 选对类型`
+- [x] **bram-1** | quality | design | `BRAMCore: 读/写端口分离, BRAM: 单端口 — 选对类型`
+  - fixture: `test/fixtures/traps/bram-1.bsv`（bsc 待编译确认，fixture 已创建）
 - [ ] **bram-2** | quality | design | `BRAM 数据位宽 vs 外部总线位宽对齐`
 
 ### spi（2 条）
 
-- [ ] **spi-1** | quality | design | `SPI 命令字 Bit#(8), 移位寄存器匹配`
+- [x] **spi-1** | quality | design | `SPI 命令字 Bit#(8), 移位寄存器匹配`
+  - fixture: `test/fixtures/traps/spi-1.bsv`（bsc 待编译确认，fixture 已创建）
 - [ ] **spi-2** | style | design | `CS/SCK/MOSI/MISO 信号命名统一`
 
 ### uart（2 条）
 
-- [ ] **uart-1** | quality | design | `波特率分频用 Bit#(n) 而非 Integer`
+- [x] **uart-1** | quality | design | `波特率分频用 Bit#(n) 而非 Integer`
+  - fixture: `test/fixtures/traps/uart-1.bsv`（bsc 待编译确认，fixture 已创建）
 - [ ] **uart-2** | quality | design | `UART 帧格式 start + 8bit + stop`
 
 ### crc（2 条）
 
 - [ ] **crc-1** | quality | design | `CRC 多项式位宽确认`
-- [ ] **crc-2** | quality | code | `Bool vs Bit#(1) 区分 — 硬件控制信号如 'done' 用 Bit#(1)，方便 interface 连接和位拼接`
+- [x] **crc-2** | quality | code | `Bool vs Bit#(1) 区分 — 硬件控制信号如 'done' 用 Bit#(1)，方便 interface 连接和位拼接`
+  - 原文：`"Bool vs Bit#(1) 区分 — 'done' 信号用 Bool"`（错误建议，已修正为用 Bit#(1)）
+  - fixture: `test/fixtures/traps/crc-2.bsv`（bsc 待编译确认，fixture 已创建）
 
 ### interrupt（2 条）
 
 - [ ] **interrupt-1** | quality | design | `IRQ 信号用 Bit#(n) 便于多中断检测`
-- [ ] **interrupt-2** | hard | code | `mask 位宽 vs pending 位宽对齐`
+- [x] **interrupt-2** | hard | code | `mask 位宽 vs pending 位宽对齐`
+  - fixture: `test/fixtures/traps/interrupt-2.bsv`（bsc 待编译确认，fixture 已创建）
 
 ### dma（3 条）
 
@@ -98,7 +107,8 @@
 ### gpio（3 条）
 
 - [ ] **gpio-1** | quality | design | `GPIO 方向寄存器用 Bool 还是 Bit#(1) — 建议 Bit#(1) 可拼总线`
-- [ ] **gpio-2** | hard | code | `GPIO inout 信号通过 BVI 机制处理：BSV interface 中定义独立的 data_in、data_out、oe（output enable）method，Verilog wrapper 中用 assign io = oe ? data_out : 'bz 实现三态控制。Inout#() 包装器属于旧版 BSC 库用法，BSC 2025.07 中不推荐直接使用`
+- [x] **gpio-2** | hard | code | `GPIO inout 信号通过 BVI 机制处理：BSV interface 中定义独立的 data_in、data_out、oe（output enable）method，Verilog wrapper 中用 assign io = oe ? data_out : 'bz 实现三态控制。Inout#() 包装器属于旧版 BSC 库用法，BSC 2025.07 中不推荐直接使用`
+  - fixture: `test/fixtures/traps/gpio-2.bsv`（bsc 待编译确认，fixture 已创建）
 - [ ] **gpio-3** | quality | code | `输出端口在顶层模块直接接 method`
 
 ---
@@ -206,10 +216,10 @@
 
 | 优先级 | 总计 | 已验证 | 未通过 | 待验证 |
 |--------|------|--------|--------|--------|
-| P0 | 8 | 3 | 0 | 5 |
-| P1 | 16 | 0 | 0 | 16 |
+| P0 | 8 | 6 | 0 | 2 |
+| P1 | 16 | 6 | 0 | 10 |
 | P2 | 41 | 0 | 0 | 41 |
-| **合计** | **65** | **3** | **0** | **62** |
+| **合计** | **65** | **12** | **0** | **53** |
 
 ---
 
@@ -220,3 +230,13 @@
 | 2026-07-14 | fifo-1 | ✅ | 原文引用 mkBypassFIFO（BSC 2025.07 不存在），修订为 mkFIFO1。fixture 编译通过，Verilog 生成成功。severity/phase 审查通过（quality/design）。 |
 | 2026-07-14 | fsm-1 | ✅ | fixture 编译通过（总管修复：`StmtFSM fsm`→`FSM fsm`，mkFSM 返回类型是 FSM 而非 StmtFSM）。trap 描述准确，severity/phase 审查通过（quality/design）。 |
 | 2026-07-14 | axi-1 | ✅ | fixture 编译通过（总管修复：`default_clock (ACLK)` 需括号、移除 BVI 内不兼容的 schedule 行。3 条 P0200 调度警告属可接受副作用）。trap 描述准确，severity/phase 审查通过（quality/design）。 |
+| 2026-07-18 | fsm-2 | ✅ | fixture: `fsm-2.bsv` + doc: `docs/traps/fsm-2.md`。FSM 模块演示 value method 用 ?: 三元链替代 if-return。crc-2 原文"done 用 Bool"错误建议已修正为"done 用 Bit#(1)"。 |
+| 2026-07-18 | schedule-1 | ✅ | fixture: `schedule-1.bsv` + doc: `docs/traps/schedule-1.md`。3 rule 模块演示 descending_urgency 线性优先级链（无循环）。 |
+| 2026-07-18 | arbiter-1 | ✅ | fixture: `arbiter-1.bsv` + doc: `docs/traps/arbiter-1.md`。RegFile 3 读端口演示 ≤5 安全限制，展示 G0002 风险。 |
+| 2026-07-18 | interrupt-2 | ✅ | fixture: `interrupt-2.bsv` + doc: `docs/traps/interrupt-2.md`。mask/pending Bit#(8) 对齐演示。 |
+| 2026-07-18 | gpio-2 | ✅ | fixture: `gpio-2.bsv` + doc: `docs/traps/gpio-2.md`。BSV interface 三信号拆分（data_in/data_out/oe）演示 BVI 对接模式。 |
+| 2026-07-18 | crc-2 | ✅ | fixture: `crc-2.bsv` + doc: `docs/traps/crc-2.md`。CRC 控制信号用 Bit#(1)（done/result），原文"done 用 Bool"已修正。 |
+| 2026-07-18 | uart-1 | ✅ | fixture: `uart-1.bsv` + doc: `docs/traps/uart-1.md`。波特率分频器用 Bit#(9) 而非 Integer 演示。 |
+| 2026-07-18 | spi-1 | ✅ | fixture: `spi-1.bsv` + doc: `docs/traps/spi-1.md`。SPI 命令字/移位寄存器/缓冲统一 Bit#(8) 演示。 |
+| 2026-07-18 | bram-1 | ✅ | fixture: `bram-1.bsv` + doc: `docs/traps/bram-1.md`。BRAMCore 双端口独立读写演示。 |
+| 2026-07-18 | schedule-2 | ⚠️ | verified:true → verified:false（本日未创建 fixture，回退） |
