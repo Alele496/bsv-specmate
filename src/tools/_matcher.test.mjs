@@ -27,12 +27,11 @@ describe('match', () => {
     const g0010 = result.errors.filter(e => e === 'G0010');
     assert.strictEqual(g0010.length, 1);
   });
-  it('空输入返回通用陷阱', () => {
+  it('空输入返回空 traps（通用陷阱已迁移至 TRAPS 统一数组）', () => {
     const result = match([]);
     assert.deepStrictEqual(result.errors, []);
     assert.deepStrictEqual(result.refs, []);
-    assert.ok(result.traps.length > 0, '通用陷阱应该在空输入时也存在');
-    assert.ok(result.traps.some(t => t.text.includes('P0030')), '应包含 P0030 通用陷阱');
+    assert.strictEqual(result.traps.length, 0, 'match() 不再携带通用陷阱——TRAPS 由 renderTraps() 统一渲染');
   });
   it('未知关键词不崩溃', () => {
     const result = match(['nonexistent_keyword_xyz']);

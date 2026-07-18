@@ -1,4 +1,4 @@
-import { extractKeywords, match, filterTrapsByMode, filterTrapsByPhase, formatTrapsOutput, inferPhase, UNIVERSAL_TRAPS } from './_matcher.mjs';
+import { extractKeywords, match, filterTrapsByMode, filterTrapsByPhase, formatTrapsOutput, inferPhase, TRAPS } from './_matcher.mjs';
 import { searchPatterns } from './_patterns.mjs';
 import { queryError, queryAllErrors, queryTopRules, queryHotTopics, hitError, addCapture, queryRecentCaptures } from '../db/query.mjs';
 import { lookupRef } from './lookup_ref.mjs';
@@ -31,16 +31,13 @@ async function preCode(input, level, cfg, file = null) {
         } catch (_) { /* preflight is non-critical */ }
     }
 
-    // ── UNIVERSAL_TRAPS: core safety rules that always apply ──
-    const groupedByMode = filterTrapsByMode(UNIVERSAL_TRAPS, cfg.mode);
-    const universalTraps = groupedByMode.hard;
-    if (universalTraps.length > 0) {
-        lines.push('## ⚠ 编译硬约束（必须遵守）');
-        lines.push('');
-        for (let i = 0; i < universalTraps.length; i++) {
-            lines.push(`  ${i + 1}. ${universalTraps[i].text}`);
+    // ── Unified trap warnings (Tier A always + Tier B keyword-matched) ──
+    if (cfg.mode !== 'passive') {
+        const inferredPhase = inferPhase(input);
+        const trapOutput = renderTraps(inferredPhase, input, cfg.mode);
+        if (trapOutput) {
+            lines.push(trapOutput);
         }
-        lines.push('');
     }
 
     // ── Message: specmate does not do active guidance ──
@@ -511,10 +508,88 @@ function checkDecisions(input, cfg) {
     return null;
 }
 
+// ---------------------------------------------------------------------------
+// Unified trap warnings — merged from 5 channels into single TRAPS array
+// ---------------------------------------------------------------------------
+
+/**
+ * Render unified trap warnings.
+ * Tier A (pushTier 'always'): pushed unconditionally.
+ * Tier B (pushTier 'matched'): keyword match against task description, top 5.
+ * Stage-aware: if phase is 'design', traps with stage 'code' are filtered out.
+ *
+ * @param {'design'|'code'} phase — inferred design phase
+ * @param {string} taskDescription — what the Agent is working on
+ * @param {string} mode — SPECMATE_LEVEL mode: 'passive' | 'suggestive' | 'collaborative'
+ * @returns {string|null} formatted markdown or null if no traps matched
+ */
+function renderTraps(phase, taskDescription, mode) {
+    if (mode === 'passive') return null;
+
+    const lower = (taskDescription || '').toLowerCase();
+    const alwaysTraps = [];
+    const matchedTraps = [];
+
+    for (const trap of TRAPS) {
+        // Stage filter: design phase skips code-only traps
+        if (phase === 'design' && trap.stage === 'code') continue;
+
+        // Severity filter: passive mode shows hard only (handled by caller)
+        if (mode === 'suggestive' && trap.severity === 'style') continue;
+
+        if (trap.pushTier === 'always') {
+            alwaysTraps.push(trap);
+        } else {
+            let score = 0;
+            for (const kw of trap.keywords) {
+                if (lower.includes(kw.toLowerCase())) score++;
+            }
+            if (score > 0) {
+                matchedTraps.push({ trap, score });
+            }
+        }
+    }
+
+    matchedTraps.sort((a, b) => b.score - a.score);
+    const topMatched = matchedTraps.slice(0, 5).map(m => m.trap);
+
+    const allTraps = [...alwaysTraps, ...topMatched];
+    if (allTraps.length === 0) return null;
+
+    // Render each trap as a structured knowledge card
+    const blocks = [];
+    for (const trap of allTraps) {
+        const bscLabel = trap.bscDetectable
+            ? `bsc 会报错 ${trap.id.replace('trap-', '').toUpperCase()}`
+            : '⚠️ **bsc 编译通过但硬件行为错误**';
+        const severityLabel = trap.severity === 'hard' ? '硬约束' : '设计质量';
+        blocks.push(`### ${trap.name}
+> ${bscLabel} | ${severityLabel}
+
+**为什么这是陷阱**：${trap.why}
+
+\`\`\`bsv
+// ❌ 错误
+${trap.wrongCode}
+
+// ✅ 正确
+${trap.correctCode}
+\`\`\`
+
+📖 详情: \`${trap.docRef}\`
+${trap.related.length ? `🔗 关联: ${trap.related.join(', ')}` : ''}`);
+    }
+
+    return `---
+## 🧠 陷阱预警
+
+${blocks.join('\n\n')}`;
+}
+
 /**
  * Unified scan — the main entry point for CLI/MCP.
  * Post-refactor (2026-07-14): specmate no longer does active guidance.
- * Only shows UNIVERSAL_TRAPS (core safety rules) + preflight AST scan results.
+ * Shows unified TRAPS (Tier A always + Tier B keyword-matched) + preflight AST scan results.
  * Agent is told to write code autonomously and verify with specmate check.
  *
  * @param {string} taskDescription — what the Agent is about to code
@@ -526,16 +601,13 @@ export async function scan(taskDescription, filePath = null) {
     const cfg = LEVEL_LIMITS[level];
     const lines = [];
 
-    // ── UNIVERSAL_TRAPS: core safety rules ──
-    const groupedByMode = filterTrapsByMode(UNIVERSAL_TRAPS, cfg.mode);
-    const universalTraps = groupedByMode.hard;
-    if (universalTraps.length > 0) {
-        lines.push('## ⚠ 编译硬约束（必须遵守）');
-        lines.push('');
-        for (let i = 0; i < universalTraps.length; i++) {
-            lines.push(`  ${i + 1}. ${universalTraps[i].text}`);
+    // ── Unified trap warnings (Tier A always + Tier B keyword-matched) ──
+    if (cfg.mode !== 'passive') {
+        const inferredPhase = inferPhase(taskDescription);
+        const trapOutput = renderTraps(inferredPhase, taskDescription, cfg.mode);
+        if (trapOutput) {
+            lines.push(trapOutput);
         }
-        lines.push('');
     }
 
     // ── Message: specmate does not do active guidance ──

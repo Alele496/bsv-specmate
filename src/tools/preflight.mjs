@@ -38,16 +38,6 @@ function firstChildOfType(node, types, source) {
 
 const COMMON_WARNINGS = [
     {
-        title: '跨 Rule 数据传递',
-        detail: '跨 rule 传递触发 + 数据，用 FIFOF 而非 PulseWire + Reg 组合。PulseWire 只存活一个 cycle，搭配 Reg 会导致首个数据丢失。',
-        ref: 'G0010',
-    },
-    {
-        title: '跨模块调度标注',
-        detail: '外部模块 method 写入寄存器，内部 rule 读取同寄存器 → 需显式加 `(* descending_urgency = "ext_method, int_rule" *)`。',
-        ref: 'G0010',
-    },
-    {
         title: 'Verilog 端口命名',
         detail: 'BSV `method Action` 的端口名 = 参数名（非方法名）。Vivado 连接时需用 `top_wrapper.v` 薄封装对齐端口。',
         ref: 'BSV-PORTS',
@@ -56,26 +46,6 @@ const COMMON_WARNINGS = [
         title: 'Interface 导出歧义',
         detail: '多接口模块的 method 导出需避免同名冲突。同名 method 需用 `(* prefix = "" *)` 或拆分子模块。',
         ref: 'P0032',
-    },
-    {
-        title: 'always_ready 判断',
-        detail: '无 guard 的 method 会自动推断为 always_ready。若需延迟响应，显式加 guard 条件而非依赖默认行为。',
-        ref: null,
-    },
-    {
-        title: 'Clock domain crossing',
-        detail: 'BSV 中跨时钟域数据需使用 `mkSyncFIFO` 或 `mkSyncBit05`，直接用普通寄存器会在综合时产生不确定行为。',
-        ref: null,
-    },
-    {
-        title: 'Bool 与 Bit 类型切勿混淆',
-        detail: '`Bool` 和 `Bit#(1)` 是不同的类型。接口方法（method）返回值用 `Bit#(1)` 不用 `Bool`——`Bool` 是软件类型，硬件接口统一用 `Bit#(1)`。控制信号如需位拼接或从 Bus 中提取，优先用 `Reg#(Bit#(1))` 而非 `Reg#(Bool)`。Bool 不能用于 `{...}` 拼接，也不能直接用 `bit[0]` 赋值。',
-        ref: 'T0061',
-    },
-    {
-        title: 'Vector 构造用 genWith',
-        detail: 'BSC 2025.07 标准库不导出 `vec()` 函数。构造 Vector 用 `genWith(fromInteger)` 或显式 `genWith(fn)`。',
-        ref: 'T0004',
     },
 ];
 

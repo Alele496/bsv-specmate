@@ -9,7 +9,7 @@
  *   默认输出到 dist/specmate-knowledge.md
  *
  * 快照内容：
- *   1. 通用陷阱层（UNIVERSAL_TRAPS）— 所有 BSV 任务都要遵守的硬约束
+ *   1. 统一陷阱层（TRAPS）— 合并自 UNIVERSAL_TRAPS + KNOWLEDGE_TRAPS + COMMON_WARNINGS
  *   2. 高频编译错误速查表 — 错误码 + 一句话原因 + 修复
  *   3. 关键范式模式 — findIndex 骨架、encoder 模式等
  *   4. BSV 2025.07 特殊规则 — vec() 已废、function 关键字冲突等
@@ -21,7 +21,7 @@
 import { writeFileSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { UNIVERSAL_TRAPS, GRAPH, KEYWORDS } from './_matcher.mjs';
+import { TRAPS, GRAPH, KEYWORDS } from './_matcher.mjs';
 import { getAllPatterns } from './_patterns.mjs';
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -62,12 +62,12 @@ function generate() {
     lines.push('---');
     lines.push('');
 
-    // 1. Universal traps — always critical
-    lines.push('## 通用陷阱（所有 BSV 任务必须遵守）');
+    // 1. Unified traps — merged from UNIVERSAL_TRAPS + KNOWLEDGE_TRAPS + COMMON_WARNINGS
+    lines.push('## 陷阱预警（统一知识库）');
     lines.push('');
-    for (const t of UNIVERSAL_TRAPS) {
+    for (const t of TRAPS) {
         const icon = t.severity === 'hard' ? 'HARD' : 'QUALITY';
-        lines.push(`- **[${icon}]** ${t.text}`);
+        lines.push(`- **[${icon}]** ${t.name}: ${t.oneLiner}`);
     }
     lines.push('');
     lines.push('---');
