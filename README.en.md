@@ -1,144 +1,36 @@
-# specmate
+<div align="center">
 
+# specmate 🤝
+
+[![npm version](https://img.shields.io/npm/v/bsv-specmate?style=flat-square)](https://www.npmjs.com/package/bsv-specmate)
+[![License](https://img.shields.io/github/license/Alele496/bsv-specmate?style=flat-square)](https://github.com/Alele496/bsv-specmate/blob/main/LICENSE)
 [![Node.js](https://img.shields.io/badge/runtime-Node.js%20%3E%3D18-green?style=flat-square&logo=node.js)](https://nodejs.org/)
-[![npm](https://img.shields.io/badge/npm-bsv--specmate-red?style=flat-square&logo=npm)](https://www.npmjs.com/package/bsv-specmate)
-[![GitHub License](https://img.shields.io/github/license/Alele496/bsv-specmate?style=flat-square)](https://github.com/Alele496/bsv-specmate/blob/main/LICENSE)
 
-> 🧠 Bluespec finally has a mate — a coding buddy who knows BSV, remembers every faceplant, and yells "watch your step" before you compile.
+> BSV finally has a mate — one that actually speaks BSV, remembers every time you faceplanted, and yells "heads up" before you even hit compile.
 
-[🇨🇳 中文版](./README.md)
+**[Install](#install) &bull; [Tools](#tools) &bull; [Workflow](#workflow) &bull; [Effectiveness](#effectiveness) &bull; [Status](#status) &bull; [Structure](#structure) &bull; [Docs](#docs)**
 
-AI writes Python like a champ. BSV? Hit compile and your screen turns red. It's not the AI's fault — BSV is niche, the training data is ancient: `vec()` is deprecated but the model keeps using it, `priority` is an SV reserved word it happily turns into a variable name, `Bool` somehow lands inside a `Bit` expression... The compiler crashes before you even know what went wrong.
-
-And the worst part: every compilation error is a one-off. Switch agents, step on the same landmines, all over again.
-
-**specmate fixes this.** It doesn't compile your code — it flags the potholes before you drive over them. 29 Coding Memory entries (SQLite-backed, auto-increment on hit, high-frequency first), 14 language reference topics, 19 static check rules, 30 domain knowledge graph nodes, 4,570 official test suite examples. It sits behind your AI agent via MCP (8 tools) and whispers: "Hey — G0010. The last three agents tripped on this exact thing."
-
-> specmate is the first domain mate of **Kova** (Knowledge Vault), a domain knowledge engine framework. Core architecture = DKE (Domain Knowledge Engine) + Coding Memory + Constraint Chain + Role Activation. See **[Kova →](https://github.com/Alele496/kova)** and `docs/archive/collaboration.md`.
-
-## 🤔 Why specmate
-
-The BSV coding loop goes like this: write code → compile → P0005 → fix → P0032 → fix → G0004 → fix → G0010... Round after round. You're not fixing logic bugs — you're fighting a language-rules quiz you keep failing.
-
-It's not you, and it's not the AI. BSV's 2025.07 compiler differs meaningfully from older versions, and the training data hasn't caught up. Agents know the syntax basics but not the new traps. Worse — there's zero memory. The same G0004 can nail a fresh agent three times.
-
-specmate's job: turn each faceplant into a Coding Memory. Next time an agent writes similar code, specmate warns it before it even asks — "You're building a FIFO pipeline? Watch out for G0010. Last agent crashed here three times."
-
-### Why not bundle the bsc compiler?
-
-Because specmate doesn't catch you after you fall — it tells you to watch your step before you walk. It's a **pre-compilation quality layer** that detects 18 categories of common syntax and type errors without ever calling bsc.
-
-Bundling the compiler means 200MB+ Docker images. If you have WSL or Linux, bsc is already local — agents can call it from the shell directly. Compiler integration is a Phase 3 optional plugin, not part of core.
-
-## 🛠 What it does
-
-You write BSV → specmate looks at what you're about to build, predicts where you'll trip → you finish, it reviews → compilation barfs, it tells you why + how to fix it → next time, it blocks the same pitfall ahead of time. Like a code buddy with a long memory and a grudge.
-
-| Feature | Description | Tool |
-|---------|-------------|------|
-| **🧠 Knowledge Scan** | Unified entry point: pre-code trap warnings + AST pre-scan + design decision suggestions + next-step recommendations | `specmate_scan` |
-| **🔍 Pre-compile Checkup** | 19 rules scanning .bsv: method order, Bool operator misuse, SV reserved word conflicts, literal overflow, interface Bool return, always_ready misuse... No bsc, pure static | `specmate_check` |
-| **✍️ Learning from Pain** | bsc compile error → `specmate_capture` auto-parses error codes into DB → fix → `specmate_resolve` solidifies the fix. Auto-reminds when same error code reappears | `specmate_capture` + `specmate_resolve` |
-| **🔬 Code Structure Review** | tree-sitter real BSV AST parsing: schedule conflict matrix, cross-rule conflicts, dependency graph, call graph, register analysis. Does NOT process compiler output | `specmate_analyze` |
-| **🏥 Full Diagnostics** | Feed in BSC's complete compile output, batch-diagnose all errors/warnings in one call, match each against knowledge base for root cause + fix | `specmate_diagnose` |
-| **🔎 Warning Tracking** | Snapshot warning baselines, diff between two snapshots (new/eliminated/persistent) | `specmate_diff` |
-| **🎛️ Three Development Modes** | `verify` (zero-push, rapid iteration) / `develop` (pre-code trap warnings) / `tapeout` (full guard at delivery). Same tools, different intervention — based on where your code is headed | `SPECMATE_LEVEL` |
-| **📦 Zero Config** | `npm install` + three lines of JSON. `npm run db:seed` to init knowledge base. Agent auto-discovers MCP tools | — |
-| **💾 Persistence** | SQLite stores at `~/.specmate/`. Switch machines, switch agents — memory stays | — |
-
-- 🚀 [Quick Start](#-quick-start)
-- 🛠 [Local Development](#-local-development)
-- 📖 [Tutorial → docs/archive/TUTORIAL.md](./docs/archive/TUTORIAL.md)
-- 🇨🇳 [中文 → README.md](./README.md)
+</div>
 
 ---
 
-## 🥊 SHOWDOWN: specmate vs. bare Agent
+<a id="what-it-does"></a>
 
-We ran eight rounds — same BSV project, one variable: with or without specmate. Rounds 3 and 4 introduced double-blind review with independent agents who didn't know which code came from which camp. Round 5 brought in an automated experiment framework (specmate_bench). Rounds 6–8 validated new findings about design correctness vs. task difficulty.
+## 🌟 What It Does
 
-The result? specmate is faster, more stable, produces better code. But speed isn't everything.
+AI writes Python like a champ. BSV? One compile and the screen is all red — not because AI is dumb, but because BSV is niche and training data is all ancient versions. specmate doesn't write code for your Agent. It points out the potholes before the Agent steps in them.
 
-### Round 1: RISC-V Peripherals (OpenCode)
-
-| | A (none) | B (specmate) |
-|---|---|---|
-| Fix rounds | 11 | **9 (-18%)** |
-
-### Round 2: SD Card Controller (CCB × Collaboration)
-
-| | A (6 rules) | B (Supervisor + specmate) |
-|---|---|---|
-| Coding time | 33m58s | **17m50s (-47%)** |
-| Pass rate | 5/7 | **7/7** |
-
-### Round 3: CRC-32 Processor (CCB × Blind Review)
-
-First-ever **double-blind code review** — the reviewing agent had no idea which code came from which camp:
-
-| | A (6 rules) | B (specmate) |
-|---|---|---|
-| Coding time | 19m47s | **9m27s (-52%)** |
-| Code quality (blind /25) | 19 | **22 (+16%)** |
-
-The reviewer's verdict: *"code-2 is the more engineered solution — explicit FSM, defensive provisos, parameterized FIFO. 63% more code, but worth it."*
-
-### Round 4: Cross-Clock-Domain SoC (CCB × Three Modes × Independent Blind Review)
-
-First use of an **independent AI exam committee** to design the task, and the first **verify / develop / tapeout three-mode comparison**:
-
-| | A (none) | B1 (verify) | B2 (develop) | B3 (tapeout) |
-|---|---|---|---|---|
-| Blind review (/100) | 85.5 | **96.5** 🥇 | 88.0 | 88.0 |
-
-**The quiet one won.** B1 (verify — fewest words) scored 8.5 points higher than B3 (tapeout — most words). Fewer words = sharper focus on core design. Too many "you might also want to consider..." tangents pulled attention away from what actually mattered.
-
-### Round 5: UART Transmitter (CCB × specmate_bench Automation)
-
-First use of **specmate_bench** — an automated experiment framework that replaced manual copy-paste workflows with structured, reproducible pipelines.
-
-| | A (6 rules) | B (specmate + Supervisor) |
-|---|---|---|
-| Compilation | R1 ❌ T0043 → R2 ✅ | R1 ✅ (5w) → R2 ✅ 0w |
-| Code quality (blind /25) | 16 | **22 (+37.5%)** |
-| Architecture | 2-rule minimalist | 5-rule explicit FSM |
-| Key issue | busy false-idle, missing synthesize | guard mutual exclusion eliminated all warnings |
-
-**New discoveries**: T0043 (Integer parameters not synthesizable) added to memory; tree-sitter-bsv misidentified `<=` comparison as assignment.
-
-### 🎯 Five rounds in, then three more
-
-After five rounds, one thing became crystal clear: the most effective thing isn't writing more rules — it's **giving the agent a reviewer role**.
-
-In Round 1, Agent B called specmate zero times — not because the tools were bad, but because it literally didn't know it had a mate. Round 2 gave the agent a Supervisor role: "Your job is to review code quality." Suddenly it clicked — 10+ proactive calls. Round 4 went further — fewer words scored higher. Round 5 brought automation, turning manual experiments into reproducible pipelines.
-
-Three follow-up rounds (SPI, AXI-Stream, CRC-8) validated two new insights:
-
-**Fast is not good.** In the SPI Master experiment, Agent B (specmate) compiled in 3 rounds while Agent A needed 6 — yet Agent A won the blind review. specmate fixes compilation errors, but it doesn't design your module for you. LSB-first violated SPI convention. Missing FIFO lost data. specmate didn't catch either — those are design decisions, not syntax traps.
-
-**Task difficulty determines specmate's value.** The AXI-Stream adapter passed on the first try for both sides — standardized interface protocols don't need domain knowledge. CRC-8's Ultracode fully-automated scaffold → code (A+B parallel) pipeline ran successfully for the first time.
-
-> Three lines of role description > six static rules > absolutely nothing.
+- **Trap prediction** — Building a FIFO pipeline? The last Agent faceplanted three times right here. Let me flag that. Powered by 30 domain knowledge graph nodes, minesweeping ahead of time.
+- **Static checks** — 19 rules scanned across your `.bsv` files: method ordering, Bool operator misuse, SV reserved word collisions, literal overflow. No `bsc` needed. Results in seconds.
+- **Error diagnosis** — Dump that wall of BSC red text in here. 29 encoded memories cross-referenced one by one. Root cause and the fix. New error it hasn't seen before? Auto-cataloged.
+- **A grudge-holding code buddy** — Compile error → capture it → fix it → resolve to archive. SQLite-backed, every hit auto-increments. Same trap never twice — it really holds a grudge.
+- **Code review** — tree-sitter genuinely parses BSV syntax trees, not regex hacks. Scheduling conflict matrices, cross-rule conflicts, dependency graphs — drawn out for you.
 
 ---
 
-## 📊 Usage Guide
+<a id="install"></a>
 
-| Scenario | Best Mode | Template | Effect |
-|----------|-----------|----------|--------|
-| **New module / large project** | 🤝 **Collaboration** (Supervisor + Developer) | [docs/archive/collaboration.md](docs/archive/collaboration.md) | Highest pass rate, -47% coding time |
-| **Quick fix / small change** | 🔧 **Solo** (single agent) | [examples/templates/](examples/templates/) | Lightweight, minimal AGENTS.md |
-
-**How to pick**:
-- Building a new module from scratch → collaboration template, Supervisor will review your work
-- Fixing a known bug → solo template, saves tokens
-- Agent keeps forgetting to call specmate → nudge it in chat: `specmate_guide(phase="pre_code", input="...")`
-
-→ **[📖 Full Showdown Report](docs/SHOWDOWN.md)**
-
----
-
-## ⚡ Quick Start
+## 🚀 Quick Start
 
 ### Install
 
@@ -146,264 +38,162 @@ Three follow-up rounds (SPI, AXI-Stream, CRC-8) validated two new insights:
 npm install -g bsv-specmate
 ```
 
-### Start the Server
+Requires Node.js >= 18.
 
-**stdio mode** (CCB auto-launches, no manual steps):
-```json
-// .mcp.json
-{ "mcpServers": { "bsv-specmate": { "command": "npx", "args": ["bsv-specmate"] } } }
-```
-CCB spawns the child process on start and tears it down on close. Ideal for solo development.
+### MCP Configuration
 
-**Streamable HTTP mode** (manual start, supports server push):
-```bash
-# Terminal 1: start the server
-node bin/server.mjs
-# → [specmate] MCP Streamable HTTP on http://127.0.0.1:9339/mcp
-
-# Or run in background
-node bin/server.mjs &
-```
-```json
-// .mcp.json
-{ "mcpServers": { "bsv-specmate": { "url": "http://127.0.0.1:9339/mcp" } } }
-```
-The server runs independently — CCB connects via HTTP. This enables specmate to push notifications proactively. The `/health` endpoint is available for status checks.
-
-> **Both transports can coexist.** stdio is most convenient for CCB today (auto start/stop). Streamable HTTP is the choice when you need push capabilities. Auto start/stop for Streamable HTTP via CCB hooks is under consideration.
-
-### Configure CCB / Claude Code
-
-Drop a `.mcp.json` in your project root:
+Create `.mcp.json` at the root of your BSV project:
 
 ```json
-// npm version (stdio)
-{
-  "mcpServers": {
-    "bsv-specmate": { "command": "npx", "args": ["bsv-specmate"] }
-  }
-}
-
-// local dev (stdio)
 {
   "mcpServers": {
     "bsv-specmate": {
-      "command": "node",
-      "args": ["<absolute-path>/bin/server.mjs"],
-      "env": { "SPECMATE_LEVEL": "develop" }
-    }
-  }
-}
-
-// Streamable HTTP (recommended — supports specmate push)
-// First start the server: node bin/server.mjs
-// Then configure CCB:
-{
-  "mcpServers": {
-    "bsv-specmate": {
-      "url": "http://127.0.0.1:9339/mcp"
+      "command": "npx",
+      "args": ["bsv-specmate"]
     }
   }
 }
 ```
 
-> **Default mode**: `develop` — pushes trap warnings before coding. Switch to `verify` for zero-push rapid iteration, or `tapeout` for full guard at delivery time.
+Launch your AI client (Claude Code / OpenCode / etc.) and the Agent will auto-discover specmate's tools.
 
-### Configure OpenCode
+> 🎚️ **Three intervention levels**:
+>
+> | Level | Behavior |
+> |-------|----------|
+> | `verify` social anxiety mode | Zero push. Silent observer. Only speaks up at final code review. |
+> | `develop` daily mode (default) | Proactively pushes trap warnings before coding. Never misses a beat when it matters. |
+> | `tapeout` chatterbox mode | Full guard. No corner left unchecked before delivery — every inspection item gets a pass. |
 
-Drop an `opencode.json` in your project root:
+### Verify
 
-```json
-// npm version
-{ "$schema": "https://opencode.ai/config.json",
-  "mcp": { "bsv-specmate": { "type": "local", "command": ["npx", "bsv-specmate"], "enabled": true } } }
-
-// local dev
-{ "$schema": "https://opencode.ai/config.json",
-  "mcp": { "bsv-specmate": { "type": "local", "command": ["node", "<absolute-path>/bin/server.mjs"], "enabled": true, "environment": { "SPECMATE_LEVEL": "develop" } } } }
-```
-
-Restart your AI client. Agent auto-discovers MCP tools.
+Ask your Agent to write some BSV code. specmate will jump in automatically. If you get results back, you're all set. For detailed steps and troubleshooting, see the [Getting Started guide](docs/getting-started.md).
 
 ---
 
-## 🏗️ Project Templates
+<a id="tools"></a>
 
-Quick-start a BSV project:
+## 🔧 MCP Tools at a Glance
 
-```bash
-cp examples/templates/AGENTS.md ./AGENTS.md
-cp examples/templates/opencode.json ./opencode.json
-```
+specmate exposes 8 MCP tools for AI Agents to call.
 
-Edit `AGENTS.md` with your project description and module list. Details at `examples/templates/README.md`.
+| Tool | Purpose | When to call |
+|------|---------|-------------|
+| **`specmate_scan`** ⭐ | Unified entry: trap prediction + AST pre-scan + design advice | When you get a new task, before coding |
+| **`specmate_check`** | 19-rule static scan of `.bsv` files | After writing a chunk of code, before compiling |
+| **`specmate_diagnose`** | Feed in full BSC compile output, batch-diagnose all errors | The compile output is a wall of red |
+| **`specmate_capture`** | Parse BSC compile errors, catalog new knowledge | When compilation fails |
+| **`specmate_resolve`** | Solidify the fix, mark error as resolved | After the error is fixed |
+| **`specmate_analyze`** | tree-sitter deep parse of BSV syntax tree | Investigating scheduling conflicts, dependency issues |
+| **`specmate_diff`** | Diff compile snapshots, track warning changes | After refactoring, to compare compile changes |
+| **`specmate_guide`** | Phased guidance (pre_code / on_error / continue / decide / pattern) | When you need step-by-step coaching |
 
----
-
-## 🎛️ Three Development Modes
-
-specmate doesn't grade by agent experience — it grades by **where your code is going**. The same agent gets `verify` for a bug fix, `develop` for a new module, `tapeout` before delivery.
-
-Round 4 tested all three modes with an independent exam committee plus double-blind review:
-
-| Level | Scenario | Push Strategy | Blind Review (/100) |
-|-------|----------|---------------|:-------------------:|
-| **`verify`** 🔬 | Rapid iteration, get logic working | Zero push — answers only when asked | — |
-| **`develop`** (default) 🛠 | New modules, architecture | Pre-code trap warnings | — |
-| **`tapeout`** 🏭 | Delivery time, FPGA/ASIC | Full guard + review | **96.5** vs 85.5 (no specmate) |
-
-**Design principle**: It's not about saying more — it's about saying the right thing at the right time.
-
-```
-verify:   Don't get in my way, I know what I'm doing
-develop:  Warn me about traps before I step in
-tapeout:  Leave nothing unchecked — full guard
-```
-
-> Legacy names `silicon`/`wafer` are still accepted and auto-map to `verify`/`develop`.
+`specmate_scan` is the recommended unified entry point, replacing the old multi-step call sequence. For full integration instructions (AGENTS.md templates, OpenCode config, role prompts), see the [Agent Integration Handbook](docs/agent-integration.md).
 
 ---
 
-## 🛠 Local Development
+<a id="workflow"></a>
 
-### Requirements
+## 📋 Agent Workflow
 
-- [Node.js](https://nodejs.org/) >= 18
-
-```bash
-git clone https://github.com/Alele496/bsv-specmate.git
-cd bsv-specmate
-npm install
-node bin/server.mjs
+```
+Get a BSV task
+  │
+  ├─ specmate_scan({ task: "your task" })
+  │   └→ Trap prediction + design advice + pattern recommendations
+  │
+  ├─ Write code
+  │
+  ├─ specmate_check({ files: ["/absolute/path/file.bsv"] })
+  │   └→ 19-rule quick scan
+  │
+  ├─ bsc compile
+  │   ├─ PASS → specmate_resolve to lock in the fix ✅
+  │   └─ FAIL → specmate_diagnose + specmate_capture
+  │       └→ Fix → back to compile → PASS → resolve ✅
 ```
 
-### IDE dev config
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "specmate": {
-      "type": "local",
-      "command": ["node", "<absolute-path>/bin/server.mjs"],
-      "enabled": true
-    }
-  }
-}
-```
+> **Agent doesn't know specmate exists? You're not the first.** In our first experiment the Agent called specmate 0 times — not because the tools were bad, but because it didn't know it had a mate. Just tell it in conversation: "try running `specmate_scan` on your task." That's all it takes.
 
 ---
+
+<a id="effectiveness"></a>
+
+## 📊 Effectiveness at a Glance
+
+Not hand-waving — we ran five controlled experiments. Same BSV project, same Agent. Only difference: specmate or bare.
+
+Round one, the Agent didn't even know specmate existed — 0 calls the entire session. The problem wasn't the tool; the Agent just didn't know it had a mate. Round two, the Agent started calling it proactively — but at the wrong time, scanning after writing code, like reading the study guide after handing in the exam. Round three, we brought in Agents who knew neither codebase to do double-blind review — the specmate-assisted solution scored 16% higher on code quality blind review, and the reviewers had no idea which was which. Round four, we tightened the template constraints and first-compile pass rate jumped significantly. Round five focused on the review role — the biggest lever wasn't piling on more rules, but giving the Agent a reviewer role so it knew when to call which tool.
+
+Core takeaway: specmate's value isn't writing code for the Agent. It's remembering all that niche BSV trivia the Agent learns and forgets every single time.
+
+> Full data, experiment design, and methodology analysis in the **[SHOWDOWN report](docs/SHOWDOWN.md)**.
+
+---
+
+<a id="status"></a>
+
+## 📈 Current Status
+
+- Version 0.1.1, published on npm (`npm install -g bsv-specmate`)
+- 8 MCP tools fully operational, CI-automated verification
+- 12 BSV traps verified (fixture files + bsc compile double validation), 62 backlog items advancing daily
+- 29 encoded memories covering common BSC compile errors
+- 30 domain knowledge graph nodes, 19 static check rules
+- pre-commit hook gate + GitHub Actions CI dual safety net
+
+---
+
+<a id="structure"></a>
 
 ## 📂 Project Structure
 
 ```
-bsv-specmate/
-├── AGENTS.md              ← Agent usage manual (MCP-based workflow)
-├── README.md              ← Chinese version
-├── README.en.md           ← English (you are here)
-├── SKILL.md               ← Agent interaction quick reference (8 scenarios)
-├── package.json
-├── bin/
-│   ├── server.mjs         ← MCP Server entry point, registers 8 MCP tools
-│   └── cli.mjs            ← CLI entry point (npx specmate scan/check, human-only)
+specmate/
+├── bin/                  # MCP server entry (stdio / HTTP)
 ├── src/
-│   ├── config.mjs         ← SPECMATE_LEVEL config + data directory management
-│   ├── notify.mjs         ← MCP notification bridge
-│   ├── db/
-│   │   ├── schema.mjs     ← SQLite schema + session management
-│   │   ├── query.mjs      ← DB query wrapper + auto-seed (auto-inits empty DB)
-│   │   ├── seed.mjs       ← db:seed script — Markdown → SQLite (idempotent)
-│   │   ├── export.mjs     ← db:export script — SQLite → Markdown
-│   │   └── parser.mjs     ← Error Markdown file parser
-│   └── tools/
-│       ├── specmate_guide.mjs  ← Core tool: scan() unified entry + guide phases
-│       ├── _matcher.mjs        ← Knowledge graph (30 domain nodes + 12 verified traps)
-│       ├── _patterns.mjs       ← BSV code pattern templates (15)
-│       ├── check_style.mjs     ← specmate_check backend (19 rules)
-│       ├── preflight.mjs       ← Pre-compile AST scanning (6 high-frequency error patterns)
-│       ├── ast_query.mjs       ← tree-sitter BSV parser (10+ analysis types)
-│       ├── specmate_diagnose.mjs  ← Full compile log diagnostics
-│       ├── knowledge_snapshot.mjs ← Offline knowledge snapshot export
-│       └── ...                 ← Internal helper modules
-├── test/
-│   └── fixtures/
-│       ├── check/          ← Check rule pass/fail fixtures
-│       ├── traps/          ← Trap verification fixtures (12 verified)
-│       └── run-fixtures.mjs ← Fixture CI script
-├── data/
-│   ├── knowledge.db        ← Seed DB (26 error codes)
-│   └── testsuite-errors.json ← Test suite error index
+│   ├── tools/            # 8 MCP tool implementations
+│   ├── db/               # SQLite knowledge base persistence
+│   └── config.mjs        # SPECMATE_LEVEL configuration
 ├── docs/
-│   ├── getting-started.md  ← Getting started guide
-│   ├── agent-integration.md ← Agent integration manual
-│   ├── architecture.md     ← Architecture decision document
-│   ├── internal-overview.md ← Internal architecture overview
-│   ├── errors/             ← Coding Memory docs (26 entries)
-│   └── reference/          ← BSV language reference (14 topics)
-└── examples/
-    ├── bsv/               ← BSC official test suite (4,570 .bsv)
-    └── templates/          ← Project templates (AGENTS.md etc.)
+│   ├── errors/           # 29 encoded memories
+│   └── traps/            # Verified trap documentation
+├── test/fixtures/        # Each rule paired with pass.bsv + fail.bsv
+└── examples/             # BSV sample code
 ```
 
----
-
-## 🔧 npm Scripts
-
-| Command | Description |
-|---------|-------------|
-| `npm start` | Start MCP Server |
-| `npm run db:seed` | Rebuild SQLite from `docs/errors/*.md` |
-| `npm run db:export` | Export SQLite to Markdown at `~/.specmate/docs/errors/` |
+Core philosophy: MCP tool layer receives Agent calls → knowledge graph does matching → SQLite persists experience. Not a lot of code — the weight is in the accumulated knowledge.
 
 ---
 
-## 💾 Data Storage
+<a id="docs"></a>
 
-First run auto-creates `~/.specmate/`:
+## 📖 Documentation
 
-| Path | Content |
-|------|---------|
-| `data/knowledge.db` | SQLite knowledge base |
-| `docs/errors/*.md` | Exported Markdown docs |
-
-Custom path:
-
-```json
-{
-  "env": { "SPECMATE_DATA": "D:/my-bsv-data" }
-}
-```
+- **First time?** Read the [Getting Started guide](docs/getting-started.md) — install, configure, three steps and done.
+- **Integrating an Agent?** Read the [Agent Integration Handbook](docs/agent-integration.md) — AGENTS.md templates, OpenCode config, role prompts.
+- **Curious about the design?** Read the [Architecture doc](docs/architecture.md) — design decisions, module relationships, data flow.
+- **Want to see the numbers?** Read the [SHOWDOWN report](docs/SHOWDOWN.md) — all five controlled experiments, full design and analysis.
+- **Diving into source?** Read the [Internal Overview](docs/internal-overview.md) — source structure, database schema, tool implementation details.
 
 ---
+
+<a id="contributing"></a>
 
 ## 🤝 Contributing
 
-1. Agent hits a new compilation error → call `specmate_capture` to record + `specmate_resolve` to persist the fix
-2. Run `npm run db:export` to export Markdown
-3. Submit a PR to merge new errors back to the main repo
+specmate's knowledge comes from real-world battle scars. You hit a `bsc` error, the Agent runs `specmate_diagnose` → `specmate_capture` to log it → `specmate_resolve` to lock in the fix once it's solved → write up a doc explaining root cause and repair. Every piece of knowledge saves the next BSV dev from stepping in the same hole.
+
+Issues and PRs welcome. Rule and trap fixture contributions are especially appreciated. What's a fixture? Every check rule gets two `.bsv` files — `pass.bsv` (the "should pass" case: code that's correct, rule should NOT fire) and `fail.bsv` (the "should fail" case: deliberately triggers the rule, rule SHOULD fire). When adding a new rule, run `node test/fixtures/run-fixtures.mjs` to verify all fixtures. Does not pass, does not merge — this is council iron law, no exceptions. See the directory layout and examples under `test/fixtures/check/` in existing rules.
 
 ---
 
-## 💬 Agent not using specmate? You're not alone
+## 🔗 Related Projects
 
-Round 1: Agent B called specmate **zero times**. Not because the tools didn't work — it genuinely didn't know it had a mate.
-
-We gave it a Supervisor role: "Your job is to review code quality." Boom. 10+ proactive calls.
-
-**So here's all you need to say:**
-
-```
-Before coding:    specmate_guide(phase="pre_code", input="brief task description")
-After coding:     specmate_check(files=["bsv/File.bsv"])
-Compilation error: specmate_guide(phase="on_error", input="error code")
-Unsure which path: specmate_guide(phase="decide", input="option A vs option B")
-Next step:        specmate_guide(phase="continue", input="next task")
-```
-
-A handful of tools, the right timing. One sentence. Potentially one fewer round of compilation errors. Works every time. 🤏
+- **[Kova](https://github.com/Alele496/kova)** — DKE domain knowledge engine framework; specmate is its first BSV instance
+- **[bsc](https://github.com/B-Lang-org/bsc)** — The official Bluespec compiler; specmate's knowledge base depends on bsc compile output to accumulate experience
+- **[bsc-contrib](https://github.com/B-Lang-org/bsc-contrib)** — Bluespec community libraries and tools, commonly used alongside BSV development
 
 ---
 
-> 📄 MIT License
->
-> 👤 Built by [Alele496](https://github.com/Alele496). May your compiles have fewer errors — and when they don't, specmate's got your back. 🤙
+> MIT License | [Alele496](https://github.com/Alele496)
