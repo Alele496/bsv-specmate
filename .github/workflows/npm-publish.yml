@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 0.1.1)'
+        required: true
+        type: string
 
 jobs:
   test:
@@ -32,12 +38,16 @@ jobs:
           node-version: 18
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci
-      - name: Verify tag matches package.json version
+      - name: Verify version consistency
         run: |
-          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          if [ -n "${{ github.event.release.tag_name }}" ]; then
+            TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            TAG_VERSION="${{ inputs.version }}"
+          fi
           PKG_VERSION=$(node -p "require('./package.json').version")
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "Tag v$TAG_VERSION != package.json version $PKG_VERSION"
+            echo "Expected version $TAG_VERSION != package.json version $PKG_VERSION"
             exit 1
           fi
       - run: npm publish --provenance --access public
@@ -62,12 +72,16 @@ jobs:
           node-version: 18
           registry-url: https://npm.pkg.github.com
       - run: npm ci
-      - name: Verify tag matches package.json version
+      - name: Verify version consistency
         run: |
-          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          if [ -n "${{ github.event.release.tag_name }}" ]; then
+            TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            TAG_VERSION="${{ inputs.version }}"
+          fi
           PKG_VERSION=$(node -p "require('./package.json').version")
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "Tag v$TAG_VERSION != package.json version $PKG_VERSION"
+            echo "Expected version $TAG_VERSION != package.json version $PKG_VERSION"
             exit 1
           fi
       - run: npm publish
