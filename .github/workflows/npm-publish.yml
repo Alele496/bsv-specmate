@@ -84,6 +84,8 @@ jobs:
             echo "Expected version $TAG_VERSION != package.json version $PKG_VERSION"
             exit 1
           fi
+      - name: Add scope for GitHub Packages
+        run: npm pkg set name=@Alele496/bsv-specmate
       - run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
