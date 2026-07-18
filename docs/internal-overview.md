@@ -1,7 +1,7 @@
 # specmate 内部架构总览
 
 > 维护者：specmate 负责人
-> 最后更新：2026-07-15
+> 最后更新：2026-07-18
 > 维护原则：每个阶段结束时更新一次（不是每次提交都改）
 
 > 关系说明：本文档是**技术架构和运行时状态**。`project-memory.md` 是**项目管理和任务跟踪**。两者互补。
@@ -13,7 +13,7 @@
 ```
 bsv-agent-server/                  # npm 包根目录（bsv-specmate）
 ├── bin/
-│   ├── server.mjs                 # MCP 服务器入口（32KB，7 个工具定义 + HTTP/stdio 双传输）
+│   ├── server.mjs                 # MCP 服务器入口（8 个工具定义 + HTTP/stdio 双传输）
 │   └── cli.mjs                    # CLI 入口（5KB，npx specmate scan/check，仅供人类调试）
 ├── src/
 │   ├── config.mjs                 # SPECMATE_LEVEL 配置 + LEVEL_LIMITS + 数据目录管理
@@ -25,12 +25,12 @@ bsv-agent-server/                  # npm 包根目录（bsv-specmate）
 │   │   ├── export.mjs             # db:export 脚本 — 导出数据库内容为 Markdown
 │   │   └── query.test.mjs         # 数据库查询单元测试
 │   ├── tools/
-│   │   ├── _matcher.mjs           # 知识图谱（2 UNIVERSAL_TRAPS + 30 GRAPH 节点 + phase 过滤 + mode 过滤）
+│   │   ├── _matcher.mjs           # 知识图谱（12 条 TRAPS 数组 + 30 GRAPH 节点 + phase 过滤 + mode 过滤）
 │   │   ├── _matcher.test.mjs      # matcher 单元测试
 │   │   ├── _patterns.mjs          # BSV 代码范式模板（15 个：fifo/bram/fsm/pipeline/spi/uart 等）
 │   │   ├── specmate_guide.mjs     # 核心工具 — scan() 统一入口 + guide(pre_code/on_error/decide/pattern/continue) + DECISIONS 表
 │   │   ├── preflight.mjs          # 编译前 AST 扫描（6 种模式：P0030/P0005/T0043/G0053/G0005/G0004）+ COMMON_WARNINGS
-│   │   ├── check_style.mjs        # specmate_check 后端（10 条 always-on + 7 条 full-scan 规则）
+│   │   ├── check_style.mjs        # specmate_check 后端（10 条 always-on + 7 条 full-scan 规则）+ specmate_diagnose.mjs（编译日志全量诊断）
 │   │   ├── ast_query.mjs          # tree-sitter BSV 解析器（调度分析/冲突矩阵/依赖图/调用图/寄存器分析/方法分析/行查询）
 │   │   ├── ast_query.test.mjs     # AST 查询单元测试
 │   │   ├── knowledge_snapshot.mjs # 离线知识快照导出（纯 Markdown，不依赖 MCP）
@@ -41,20 +41,20 @@ bsv-agent-server/                  # npm 包根目录（bsv-specmate）
 │   │   ├── warning_diff.mjs       # BSC warning 解析器
 │   │   ├── coding_rules.mjs       # 编码规则定义
 │   │   ├── add_error.mjs          # 错误码手动添加（仅 db:seed 使用，非 MCP 工具）
-│   │   └── specmate_learn.mjs     # 已废弃（占位 stub）
-│   └── push/
-│       └── alerts.mjs             # SPP 推送协议（@dormant，6 个函数保留为 no-op shells）
+│   │   ├── specmate_diagnose.mjs  # Phase 3 新增 — BSC 编译日志全量诊断（第 8 个 MCP 工具）
+│   ├── push/
+│   │   └── alerts.mjs             # SPP 推送协议（@dormant，6 个函数保留为 no-op shells）
 ├── test/
 │   ├── fixtures/
-│   │   ├── check/                 # check 规则 fixture 文件
-│   │   │   ├── always-attr-misuse/ # (pass.bsv + fail.bsv)
-│   │   │   └── bool-interface-return/ # (pass.bsv + fail.bsv)
+│   │   ├── check/                 # check 规则 fixture 文件（8 个规则各 pass.bsv + fail.bsv）
+│   │   │   ├── G0004/ G0053/ G0054/ P0022/ P0200/
+│   │   │   ├── always-attr-misuse/ bool-interface-return/
+│   │   │   └── synthesize-annotation-order/
 │   │   ├── traps/                 # trap 验证 fixture 文件
-│   │   │   ├── fifo-1.bsv         # ✅ 已验证
-│   │   │   ├── fsm-1.bsv          # ✅ 已验证
-│   │   │   ├── axi-1.bsv          # ✅ 已验证
-│   │   │   └── _compile.sh        # 编译辅助脚本
-│   │   └── run-fixtures.mjs       # fixture CI 脚本（4/4 通过）
+│   │   │   ├── _compile.sh        # 编译辅助脚本
+│   │   │   ├── fifo-1.bsv / fsm-1.bsv / axi-1.bsv  # ✅ backlog 已验证
+│   │   │   └── trap-*.bsv (10 个) # ✅ TRAPS 数组 fixture 文件
+│   │   └── run-fixtures.mjs       # fixture CI 脚本
 │   └── knowledge-validation.test.mjs  # 知识质量验证测试（7 项检查）
 ├── docs/
 │   ├── architecture.md            # 架构决策文档（2026-07-12 最终确定，写后不改）
@@ -68,11 +68,15 @@ bsv-agent-server/                  # npm 包根目录（bsv-specmate）
 │   ├── knowledge.db               # 预置数据库种子（24KB）
 │   └── testsuite-errors.json      # bsc 测试套件错误数据
 ├── scripts/
+│   ├── smoke-test.mjs             # 烟雾测试（12 用例）
 │   ├── health-check.mjs           # 系统健康检查
-│   ├── smoke-test.mjs             # 烟雾测试
 │   ├── verify-traps.mjs           # trap 验证状态查询（支持 --csv/--json/--count）
+│   ├── audit-knowledge.mjs        # 知识审计：遍历 GRAPH/TRAPS/errors/doc 检查完整性
+│   ├── generate-error-doc.mjs     # 错误文档自动生成
 │   ├── test-push.mjs              # 推送测试
 │   └── parse-testsuite.mjs        # bsc 测试套件解析
+├── .husky/
+│   └── pre-commit                 # Git pre-commit hook（自动 npm test + fixtures）
 ├── examples/                      # BSV 示例代码（bsc 官方 + 自定义）
 └── SKILL.md                       # specmate 交互手册（Agent 速查）
 ```
@@ -83,19 +87,22 @@ bsv-agent-server/                  # npm 包根目录（bsv-specmate）
 
 | # | 工具 | 参数 | 用途 | 状态 |
 |---|------|------|------|------|
-| 1 | **specmate_scan** | `task`(string, 必填), `file`(string, 可选) | **推荐统一入口** — 一次性返回 UNIVERSAL_TRAPS + preflight AST 扫描 + NEXT STEPS。替代旧的 guide(pre_code)+decide+preflight 三步调用 | 可用。已知问题：(a) 暂无历史统计段落（P0 待实施），(b) NEXT STEPS 推荐了正确的 MCP 工具调用格式 |
-| 2 | **specmate_guide** | `phase`(enum: pre_code/on_error/continue/decide/pattern), `input`(string), `file`(string, 可选) | 细分阶段指导 — pre_code 编码前陷阱、on_error 错误诊断、decide 设计决策、pattern 代码骨架 | 可用。decide() 已关闭（返回"不可用"消息）。pre_code() 仅输出 UNIVERSAL_TRAPS |
-| 3 | **specmate_check** | `files`(string[], 必填), `full`(boolean, 默认 false) | 编译前静态检查 — 10 条 always-on + 7 条 full-scan 规则。检查后自动 hitError() 更新命中计数 | 可用。路径校验已实现（必须绝对路径） |
-| 4 | **specmate_capture** | `bsc_output`(string, 必填), `files`(string[], 可选) | 解析 bsc 编译器输出，提取错误码，自动入库 captures 表 | 可用。暂无 session_id 字段（P0 待实施） |
-| 5 | **specmate_resolve** | `code`(string), `cause`(string), `solution`(string) | 修复后固化经验 — 标记 capture 为 resolved，记录根因和方案 | 可用。同一错误码有历史时触发 memory notification |
-| 6 | **specmate_analyze** | `files`(string[], 必填), `question`(string, 必填) | AST 深度分析 — 调度冲突矩阵、跨 rule 冲突、依赖图、调用图、寄存器分析、方法分析、行级节点查询 | 可用。路径校验已实现。10+ 种分析路由、默认输出提取摘要 |
-| 7 | **specmate_diff** | `bsc_output`(string, 可选), `action`(enum: snapshot/diff) | Warning 追踪 — snapshot 存储编译警告，diff 对比两次快照差异 | 可用。辅助工具 |
+| 1 | **specmate_scan** | `task`(string, 必填), `file`(string, 可选) | **推荐统一入口** — 一次性返回 TRAPS 数组 + preflight AST 扫描 + NEXT STEPS。替代旧的 guide(pre_code)+decide+preflight 三步调用 | 可用。NEXT STEPS 已改为 MCP 工具调用格式 |
+| 2 | **specmate_guide** | `phase`(enum: pre_code/on_error/continue/decide/pattern), `input`(string), `file`(string, 可选) | 细分阶段指导 — pre_code 编码前陷阱、on_error 错误诊断、decide 设计决策、pattern 代码骨架 | 可用。decide() 已关闭。pre_code() 仅输出 TRAPS 数组已验证条目（12 条） |
+| 3 | **specmate_check** | `files`(string[], 必填), `full`(boolean, 默认 false) | 编译前静态检查 — 10 条 always-on + 7 条 full-scan 规则（含 P0/P1/P2 知识盲区修复新增 4 条）。路径校验已实现 | 可用 |
+| 4 | **specmate_capture** | `bsc_output`(string, 必填), `files`(string[], 可选) | 解析 bsc 编译器输出，提取错误码，自动入库 captures 表（含 session_id）。响应中嵌入跨 session 统计（历史出现次数 + 修复率） | 可用 |
+| 5 | **specmate_resolve** | `code`(string), `cause`(string), `solution`(string) | 修复后固化经验 — 标记 capture 为 resolved，记录根因和方案。响应中嵌入修复率变化统计 | 可用 |
+| 6 | **specmate_analyze** | `files`(string[], 必填), `question`(string, 必填) | AST 深度分析 — 调度冲突矩阵、跨 rule 冲突、依赖图、调用图、寄存器分析、方法分析、行级节点查询。10+ 种分析路由 | 可用 |
+| 7 | **specmate_diff** | `bsc_output`(string, 可选), `action`(enum: snapshot/diff) | Warning 追踪 — snapshot 存储编译警告，diff 对比两次快照差异 | 可用 |
+| 8 | **specmate_diagnose** | `bsc_output`(string, 必填), `files`(string[], 可选) | **Phase 3 新增** — 接收 BSC 完整编译日志，全量扫描所有错误码/警告，逐个匹配知识库并输出诊断。解决 Agent 多次往返 guide(on_error) 的低效问题 | 可用 |
 
 ### 当前 MCP 工具总状态
 
-- **全部 7 个工具可用**，无 bug 导致的不可用
+- **全部 8 个工具可用**，无 bug 导致的不可用
 - **specmate_learn 已移除**（Phase 1 废弃）。capture + resolve 自动化流程完全覆盖
-- **路径校验**：specmate_check 和 specmate_analyze 已实现 `validateFilePaths()`，绝对路径校验 + 文件存在性检查。其他工具（specmate_scan 的 file 参数、specmate_guide 的 file 参数）通过 preflight/parseFile 内部处理，不会静默失败但错误信息可能不够明确
+- **specmate_diagnose**（Phase 3 新增）— 一次性诊断 BSC 全量编译输出，减少 Agent 多次往返
+- **路径校验**：所有工具入口已实现 `validateFilePaths()`，绝对路径校验 + 文件存在性检查
+- **session 管理**：captures 表已有 session_id，跨 session 统计已嵌入 capture/resolve 响应
 
 ---
 
@@ -109,12 +116,13 @@ bsv-agent-server/                  # npm 包根目录（bsv-specmate）
 | **捕获解决状态** | `captures.status` | `specmate_resolve` 调 `resolveCaptureById()` | `UPDATE captures SET status = 'resolved'` |
 | **Warning 快照** | `warnings` | `specmate_diff(action=snapshot)` | `INSERT OR IGNORE INTO warnings` |
 
-### 尚未实现的统计（P0/P1 待实施）
+### 已实现的统计（Phase 0-3 完成）
 
-- **跨 session 历史统计**（P0）：`COUNT(DISTINCT session_id)` 按错误码聚合 → 嵌入 `specmate_scan` 输出
-- **当前 session 编译失败次数**（P1）：`COUNT(*) WHERE session_id = ?` → 嵌入 `specmate_capture` 响应
-- **未解决错误数**（P1）：`COUNT(*) WHERE status = 'unresolved' AND session_id = ?` → 嵌入 `specmate_capture` 响应
-- **顽固错误**（P1）：同一错误码跨 session 出现 >3 次 → 嵌入 `specmate_resolve` 响应
+- **跨 session 历史统计**：`specmate_capture` 响应中显示该错误码历史出现次数（`COUNT(DISTINCT session_id)`）和修复率（`resolved/total`）
+- **session 管理**：`initSession()` 自动生成 UUID，captures 表含 session_id 字段
+- **修复率变化**：`specmate_resolve` 响应中显示修复率变化（如 `修复率: 3/5 (60.0%)`）
+- **capture/check 去重**：同一 session 内同一错误码只记录一次，同一次 check 调用中同一规则只报告一次
+- **auto-cluster**（Phase 1）：相同错误码的多次 capture 自动聚合为 cluster，保留历史轨迹
 
 ---
 
@@ -122,12 +130,10 @@ bsv-agent-server/                  # npm 包根目录（bsv-specmate）
 
 ### errors 表
 
-- **收录错误码数**：26 个（`docs/errors/` 目录下 26 篇 .md 文档）
-- **INDEX.md 记录数**：23 条（含计数，G0053 和 G0005 未在 INDEX 中更新）
+- **收录错误码数**：29 个（`docs/errors/` 目录下 29 篇 .md 文档 + INDEX.md）
 - **计数器状态**：每个 `errors.code` 有 `count` 字段（初始种子值 1-6，运行时累积递增）
-- **最近收录**（2026-07-13，`0312757` 提交）：
-  - 新增 11 篇错误文档：G0002、G0004_FSM、G0030、G0040、G0054、G0124、P0073、P0085、T0016、T0132、T0144
-  - GRAPH 全部 26 个错误码现在都有对应 .md 文档
+- **格式统一**：`6303901` 全部 29 篇统一为标准 `## 现象`/`## 原因`/`## 解决方案`/`## 规则` 四段式 + `> 适用 BSC 版本: 2025.07`
+- **parser 兼容**：`183bc3f` 支持粗体 + Markdown 标题双格式解析
 
 ### captures 表
 
@@ -135,11 +141,11 @@ bsv-agent-server/                  # npm 包根目录（bsv-specmate）
 - **状态分布**：resolved / unresolved（精确数字需查数据库）
 - **最近捕获**：取决于 specmate 的使用频率
 
-### 错误文档列表（26 篇）
+### 错误文档列表（29 篇）
 
-P 系列（6 篇）：P0005, P0030, P0032, P0073, P0085
-G 系列（9 篇）：G0002, G0004, G0004_FSM, G0005, G0010, G0030, G0040, G0053, G0054, G0124
-T 系列（9 篇）：T0004, T0011, T0016, T0030, T0043, T0051, T0060, T0061, T0132, T0144
+P 系列（7 篇）：P0005, P0022, P0030, P0032, P0073, P0085, P0200
+G 系列（11 篇）：G0002, G0004, G0004_FSM, G0005, G0010, G0030, G0036, G0040, G0053, G0054, G0124
+T 系列（10 篇）：T0004, T0011, T0016, T0030, T0043, T0051, T0060, T0061, T0132, T0144
 其他：BSV-PORTS
 
 ---
@@ -190,18 +196,18 @@ specmate 的 trap 知识库（65 条未验证条目）未经 bsc 编译验证就
 
 | # | 问题 | 影响 | 状态 |
 |---|------|------|------|
-| P0-1 | **MCP 工具相对路径静默失败** | Agent 传入相对路径 → specmate 不报错、不返回错误，直接返回空结果。Agent 无法察觉 | 待修复。需在工具入口加路径校验 + 明确错误返回 |
-| P0-2 | **specmate_scan 输出推荐 CLI 命令** | 议会裁定 CLI 仅人类调试，Agent 应走 MCP。当前 NEXT STEPS 已改为 MCP 格式（`mcp__bsv-specmate__specmate_check`） | ✅ 已修复 |
-| P0-3 | **captures 表缺少 session 概念** | 无法区分不同任务的捕获记录，无法做跨 session 统计 | P0 待实施（见 `knowledge-system-plan.md`） |
-| P0-4 | **specmate_scan 无历史统计** | Agent 在新对话里看不到历史经验，specmate 的"知识越用越强"优势未体现 | P0 待实施（见 `knowledge-system-plan.md`） |
+| P0-1 | **MCP 工具相对路径静默失败** | Agent 传入相对路径 → specmate 不报错、不返回错误，直接返回空结果 | ✅ `3d8b891` 修复：所有工具入口加 `validateFilePaths()` |
+| P0-2 | **specmate_scan 输出推荐 CLI 命令** | 议会裁定 CLI 仅人类调试，Agent 应走 MCP | ✅ `3d8b891` 修复：NEXT STEPS 改为 MCP 格式 |
+| P0-3 | **captures 表缺少 session 概念** | 无法区分不同任务的捕获记录 | ✅ `ecce5d2` 修复：session_id + initSession() |
+| P0-4 | **specmate_scan 无历史统计** | Agent 看不到历史经验 | ✅ `f57d4ff` 修复：capture/resolve 响应嵌入统计 |
 
 ### P1 — 重要
 
 | # | 问题 | 状态 |
 |---|------|------|
-| P1-1 | 通用陷阱层只含两条（P0030 + P0005） | 待扩展（需分析 P0012/T0051 等是否应加入） |
-| P1-2 | 16 个知识图谱节点缺乏 style/pattern | 功能冻结期间暂不处理 |
-| P1-3 | 安全分类器故障导致 MCP 全链路阻塞 | stdio 传输缓解大部分风险，全链路阻塞已不存在 |
+| P1-1 | 通用陷阱层扩展 | ✅ 通过 TRAPS 数组（12 条已验证条目）已实现，旧 UNIVERSAL_TRAPS 概念合并入统一数组 |
+| P1-2 | 16 个知识图谱节点缺乏 style/pattern | 功能冻结期间暂不处理。实际 26 个缺 style、16 个缺 pattern |
+| P1-3 | 安全分类器故障导致 MCP 工具链阻塞 | stdio 传输缓解大部分风险，前端分类器（deepseek-v4-pro）偶尔不可用影响 Bash 操作 |
 
 ### P2 — 改善
 
@@ -232,7 +238,7 @@ errors:    id(INT PK) | code(TEXT UNIQUE) | title(TEXT) | keywords(TEXT) |
 ref_hits:  topic(TEXT PK) | count(INT)
 
 captures:  id(INT PK) | code(TEXT) | timestamp(TEXT) | bsc_output(TEXT) |
-           files(TEXT) | cause(TEXT) | solution(TEXT) | status(TEXT)
+           files(TEXT) | cause(TEXT) | solution(TEXT) | status(TEXT) | session_id(TEXT)
 
 warnings:  id(INT PK) | snapshot_id(TEXT) | timestamp(TEXT) | file(TEXT) |
            line(INT) | code(TEXT) | message(TEXT)
@@ -243,7 +249,7 @@ warnings:  id(INT PK) | snapshot_id(TEXT) | timestamp(TEXT) | file(TEXT) |
 
 | 表 | 大致记录数 |
 |----|-----------|
-| errors | 26 行（种子数据，26 个错误码） |
+| errors | 29 行（种子数据，29 个错误码） |
 | captures | 取决于使用频次（每次 on_error / capture / preflight auto-capture 增加一行） |
 | warnings | 0-若干（取决于 specmate_diff snapshot 调用次数） |
 | ref_hits | 取决于 lookup_ref 调用次数 |
@@ -255,10 +261,10 @@ warnings:  id(INT PK) | snapshot_id(TEXT) | timestamp(TEXT) | file(TEXT) |
 ### GRAPH（_matcher.mjs）
 
 - **30 个领域节点**：fifo, pipeline, clock, reset, axi, bram, fsm, bvi, spi, crc, uart, struct, union, attribute, interface, rule, method, types, vector, schedule, regfile, arbiter, serialize, interrupt, dma, encoder, decoder, timer, gpio, synthesize
-- **2 条 UNIVERSAL_TRAPS**：P0030（function 内 return 限制）、P0005（function 关键字保留字）
+- **12 条 TRAPS 数组（统一知识基）**：P0030/P0005/Bool vs Bit/G0004/G0053/interface Bool/always_ready guard/P0022/Vector 构造/PulseWire + Reg/urgency/跨时钟域。全部 `verified: true`，每条配 fixture + 代码验证
 - **trap 分级**：hard（不遵守编译错误）/ quality（影响硬件正确性）/ style（代码风格偏好）
 - **phase 标签**：design（架构阶段）/ code（编码阶段）/ both（通用）
-- **验证状态**：2 条 UNIVERSAL_TRAPS = verified:false（alwaysShow:true 豁免）| 65 条 GRAPH trap = verified:false（不输出）| 3 条已验证（fifo-1/fsm-1/axi-1）
+- **验证状态**：12 条 TRAPS 数组 = verified:true | 65 条 GRAPH backlog = 3 已验证（fifo-1/fsm-1/axi-1），62 待验证，29 个 GRAPH 节点 traps 数组为空
 - **bsc 版本标记**：所有 trap 已加 `bscVersions: ['2025.07']`
 
 ### DECISIONS（specmate_guide.mjs）
@@ -288,24 +294,31 @@ warnings:  id(INT PK) | snapshot_id(TEXT) | timestamp(TEXT) | file(TEXT) |
 
 ## 11. 下一步计划
 
-### 当前阶段：验证层建设
+### 当前阶段：验证层建设（Phase 0-3 已完成）
 
 1. **知识系统优化 P0**（见 `docs/knowledge-system-plan.md`）：
-   - [ ] captures 表加 session_id 字段 + 自动生成逻辑
-   - [ ] specmate_scan 响应末尾加历史统计段落
-   - [ ] specmate_scan 可选 task_name 参数
+   - [x] captures 表加 session_id 字段 + 自动生成逻辑（`ecce5d2`）
+   - [x] specmate_capture/resolve 响应嵌入历史统计段落（`f57d4ff`）
+   - [x] capture/check 去重 + auto-seed（`1dbb5d3`/`22afd56`）
 
-2. **trap 每日验证 pipeline**：
+2. **trap 每日验证 pipeline**（持续进行中）：
+   - [x] 12 条 TRAPS 数组条目全部通过代码验证 + fixture
    - [ ] 65 条 backlog，已验证 3 条，P0 剩余 5 条（fsm-2 / schedule-1 / schedule-2 / arbiter-1 / arbiter-2）
    - [ ] 每天至少验证 3 条，按 P0 → P1 → P2 消耗 backlog
 
 3. **MCP 路径校验**：
-   - [ ] 所有 7 个 MCP 工具入口需要绝对路径校验 + 明确错误返回
-   - [ ] 当前仅 specmate_check 和 specmate_analyze 实现了 validateFilePaths()
+   - [x] 所有 8 个 MCP 工具入口已实现 `validateFilePaths()` 绝对路径校验（`3d8b891`）
 
 4. **bench 实验重跑**：
-   - [ ] 用修复后的 specmate 重跑 04-priority-encoder 等基准实验
-   - [ ] 验证 P0 修复效果（特别是 P0005 UNIVERSAL_TRAPS 和 preflight AST 扫描）
+   - [ ] 用修复后的 specmate 重跑基准实验，验证 12 条已验证 trap + P0/P1/P2 知识盲区修复的效果
+
+5. **CI 自动化**：
+   - [x] husky pre-commit hook 已配置（`906c275`），自动运行 `npm test` + fixtures
+
+6. **Phase 2+3 新增能力**：
+   - [x] specmate_diagnose — 全量编译日志诊断（`eea5048`）
+   - [x] 知识管道冲突检测 + 知识审计脚本（`7ca2c60`）
+   - [x] P0/P1/P2 知识盲区修复（`15d1496`/`b1c5d4b`）
 
 ---
 
