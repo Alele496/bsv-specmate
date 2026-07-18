@@ -3,6 +3,7 @@
 # specmate 🤝
 
 [![npm version](https://img.shields.io/npm/v/bsv-specmate?style=flat-square)](https://www.npmjs.com/package/bsv-specmate)
+[![CI](https://github.com/Alele496/bsv-specmate/actions/workflows/knowledge-qa.yml/badge.svg)](https://github.com/Alele496/bsv-specmate/actions/workflows/knowledge-qa.yml)
 [![License](https://img.shields.io/github/license/Alele496/bsv-specmate?style=flat-square)](https://github.com/Alele496/bsv-specmate/blob/main/LICENSE)
 [![Node.js](https://img.shields.io/badge/runtime-Node.js%20%3E%3D18-green?style=flat-square&logo=node.js)](https://nodejs.org/)
 
