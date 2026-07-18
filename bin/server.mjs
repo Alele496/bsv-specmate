@@ -390,7 +390,7 @@ server.tool(
 
 server.tool(
     "specmate_analyze",
-    "接收 .bsv 文件路径 + 自然语言问题，返回 AST 结构分析（调度冲突/依赖图/调用图/寄存器分析等）。注意：不接收 BSC 编译输出——编译诊断请用 specmate_diagnose。不支持 BSC 内部错误（如 scanLinePosDirective），method-rule 调度冲突仅能识别不能修复，当前不检测 RAW 冲突。",
+    "纯代码结构审查（AST）：分析调度冲突、依赖图、调用图、寄存器追踪。⚠️ 不处理编译输出——编译诊断请用 specmate_diagnose。不支持 BSC 内部错误（如 scanLinePosDirective），method-rule 调度冲突仅能识别不能修复，当前不检测 RAW 冲突。",
     {
         files: z.array(z.string()).describe("要分析的 .bsv 文件路径列表"),
         question: z.string().describe("想问什么？如 '调度冲突分析' / '模块依赖图' / 'rule 调用关系' / '寄存器读写分析' / '第156行是什么'"),

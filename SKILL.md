@@ -133,18 +133,11 @@ specmate_diff(bsc_output="<新编译输出>", action="diff")
 
 ## 命令速查表
 
-| 命令 | 用途 | 通道 |
-|------|------|------|
-| `npx specmate scan "描述" [--file=xxx.bsv]` | 编码前全量扫描（陷阱+决策+预检+下一步建议） | CLI |
-| `npx specmate check <文件...>` | 编码后静态检查（位宽/Bool/冲突模式） | CLI |
-| `npx specmate example <关键词> [--dir=子目录]` | 搜索 BSC 官方示例 | CLI |
-| `specmate_guide(phase="on_error", input="错误")` | 编译错误诊断 | MCP |
-| `specmate_guide(phase="decide", input="A vs B")` | 设计选择对比 | MCP |
-| `specmate_guide(phase="pattern", input="关键词")` | 获取代码范式模板 | MCP |
-| `specmate_analyze(files=[...], question="...")` | 调度冲突/依赖关系深度分析 | MCP |
-| `specmate_resolve(code, cause, solution)` | 保存修复经验到知识库 | MCP |
-| `lookup_ref(topic="...")` | 查询参考文档 | MCP |
-| `specmate_capture(bsc_output="...", files=[...])` | 批量记录编译错误 | MCP |
+| 命令 | 用途 |
+|------|------|
+| `npx specmate scan "描述" [--file=xxx.bsv]` | 编码前全量扫描（陷阱+决策+预检+下一步建议） |
+| `npx specmate check <文件...>` | 编码后静态检查（位宽/Bool/冲突模式） |
+| `npx specmate example <关键词> [--dir=子目录]` | 搜索 BSC 官方示例 |
 
 ## 可选交互方式
 

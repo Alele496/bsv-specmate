@@ -4,15 +4,23 @@ on:
   push:
     branches: [master, main]
     paths:
-      - 'src/tools/_matcher.mjs'
-      - 'test/knowledge-validation.test.mjs'
+      - 'src/**'
+      - 'test/**'
+      - 'scripts/**'
+      - 'bin/**'
       - 'docs/errors/**'
+      - 'package.json'
+      - 'package-lock.json'
   pull_request:
     branches: [master, main]
     paths:
-      - 'src/tools/_matcher.mjs'
-      - 'test/knowledge-validation.test.mjs'
+      - 'src/**'
+      - 'test/**'
+      - 'scripts/**'
+      - 'bin/**'
       - 'docs/errors/**'
+      - 'package.json'
+      - 'package-lock.json'
   workflow_dispatch:
 
 jobs:
@@ -42,13 +50,35 @@ jobs:
 
   compile-fixtures:
     name: Compile Fixtures (BSC)
-    if: false  # 骨架 — 待 fixture 文件建好后启用
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/alexforencich/bsc:latest
     steps:
       - uses: actions/checkout@v4
-      - name: Compile fixtures
+      - name: Compile bsc-detectable trap fixtures
         run: |
-          echo "TODO: bsc compile test/fixtures/*.bsv"
-          echo "验证方式: 每个 fixture 对应一个 trap，编译应该触发预期的错误码"
+          cd test/fixtures/traps
+          # Verified bsc-detectable trap fixtures — each should produce expected error
+          echo "=== G0004: single rule, two Action methods on same submodule ==="
+          bsc -u -verilog -g mkTrapG0004 trap-g0004.bsv 2>&1 | grep -q "G0004" && echo "PASS: G0004 triggered" || (echo "FAIL: G0004 not triggered" && exit 1)
+
+          echo "=== G0053: mkReg with dynamic Wire expression ==="
+          bsc -u -verilog -g mkTrapG0053 trap-g0053.bsv 2>&1 | grep -q "G0053" && echo "PASS: G0053 triggered" || (echo "FAIL: G0053 not triggered" && exit 1)
+
+          echo "=== P0030: if-return in value method ==="
+          bsc -u -verilog -g mkTrapP0030 trap-p0030.bsv 2>&1 | grep -q "P0030" && echo "PASS: P0030 triggered" || (echo "FAIL: P0030 not triggered" && exit 1)
+
+          echo "=== P0005: function keyword in genWith ==="
+          bsc -u -verilog -g mkTrapP0005 trap-p0005.bsv 2>&1 | grep -q "P0005" && echo "PASS: P0005 triggered" || (echo "FAIL: P0005 not triggered" && exit 1)
+
+          echo "=== P0022: pragma on module method ==="
+          bsc -u -verilog -g mkTrapP0022 trap-p0022.bsv 2>&1 | grep -q "P0022" && echo "PASS: P0022 triggered" || (echo "FAIL: P0022 not triggered" && exit 1)
+
+          echo "=== vec-construction: T0004 ==="
+          bsc -u -verilog -g mkTrapVecConstruction trap-vec-construction.bsv 2>&1 | grep -q "T0004" && echo "PASS: T0004 triggered" || (echo "FAIL: T0004 not triggered" && exit 1)
+
+          echo "=== G0036: urgency warning ==="
+          bsc -u -verilog -g mkTrapG0036Urgency trap-g0036-urgency.bsv 2>&1 | grep -q "G0036" && echo "PASS: G0036 triggered" || (echo "FAIL: G0036 not triggered" && exit 1)
+
+          echo ""
+          echo "All 7 bsc-detectable trap fixtures verified."
