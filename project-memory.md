@@ -327,7 +327,7 @@ specmate 是 **Kova**（领域知识引擎框架）在 BSV 领域的第一个实
 - **TRAPS 统一知识基**：12 条已验证 trap（替代旧 UNIVERSAL_TRAPS 2 条），全部 `verified: true`，覆盖 P0030/P0005/Bool vs Bit/G0004/G0053/interface Bool/always_ready guard/P0022/Vector构造/PulseWire/urgency/跨时钟域
 - **GRAPH 节点**：30 个领域节点 — 22 个 traps 数组为空（知识体系重构后移除未验证内容），8 个节点已回填已验证 trap（fifo/fsm/schedule/arbiter/interrupt/gpio/crc/uart/spi/bram）。53 条未验证 trap 在 backlog 待推进
 - **trap 验证进度**：backlog 65 条，已验证 12 条 GRAPH trap（fifo-1/fsm-1/axi-1/fsm-2/schedule-1/arbiter-1/interrupt-2/gpio-2/crc-2/uart-1/spi-1/bram-1）+ 12 条已升至 TRAPS 数组（代码验证+fixture），P0 backlog 剩余 2 条（schedule-2/arbiter-2）
-- **check 规则**：17 条（10 always-on + 7 full-scan），含知识盲区修复（`15d1496`/`b1c5d4b`）新增的 P0-synthesize-order/P1-bool-bit-op/P1-bram-read/P1-regfile-read 等
+- **check 规则**：19 条（11 always-on + 8 full-scan），含知识盲区修复（`15d1496`/`b1c5d4b`）新增的 P0-synthesize-order/P1-bool-bit-op/P1-bram-read/P1-regfile-read 等
 - **CI 自动化**：husky pre-commit hook 已配置（`906c275`），自动运行 `npm test` + `node test/fixtures/run-fixtures.mjs`
 - **文档重组**：`3f6a93c` 将 5 篇历史文件归档至 `docs/archive/`，归并 blog 草稿至 `docs/articles/`，删除过期 health-check.md
 - **知识系统优化**：三个 P0 全部解决（自动 seed `1dbb5d3` / session 去重 `22afd56` / 统计指标 `f57d4ff`）。Phase 0-3 全部完成（session 管理 `ecce5d2` → 管道冲突检测 `7ca2c60` → diagnose 诊断 `eea5048`）
