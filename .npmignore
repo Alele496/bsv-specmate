@@ -1,0 +1,26 @@
+# Internal project docs (not user-facing)
+docs/council/
+docs/archive/
+docs/articles/
+docs/experiments/
+docs/SHOWDOWN.md
+docs/internal-overview.md
+docs/knowledge-system-plan.md
+docs/trap-verification-backlog.md
+docs/specmate-offline-traps.md
+
+# Examples — too large for npm package (4569 .bsv + 883 .bs files)
+examples/
+
+# Test data (430KB, not needed at runtime)
+data/testsuite-errors.json
+
+# Dev-only files
+test/
+scripts/
+.husky/
+.gitattributes
+.gitignore
+project-memory.md
+CLAUDE.md
+SKILL.md
