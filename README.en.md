@@ -12,9 +12,9 @@ AI writes Python like a champ. BSV? Hit compile and your screen turns red. It's 
 
 And the worst part: every compilation error is a one-off. Switch agents, step on the same landmines, all over again.
 
-**specmate fixes this.** It doesn't compile your code — it flags the potholes before you drive over them. 18 Coding Memory entries (SQLite-backed, auto-increment on hit, high-frequency first), 13 language reference topics, 18 static check rules, 5 coding styles, 4,570 official test suite examples. It sits behind your AI agent via MCP and whispers: "Hey — G0010. The last three agents tripped on this exact thing."
+**specmate fixes this.** It doesn't compile your code — it flags the potholes before you drive over them. 29 Coding Memory entries (SQLite-backed, auto-increment on hit, high-frequency first), 14 language reference topics, 19 static check rules, 30 domain knowledge graph nodes, 4,570 official test suite examples. It sits behind your AI agent via MCP (8 tools) and whispers: "Hey — G0010. The last three agents tripped on this exact thing."
 
-> specmate is the first domain mate of **Kova** (Knowledge Vault), a domain knowledge engine framework. Core architecture = DKE (Domain Knowledge Engine) + Coding Memory + Constraint Chain + Role Activation. See **[Kova →](https://github.com/Alele496/kova)** and `docs/collaboration.md`.
+> specmate is the first domain mate of **Kova** (Knowledge Vault), a domain knowledge engine framework. Core architecture = DKE (Domain Knowledge Engine) + Coding Memory + Constraint Chain + Role Activation. See **[Kova →](https://github.com/Alele496/kova)** and `docs/archive/collaboration.md`.
 
 ## 🤔 Why specmate
 
@@ -36,16 +36,19 @@ You write BSV → specmate looks at what you're about to build, predicts where y
 
 | Feature | Description | Tool |
 |---------|-------------|------|
-| **🧠 Knowledge Guide** | 4 phases. Agent describes the situation, specmate routes internally — Coding Memory, reference docs, domain knowledge graph | `specmate_guide` |
-| **🔍 Pre-compile Checkup** | 18 rules scanning .bsv: method order, Bool operator misuse, SV reserved word conflicts, literal overflow, argument count mismatch, struct field typos... No bsc, pure static | `specmate_check` |
-| **✍️ Learning from Pain** | New errors auto-stored. Same error code = hit count +1. High frequency rises to the top. Agent trips once, specmate remembers forever | `specmate_learn` |
+| **🧠 Knowledge Scan** | Unified entry point: pre-code trap warnings + AST pre-scan + design decision suggestions + next-step recommendations | `specmate_scan` |
+| **🔍 Pre-compile Checkup** | 19 rules scanning .bsv: method order, Bool operator misuse, SV reserved word conflicts, literal overflow, interface Bool return, always_ready misuse... No bsc, pure static | `specmate_check` |
+| **✍️ Learning from Pain** | bsc compile error → `specmate_capture` auto-parses error codes into DB → fix → `specmate_resolve` solidifies the fix. Auto-reminds when same error code reappears | `specmate_capture` + `specmate_resolve` |
+| **🔬 Code Structure Review** | tree-sitter real BSV AST parsing: schedule conflict matrix, cross-rule conflicts, dependency graph, call graph, register analysis. Does NOT process compiler output | `specmate_analyze` |
+| **🏥 Full Diagnostics** | Feed in BSC's complete compile output, batch-diagnose all errors/warnings in one call, match each against knowledge base for root cause + fix | `specmate_diagnose` |
+| **🔎 Warning Tracking** | Snapshot warning baselines, diff between two snapshots (new/eliminated/persistent) | `specmate_diff` |
 | **🎛️ Three Development Modes** | `verify` (zero-push, rapid iteration) / `develop` (pre-code trap warnings) / `tapeout` (full guard at delivery). Same tools, different intervention — based on where your code is headed | `SPECMATE_LEVEL` |
-| **📦 Zero Config** | `npm install -g` + three lines of JSON. Agent auto-discovers MCP tools | — |
+| **📦 Zero Config** | `npm install` + three lines of JSON. `npm run db:seed` to init knowledge base. Agent auto-discovers MCP tools | — |
 | **💾 Persistence** | SQLite stores at `~/.specmate/`. Switch machines, switch agents — memory stays | — |
 
 - 🚀 [Quick Start](#-quick-start)
 - 🛠 [Local Development](#-local-development)
-- 📖 [Tutorial → docs/TUTORIAL.md](./docs/TUTORIAL.md)
+- 📖 [Tutorial → docs/archive/TUTORIAL.md](./docs/archive/TUTORIAL.md)
 - 🇨🇳 [中文 → README.md](./README.md)
 
 ---
@@ -123,7 +126,7 @@ Three follow-up rounds (SPI, AXI-Stream, CRC-8) validated two new insights:
 
 | Scenario | Best Mode | Template | Effect |
 |----------|-----------|----------|--------|
-| **New module / large project** | 🤝 **Collaboration** (Supervisor + Developer) | [docs/collaboration.md](docs/collaboration.md) | Highest pass rate, -47% coding time |
+| **New module / large project** | 🤝 **Collaboration** (Supervisor + Developer) | [docs/archive/collaboration.md](docs/archive/collaboration.md) | Highest pass rate, -47% coding time |
 | **Quick fix / small change** | 🔧 **Solo** (single agent) | [examples/templates/](examples/templates/) | Lightweight, minimal AGENTS.md |
 
 **How to pick**:
@@ -295,46 +298,51 @@ node bin/server.mjs
 
 ```
 bsv-specmate/
-├── AGENTS.md              ← Agent usage manual (tools + 4-phase workflow)
-├── README.md              ← 中文版
+├── AGENTS.md              ← Agent usage manual (MCP-based workflow)
+├── README.md              ← Chinese version
 ├── README.en.md           ← English (you are here)
+├── SKILL.md               ← Agent interaction quick reference (8 scenarios)
 ├── package.json
 ├── bin/
-│   └── server.mjs         ← MCP Server entry point, registers all tools
+│   ├── server.mjs         ← MCP Server entry point, registers 8 MCP tools
+│   └── cli.mjs            ← CLI entry point (npx specmate scan/check, human-only)
 ├── src/
-│   ├── config.mjs         ← Path resolution + LEVEL config
+│   ├── config.mjs         ← SPECMATE_LEVEL config + data directory management
+│   ├── notify.mjs         ← MCP notification bridge
 │   ├── db/
-│   │   ├── schema.mjs     ← SQLite schema + queries
-│   │   ├── seed.mjs       ← Markdown → SQLite
-│   │   ├── export.mjs     ← SQLite → Markdown
-│   │   └── query.mjs      ← DB query wrapper
+│   │   ├── schema.mjs     ← SQLite schema + session management
+│   │   ├── query.mjs      ← DB query wrapper + auto-seed (auto-inits empty DB)
+│   │   ├── seed.mjs       ← db:seed script — Markdown → SQLite (idempotent)
+│   │   ├── export.mjs     ← db:export script — SQLite → Markdown
+│   │   └── parser.mjs     ← Error Markdown file parser
 │   └── tools/
-│       ├── specmate_guide.mjs  ← Knowledge routing engine (4 phases)
-│       ├── _matcher.mjs        ← Knowledge graph (22 domain nodes)
-│       ├── specmate_learn.mjs   ← Coding memory entry
-│       ├── check_style.mjs     ← Static checker (18 rules)
-│       ├── lookup_error.mjs    ← Error lookup (internal)
-│       ├── lookup_ref.mjs      ← Reference docs (internal)
-│       ├── lookup_example.mjs  ← Example search (internal)
-│       ├── coding_rules.mjs    ← Coding constraints (internal)
-│       ├── preflight.mjs       ← Pre-coding preview (internal)
-│       ├── suggest.mjs         ← Tool suggestions (internal)
-│       └── add_error.mjs       ← Error contribution (internal)
-├── scripts/
-│   └── parse-testsuite.mjs ← BSC test suite error code extractor
+│       ├── specmate_guide.mjs  ← Core tool: scan() unified entry + guide phases
+│       ├── _matcher.mjs        ← Knowledge graph (30 domain nodes + 12 verified traps)
+│       ├── _patterns.mjs       ← BSV code pattern templates (15)
+│       ├── check_style.mjs     ← specmate_check backend (19 rules)
+│       ├── preflight.mjs       ← Pre-compile AST scanning (6 high-frequency error patterns)
+│       ├── ast_query.mjs       ← tree-sitter BSV parser (10+ analysis types)
+│       ├── specmate_diagnose.mjs  ← Full compile log diagnostics
+│       ├── knowledge_snapshot.mjs ← Offline knowledge snapshot export
+│       └── ...                 ← Internal helper modules
+├── test/
+│   └── fixtures/
+│       ├── check/          ← Check rule pass/fail fixtures
+│       ├── traps/          ← Trap verification fixtures (12 verified)
+│       └── run-fixtures.mjs ← Fixture CI script
 ├── data/
-│   ├── knowledge.db        ← Seed DB (18 coding memories)
-│   └── testsuite-errors.json ← Test suite error index (255 codes)
+│   ├── knowledge.db        ← Seed DB (26 error codes)
+│   └── testsuite-errors.json ← Test suite error index
 ├── docs/
-│   ├── BSV-STYLE.md       ← BSV coding conventions
-│   ├── collaboration.md   ← Collaboration model
-│   ├── TUTORIAL.md        ← Usage tutorial
-│   ├── MAINTAINER.md      ← Maintenance guide
-│   ├── errors/            ← Coding Memory docs (18 entries)
-│   └── reference/         ← BSV language reference (13 topics)
+│   ├── getting-started.md  ← Getting started guide
+│   ├── agent-integration.md ← Agent integration manual
+│   ├── architecture.md     ← Architecture decision document
+│   ├── internal-overview.md ← Internal architecture overview
+│   ├── errors/             ← Coding Memory docs (26 entries)
+│   └── reference/          ← BSV language reference (14 topics)
 └── examples/
     ├── bsv/               ← BSC official test suite (4,570 .bsv)
-    └── bs/                ← Bluespec Classic legacy (reference only)
+    └── templates/          ← Project templates (AGENTS.md etc.)
 ```
 
 ---
@@ -370,7 +378,7 @@ Custom path:
 
 ## 🤝 Contributing
 
-1. Agent hits a new compilation error → call `specmate_learn` to store it
+1. Agent hits a new compilation error → call `specmate_capture` to record + `specmate_resolve` to persist the fix
 2. Run `npm run db:export` to export Markdown
 3. Submit a PR to merge new errors back to the main repo
 

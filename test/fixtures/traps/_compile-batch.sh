@@ -1,7 +1,7 @@
 #!/bin/bash
 # Batch compile all 9 new trap fixtures (2026-07-18 daily verification)
-export PATH=/home/seek_kinetic/projects/myproject/MIT-tools/bsc/bsc-2025.07-ubuntu-22.04/bin:$PATH
-cd /mnt/d/Desktop/bsv-agent/bsv-agent-server
+export PATH=${BSC_HOME:-/path/to/bsc}/bin:$PATH
+cd "$(dirname "$0")/../../.."
 
 FIXTURES=(
   "fsm-2|mkTrapFsm2"

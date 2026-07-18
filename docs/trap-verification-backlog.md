@@ -11,7 +11,7 @@
 每条 trap 验证通过（从 backlog 迁移回 `_matcher.mjs`）必须满足：
 
 1. **建 `test/fixtures/traps/<node>-<seq>.bsv`** — 最小 BSV 示例（不超过 30 行），演示 trap 描述的场景
-2. **bsc 2025.07 编译通过，生成 .v 文件** — 编译命令：`wsl -e bash -c 'export PATH=/home/seek_kinetic/projects/myproject/MIT-tools/bsc/bsc-2025.07-ubuntu-22.04/bin:$PATH && cd /mnt/d/Desktop/bsv-agent/bsv-agent-server && bsc -u -verilog -g <topModule> test/fixtures/traps/<node>-<seq>.bsv'`
+2. **bsc 2025.07 编译通过，生成 .v 文件** — 编译命令：`wsl -e bash -c 'export PATH={BSC_PATH}/bin:$PATH && cd {PROJECT_ROOT} && bsc -u -verilog -g <topModule> test/fixtures/traps/<node>-<seq>.bsv'`
 3. **trap 的 severity/phase 字段审查通过** — severity（hard/quality/style）和 phase（design/code/both）与实际场景匹配
 4. **`_matcher.mjs` 中 verified 改为 true，添加 verifiedAt 字段** — 格式：`verified: true, verifiedAt: '2026-07-XX'`
 5. **showFilter 自动放行** — trap 重新出现在 Agent 输出中（`formatTrapsOutput()` 中 `showFilter` 只过滤 `verified !== false` 的条目）

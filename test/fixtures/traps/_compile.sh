@@ -1,7 +1,7 @@
 #!/bin/bash
 # Compile both trap fixtures for 2026-07-14 daily verification
-export PATH=/home/seek_kinetic/projects/myproject/MIT-tools/bsc/bsc-2025.07-ubuntu-22.04/bin:$PATH
-cd /mnt/d/Desktop/bsv-agent/bsv-agent-server
+export PATH=${BSC_HOME:-/path/to/bsc}/bin:$PATH
+cd "$(dirname "$0")/../../.."
 
 echo "=== Compiling fsm-1 ==="
 bsc -u -verilog -g mkFsm1Test test/fixtures/traps/fsm-1.bsv 2>&1

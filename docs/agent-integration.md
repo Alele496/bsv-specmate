@@ -16,7 +16,9 @@
 
 ## 2. MCP 工具速查表
 
-你作为 Agent，通过 MCP 协议调用以下 7 个工具。所有工具都需要**绝对路径**——相对路径会静默失败，不会报错，但你拿到的是空结果。
+你作为 Agent，通过 MCP 协议调用以下 8 个工具。所有工具都需要**绝对路径**——相对路径会静默失败，不会报错，但你拿到的是空结果。
+
+**议会 S02E03 裁定（2026-07-14）：`specmate_diagnose` 为推荐诊断入口**——当 bsc 编译输出包含多个错误码时，优先使用 `specmate_diagnose` 批量诊断，而非逐个调 `specmate_guide(on_error)`。
 
 ### 2.1 specmate_scan — 【推荐入口】统一预编码检查
 
@@ -45,6 +47,21 @@
 ### 2.7 specmate_diff — Warning 变化追踪
 
 详见 MCP 工具定义 `specmate_diff` 中的 description 字段。
+
+### 2.8 specmate_diagnose — 编译日志全量诊断
+
+详见 MCP 工具定义 `specmate_diagnose` 中的 description 字段。
+
+**使用时机**：bsc 编译输出包含多个错误码时（如 P0005 + G0004 + G0010 同时出现），一次性传入完整编译输出，specmate 会逐个匹配知识库，返回每个错误码的根因分析和修复方案。
+
+**调用示例**：
+```
+specmate_diagnose({ bsc_output: "<bsc 完整编译输出>" })
+```
+
+**与 specmate_guide(on_error) 的区别**：
+- `specmate_diagnose`：批量处理，一次搞定所有错误码。推荐优先使用。
+- `specmate_guide(on_error)`：单错误码逐个诊断。仅当你只想了解某个特定错误时使用。
 
 ---
 
@@ -92,12 +109,13 @@
 ```
 bsc 编译失败，输出包含错误码
   │
-  ├── 步骤 4: specmate_capture({ bsc_output: "<bsc 完整输出>" })
-  │   记录错误码到项目记忆
+  ├── 步骤 4: specmate_diagnose({ bsc_output: "<bsc 完整输出>" }) ⭐ 推荐
+  │   或: specmate_capture({ bsc_output: "<bsc 完整输出>" })
+  │   批量诊断所有错误码，获取每个错误的根因 + 修复方案
   │   ↓
-  ├── 步骤 5 (可选): specmate_guide({ phase: "on_error", input: "<错误码>" })
+  ├── 步骤 5 (可选): specmate_guide({ phase: "on_error", input: "<单个错误码>" })
   │   或: specmate_analyze({ files: ["<路径>"], question: "为什么有这个调度冲突" })
-  │   获取根因分析和修复建议
+  │   针对特定错误码的深入分析
   │   ↓
   ├── 根据 specmate 的建议修复代码
   │   ↓
@@ -130,7 +148,8 @@ bsc 编译失败，输出包含错误码
 | 刚接到任务，还没写代码 | `specmate_scan` |
 | 写完代码，准备编译 | `specmate_check` |
 | 代码逻辑复杂，想理解 structure | `specmate_analyze` |
-| 编译器爆红 | `specmate_capture` + `specmate_guide(on_error)` |
+| 编译器爆红（多个错误码） | `specmate_diagnose` ⭐ 优先 → `specmate_capture` + 修复 → `specmate_resolve` |
+| 编译器爆红（单个错误码） | `specmate_capture` + `specmate_guide(on_error)` |
 | 修好了，编译通过 | `specmate_resolve` |
 | 想知道修完 warning 变多还是变少 | `specmate_diff(snapshot)` → 改 → `specmate_diff(diff)` |
 

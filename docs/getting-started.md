@@ -91,7 +91,7 @@ npm test
   "mcpServers": {
     "bsv-specmate": {
       "command": "node",
-      "args": ["D:/Desktop/bsv-agent/bsv-agent-server/bin/server.mjs"],
+      "args": ["/path/to/bsv-specmate/bin/server.mjs"],
       "env": {
         "SPECMATE_LEVEL": "develop"
       }
@@ -105,7 +105,7 @@ npm test
 2. `SPECMATE_LEVEL` 有三个选项：`verify`（不说话，Agent 问才答）、`develop`（默认，编码前主动提醒陷阱）、`tapeout`（全量守护，交付前用）。新手用 `develop` 就行。
 3. 传输模式默认是 stdio——Claude Code 会自动启动和关闭 specmate 进程，你不需要手动启动。
 
-配置完，重启 Claude Code（关闭并重新打开你的项目目录）。Agent 就会自动发现 specmate 的 7 个 MCP 工具。
+配置完，重启 Claude Code（关闭并重新打开你的项目目录）。Agent 就会自动发现 specmate 的 8 个 MCP 工具。
 
 > **验证 MCP 是否生效**：打开 Claude Code 对话，输入 `mcp__bsv-specmate__specmate_scan task="test"`，如果返回内容说明配置成功。
 
