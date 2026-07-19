@@ -132,18 +132,10 @@ export async function runBSC(opts = {}) {
         cwd = cwd_;
     } else if (bscInfo.type === 'docker') {
         // Docker fallback (子任务 2.3)
-        const isWindows = platform() === 'win32';
-        // On Windows, use forward slashes and /$(pwd) equivalent
         const workdir = '/workspace';
         const resolvedFiles = files.map(f => resolve(f).replace(/\\/g, '/'));
-        const resolvedFilesDocker = resolvedFiles.map(f => {
-            // Map Windows drive letter to Docker path
-            if (isWindows && f.match(/^[A-Za-z]:/)) {
-                // Mount the project root as /workspace
-                return workdir + '/' + f.replace(/^[A-Za-z]:/, '').replace(/\\/g, '/').replace(/^\//, '');
-            }
-            return f;
-        });
+        // Normalize file paths for identity-safe comparison
+        const normalizedFiles = files.map(f => resolve(f));
 
         cmd = 'docker';
         cmdArgs = [
@@ -153,9 +145,9 @@ export async function runBSC(opts = {}) {
             'ghcr.io/alexforencich/bsc:latest',
             'bsc',
             ...args.map(a => {
-                // Translate file paths for Docker
-                if (files.includes(a)) {
-                    const idx = files.indexOf(a);
+                // Translate file paths for Docker (use resolve() for safe comparison)
+                if (normalizedFiles.includes(resolve(a))) {
+                    const idx = normalizedFiles.indexOf(resolve(a));
                     return workdir + '/' + resolvedFiles[idx].replace(/^[A-Za-z]:/, '').replace(/\\/g, '/').replace(/^\//, '');
                 }
                 return a;

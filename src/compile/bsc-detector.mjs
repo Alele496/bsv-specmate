@@ -23,6 +23,7 @@ export function detectBSC() {
     if (_cached) return _cached;
 
     const isWindows = platform() === 'win32';
+    const nullDevice = isWindows ? 'nul' : '/dev/null';
 
     // Strategy 1: Check native bsc
     try {
@@ -51,7 +52,7 @@ export function detectBSC() {
 
         // Check if bsc image is available
         const imageCheck = execSync(
-            'docker images --format "{{.Repository}}:{{.Tag}}" ghcr.io/alexforencich/bsc 2>nul',
+            `docker images --format "{{.Repository}}:{{.Tag}}" ghcr.io/alexforencich/bsc 2>${nullDevice}`,
             { encoding: 'utf-8', timeout: 5000, stdio: 'pipe', shell: true }
         ).trim();
 
