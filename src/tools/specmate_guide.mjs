@@ -1,6 +1,6 @@
 import { extractKeywords, match, filterTrapsByMode, filterTrapsByPhase, formatTrapsOutput, inferPhase, TRAPS } from './_matcher.mjs';
 import { searchPatterns } from './_patterns.mjs';
-import { queryError, queryAllErrors, queryTopRules, queryHotTopics, hitError, addCapture, queryRecentCaptures } from '../db/query.mjs';
+import { queryError, queryAllErrors, queryTopRules, queryHotTopics, hitError, addCapture, queryRecentCaptures, getLatestCaptureByCode } from '../db/query.mjs';
 import { lookupRef } from './lookup_ref.mjs';
 import { getLevel, LEVEL_LIMITS } from '../config.mjs';
 import { parseFile, queryNodeAt } from './ast_query.mjs';
@@ -132,17 +132,71 @@ async function onError(input, level, cfg) {
         if (LEVEL_LIMITS[level].mode === 'passive') {
             return `错误码 "${code}" 未收录。提升 SPECMATE_LEVEL 查看相似条目。`;
         }
-        const all = await queryAllErrors();
-        const candidates = all.filter(e =>
-            e.keywords?.toLowerCase().includes(code.toLowerCase()) ||
-            e.title?.toLowerCase().includes(code.toLowerCase())
-        ).slice(0, 3);
-        if (candidates.length > 0) {
-            return `错误码 "${code}" 未找到。相近条目:\n` +
-                candidates.map(c => `  ${c.code}: ${c.title}`).join('\n') +
-                '\n\n如果确实是新错误: specmate_capture(bsc_output="<完整 bsc 输出>")';
+
+        // ── Q3 Direction 3.6: Check captures table for previously resolved entries ──
+        // This closes the loop: "unknown → LLM reasoning → capture → next time known"
+        try {
+            const latestCapture = await getLatestCaptureByCode(code);
+            if (latestCapture && latestCapture.cause && latestCapture.solution) {
+                // Previously captured and resolved — return the captured knowledge
+                let captureResult = [
+                    `## ${code} — 来自历史捕获记录`,
+                    '',
+                    '> ⚠️ 此错误码不在知识库中，但在之前的任务中被 Agent 捕获并解决了。',
+                    '',
+                    '### 原因',
+                    latestCapture.cause,
+                    '',
+                    '### 解决方案',
+                    latestCapture.solution,
+                    '',
+                    `🏷 最近捕获: ${latestCapture.timestamp || '未知时间'} | status: ${latestCapture.status || 'unknown'}`,
+                ];
+
+                // Also check for similar known errors
+                try {
+                    const { findSimilarErrors } = await import('./_similarity.mjs');
+                    const similar = findSimilarErrors(code, input);
+                    if (similar.length > 0) {
+                        captureResult.push('');
+                        captureResult.push('### 参考已知错误');
+                        for (const se of similar.slice(0, 2)) {
+                            captureResult.push(`- \`${se.code}\`: ${se.title}`);
+                        }
+                    }
+                } catch (_) { /* non-critical */ }
+
+                return captureResult.join('\n');
+            }
+        } catch (_) { /* capture lookup failed, fall through to similarity */ }
+
+        // ── Q3 Direction 3.4: Unknown error — similarity matching + LLM guidance ──
+        try {
+            const { findSimilarErrors } = await import('./_similarity.mjs');
+            const { buildUnknownErrorResponse } = await import('./_context.mjs');
+
+            const similarErrors = findSimilarErrors(code, input);
+            const response = buildUnknownErrorResponse({
+                errorCode: code,
+                errorMessage: input,
+                similarErrors,
+                sourceContext: null, // on_error doesn't have file context by default
+            });
+            return response;
+        } catch (_) {
+            // Fallback: old behavior
+            const all = await queryAllErrors();
+            const candidates = all.filter(e =>
+                e.keywords?.toLowerCase().includes(code.toLowerCase()) ||
+                e.title?.toLowerCase().includes(code.toLowerCase())
+            ).slice(0, 3);
+            if (candidates.length > 0) {
+                return `错误码 "${code}" 未找到。相近条目:\n` +
+                    candidates.map(c => `  ${c.code}: ${c.title}`).join('\n') +
+                    '\n\n如果确实是新错误: specmate_capture(bsc_output="<完整 bsc 输出>")';
+            }
+            return `错误码 "${code}" 未找到。如果是新错误，用 specmate_capture 记录编译输出。`;
         }
-        return `错误码 "${code}" 未找到。如果是新错误，用 specmate_capture 记录编译输出。`;
     }
 
     if (LEVEL_LIMITS[level].mode === 'passive') {

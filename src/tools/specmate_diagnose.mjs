@@ -347,11 +347,24 @@ export async function diagnose(bscOutput, sessionId, files = null) {
         lines.push('');
     }
 
-    // ── 未知错误码 ──
+    // ── 未知错误码（Q3 Direction 3: similarity matching + LLM guidance）──
     if (unknownCodes.length > 0) {
+        // Lazy-load similarity module
+        let findSimilarErrors = null;
+        let extractSourceContext = null;
+        try {
+            const simMod = await import('./_similarity.mjs');
+            findSimilarErrors = simMod.findSimilarErrors;
+            const ctxMod = await import('./_context.mjs');
+            extractSourceContext = ctxMod.extractSourceContext;
+        } catch (_) { /* similarity matching is non-critical */ }
+
         lines.push('---');
         lines.push('');
-        lines.push('### 知识库未覆盖');
+        lines.push('### 知识库未覆盖（需要 LLM 分析）');
+        lines.push('');
+        lines.push('以下错误码不在 specmate 知识库中。请使用你的 LLM 推理能力分析根因，');
+        lines.push('修复后调 `specmate_capture` + `specmate_resolve` 入库，下次同样错误直接命中。');
         lines.push('');
 
         for (const code of unknownCodes) {
@@ -378,14 +391,49 @@ export async function diagnose(bscOutput, sessionId, files = null) {
             lines.push(`- **位置**: ${locStr}`);
             lines.push(`- **消息示例**: "${sampleMsg}"`);
 
+            // ── Q3: Similarity matching for few-shot context ──
+            if (findSimilarErrors) {
+                try {
+                    const similar = findSimilarErrors(code, sampleMsg);
+                    if (similar.length > 0) {
+                        lines.push(`- **参考已知错误**:`);
+                        for (const se of similar.slice(0, 2)) {
+                            lines.push(`  - \`${se.code}\`: ${se.title} (相似度 ${(se.score * 100).toFixed(0)}%)`);
+                        }
+                    }
+                } catch (_) { /* non-critical */ }
+            }
+
+            // ── Q3: Source context for the first occurrence ──
+            if (extractSourceContext && files && files.length > 0) {
+                try {
+                    const firstEntry = groupEntries[0];
+                    if (firstEntry.file && firstEntry.line) {
+                        const filePath = files.find(f =>
+                            (typeof f === 'string' ? f : f.text || '').includes(firstEntry.file));
+                        if (filePath) {
+                            const ctxPath = typeof filePath === 'string' ? filePath : filePath.text;
+                            const ctx = extractSourceContext(ctxPath, firstEntry.line, 6);
+                            if (ctx && ctx.text) {
+                                lines.push(`- **源码上下文** (\`${firstEntry.file}:${firstEntry.line}\`):`);
+                                lines.push('  ```bsv');
+                                lines.push(ctx.text.split('\n').map(l => '  ' + l).join('\n'));
+                                lines.push('  ```');
+                            }
+                        }
+                    }
+                } catch (_) { /* context extraction is non-critical */ }
+            }
+
             // 跨 session 统计
             const stats = statsResults.get(code);
             if (stats && stats.totalCount > 0) {
                 lines.push(`- **历史**: 累计 ${stats.totalCount} 次（跨 ${stats.sessionCount} 个 session）`);
             }
 
-            lines.push(`- **建议**: 调 \`mcp__bsv-specmate__specmate_capture\` 记录后联系维护者`);
-            lines.push(`- **后续**: 修复后调 \`mcp__bsv-specmate__specmate_resolve(code="${code}", cause="...", solution="...")\` 固化经验`);
+            lines.push(`- **分析要求**: 请根据以上上下文，推理${code}的根因和修复方案。`);
+            lines.push(`- **入库**: 调 \`specmate_capture(code="${code}", cause="<根因>", solution="<修复方案>")\` 记录`);
+            lines.push(`- **固化**: 调 \`specmate_resolve(code="${code}", cause="<根因>", solution="<修复方案>")\` 固化经验`);
             lines.push('');
         }
     }
