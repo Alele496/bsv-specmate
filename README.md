@@ -6,11 +6,11 @@
 [![CI](https://github.com/Alele496/bsv-specmate/actions/workflows/knowledge-qa.yml/badge.svg)](https://github.com/Alele496/bsv-specmate/actions/workflows/knowledge-qa.yml)
 [![License](https://img.shields.io/github/license/Alele496/bsv-specmate?style=flat-square)](https://github.com/Alele496/bsv-specmate/blob/main/LICENSE)
 [![Node.js](https://img.shields.io/badge/runtime-Node.js%20%3E%3D18-green?style=flat-square&logo=node.js)](https://nodejs.org/)
-[![Site](https://img.shields.io/badge/Product%20Showcase-alele496.github.io-6366f1?style=flat-square)](https://alele496.github.io/bsv-specmate/site/)
+[![Site](https://img.shields.io/badge/产品展示-alele496.github.io-6366f1?style=flat-square)](https://alele496.github.io/bsv-specmate/site/)
 
 > BSV 终于有个 mate 了——一个懂 BSV、记得住你的翻车现场、会在编译前喊你看路的编码搭子。
 
-**[安装](#安装) &bull; [工具](#工具) &bull; [工作流](#工作流) &bull; [效果](#效果) &bull; [状态](#状态) &bull; [结构](#结构) &bull; [文档](#文档)**
+**[安装](#安装) &bull; [工具](#工具) &bull; [工作流](#工作流) &bull; [效果](#效果) &bull; [状态](#状态) &bull; [结构](#结构) &bull; [文档](#文档) &bull; [站点](https://alele496.github.io/bsv-specmate/site/)**
 
 </div>
 
