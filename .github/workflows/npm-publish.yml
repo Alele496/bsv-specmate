@@ -70,7 +70,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 18
-          registry-url: https://npm.pkg.github.com
       - run: npm ci
       - name: Verify version consistency
         run: |
@@ -84,11 +83,17 @@ jobs:
             echo "Expected version $TAG_VERSION != package.json version $PKG_VERSION"
             exit 1
           fi
-      - name: Publish to GitHub Packages
+      - name: Set scoped package name
+        run: node -e "const p=require('./package.json');p.name='@Alele496/bsv-specmate';require('fs').writeFileSync('package.json',JSON.stringify(p,null,2))"
+      - name: Verify package name changed
+        run: node -e "const n=require('./package.json').name;console.log('name:',n);if(n!=='@Alele496/bsv-specmate')process.exit(1)"
+      - name: Configure .npmrc
         run: |
-          node -e "const p=require('./package.json');p.name='@Alele496/bsv-specmate';require('fs').writeFileSync('package.json',JSON.stringify(p,null,2))"
           echo "@Alele496:registry=https://npm.pkg.github.com/" > .npmrc
           echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
-          npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish
+        run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
