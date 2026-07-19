@@ -2,7 +2,7 @@ import { readFileSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import initSqlJs from 'sql.js';
 import { initDataDir, getDBPath } from '../config.mjs';
-import { initDB, insertError, getError, getAllErrors, getTopRules, searchErrors, incrementCount, getHotTopics, incrementRefHit, insertCapture, upsertCapture, resolveCapture, getCapturesByCode, getRecentCaptures, getUnresolvedCaptures, getLatestUnresolvedByCode, insertWarning, getWarningsBySnapshot, getLatestSnapshots, createSession, endSession, getSessionStats, getStubbornErrors, getFixRate, getErrorCodeStats, getTopErrorCodes, getFileTopErrors, getUnresolvedCount, getClusteredCaptures, setCaptureReviewStatus, getAllCapturesByCode, setSessionPhase, getSessionPhase, CAPTURES_DDL } from './schema.mjs';
+import { initDB, insertError, getError, getAllErrors, getTopRules, searchErrors, incrementCount, getHotTopics, incrementRefHit, insertCapture, upsertCapture, resolveCapture, getCapturesByCode, getRecentCaptures, getUnresolvedCaptures, getLatestUnresolvedByCode, insertWarning, getWarningsBySnapshot, getLatestSnapshots, createSession, endSession, getSessionStats, getStubbornErrors, getFixRate, getErrorCodeStats, getTopErrorCodes, getFileTopErrors, getUnresolvedCount, getClusteredCaptures, setCaptureReviewStatus, getAllCapturesByCode, setSessionPhase, getSessionPhase, getReportSummary, getErrorTrend, getFileHotspots, getFixRateTrend, getKnowledgeGrowth, getWeeklyTopErrors, CAPTURES_DDL } from './schema.mjs';
 import { collectErrorFiles, parseErrorFile } from './parser.mjs';
 
 let _db = null;
@@ -495,6 +495,38 @@ export async function rejectCapturesByCode(code) {
 export async function queryAllCapturesByCode(code) {
     const db = await ensureDB();
     return getAllCapturesByCode(db, code);
+}
+
+// ── Q4: cross-session advanced analytics (specmate_report) ──
+
+export async function queryReportSummary() {
+    const db = await ensureDB();
+    return getReportSummary(db);
+}
+
+export async function queryErrorTrend({ granularity = 'week', topN = 5 }) {
+    const db = await ensureDB();
+    return getErrorTrend(db, { granularity, topN });
+}
+
+export async function queryFileHotspots(limit = 10) {
+    const db = await ensureDB();
+    return getFileHotspots(db, limit);
+}
+
+export async function queryFixRateTrend() {
+    const db = await ensureDB();
+    return getFixRateTrend(db);
+}
+
+export async function queryKnowledgeGrowth() {
+    const db = await ensureDB();
+    return getKnowledgeGrowth(db);
+}
+
+export async function queryWeeklyTopErrors(topN = 5, weeks = 4) {
+    const db = await ensureDB();
+    return getWeeklyTopErrors(db, topN, weeks);
 }
 
 export function closeDB() {

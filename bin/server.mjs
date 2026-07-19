@@ -10,7 +10,7 @@ import { checkStyle } from "../src/tools/check_style.mjs";
 import { guide, scan } from "../src/tools/specmate_guide.mjs";
 // specmate_learn.mjs import removed — deprecated. add_error.mjs retained for db:seed script only.
 import { getLevel, LEVEL_LIMITS } from "../src/config.mjs";
-import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots, ensureSession, getSessionId, endCurrentSession, querySessionStats, queryStubbornErrors, queryFixRate, queryErrorCodeStats, queryTopErrorCodes, queryUnresolvedCount, queryUnresolvedCaptures, queryFileTopErrors, queryClusteredCaptures, getCurrentSessionPhase, setCurrentSessionPhase } from "../src/db/query.mjs";
+import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots, ensureSession, getSessionId, endCurrentSession, querySessionStats, queryStubbornErrors, queryFixRate, queryErrorCodeStats, queryTopErrorCodes, queryUnresolvedCount, queryUnresolvedCaptures, queryFileTopErrors, queryClusteredCaptures, getCurrentSessionPhase, setCurrentSessionPhase, queryReportSummary, queryErrorTrend, queryFileHotspots, queryFixRateTrend, queryKnowledgeGrowth, queryWeeklyTopErrors } from "../src/db/query.mjs";
 import { resolvePhase } from "../src/elicitation/elicit-phase.mjs";
 import { parseBSCWarnings } from "../src/tools/warning_diff.mjs";
 import { diagnose, diagnoseStream } from "../src/tools/specmate_diagnose.mjs";
@@ -1025,6 +1025,162 @@ server.tool(
         } catch (_) { /* push is non-critical */ }
 
         return { content: [{ type: "text", text: chunks.join('\n') }] };
+    }
+);
+
+server.tool(
+    "specmate_report",
+    "跨 session 高级分析报告：错误趋势、文件热点、知识库健康度。集成 specmate_scan/specmate_diagnose 的统计数据，提供宏观视角。",
+    {
+        section: z.enum(["all", "trend", "hotspots", "health"]).optional().default("all")
+            .describe("报告段落: all=完整, trend=错误趋势, hotspots=文件热点, health=知识库健康度"),
+        trend_granularity: z.enum(["week", "month"]).optional().default("week")
+            .describe("趋势粒度（仅 section=all|trend 时生效）"),
+        top_n: z.number().int().min(1).max(20).optional().default(5)
+            .describe("TOP N 数量"),
+    },
+    async ({ section, trend_granularity, top_n }) => {
+        const summary = await queryReportSummary();
+
+        // 如果没有数据，直接返回提示
+        if (summary.totalCaptures === 0) {
+            return {
+                content: [{
+                    type: "text",
+                    text: "# specmate 跨任务分析报告\n\n> 暂无采集数据。开始使用 specmate_scan 和 specmate_diagnose 后，报告会自动生成。\n"
+                }],
+            };
+        }
+
+        const parts = [];
+        parts.push(`# specmate 跨任务分析报告\n`);
+        parts.push(`> 覆盖: ${summary.totalSessions} 个 session | ${summary.totalCaptures} 条 capture | ${summary.knowledgeEntries} 个知识条目\n`);
+
+        const includeTrend = section === "all" || section === "trend";
+        const includeHotspots = section === "all" || section === "hotspots";
+        const includeHealth = section === "all" || section === "health";
+
+        // ── 1. 错误趋势 ──
+        if (includeTrend) {
+            const trend = await queryErrorTrend({ granularity: trend_granularity, topN: top_n });
+
+            parts.push(`---\n`);
+            parts.push(`## 1. 错误趋势\n`);
+
+            if (trend.additionalInfo && trend.series.length === 0) {
+                parts.push(`> ${trend.additionalInfo}\n`);
+            } else if (trend.series.length > 0 && trend.periods.length > 0) {
+                const periodLabel = trend_granularity === "month" ? "月" : "周";
+
+                parts.push(`### TOP ${top_n} 高频错误码${periodLabel}趋势\n`);
+
+                // 表头
+                const header = `| 错误码 | ${trend.periods.join(" | ")} | 趋势 |`;
+                parts.push(header);
+                parts.push(`|--------|${trend.periods.map(() => "-----").join("|")}|------|`);
+
+                // 数据行
+                for (const s of trend.series) {
+                    const counts = s.values.map(v => String(v.count));
+                    // 计算趋势：比较第一个和最后一个非零周期
+                    const nonZero = s.values.filter(v => v.count > 0);
+                    let trendSymbol = "→";
+                    if (nonZero.length >= 2) {
+                        const first = nonZero[0].count;
+                        const last = nonZero[nonZero.length - 1].count;
+                        const change = (last - first) / first;
+                        if (change > 0.2) trendSymbol = "↗";
+                        else if (change < -0.2) trendSymbol = "↘";
+                        else trendSymbol = "→";
+                    }
+                    parts.push(`| ${s.code} | ${counts.join(" | ")} | ${trendSymbol} |`);
+                }
+
+                parts.push(`\n> ↗ 上升 >20% | → 平稳 | ↘ 下降 >20%\n`);
+            }
+
+            // 每周 TOP N
+            if (trend.periods.length >= 2) {
+                const weeklyTop = await queryWeeklyTopErrors(top_n, 4);
+                if (weeklyTop.length > 0) {
+                    parts.push(`### 每周 TOP ${top_n} 错误码\n`);
+                    for (const w of weeklyTop) {
+                        const topList = w.top.map(t => `${t.code}(${t.count})`).join(", ");
+                        parts.push(`- **${w.period}**: ${topList || "无"}\n`);
+                    }
+                    parts.push("");
+                }
+            }
+        }
+
+        // ── 2. 文件热点 ──
+        if (includeHotspots) {
+            const hotspots = await queryFileHotspots(top_n);
+
+            parts.push(`---\n`);
+            parts.push(`## 2. 文件热点\n`);
+
+            if (hotspots.length === 0) {
+                parts.push(`> 暂无文件热点数据。\n`);
+            } else {
+                parts.push(`| 文件 | 错误次数 | 跨 session | 常见错误码 |`);
+                parts.push(`|------|---------|-----------|-----------|`);
+                for (const h of hotspots) {
+                    const fileName = h.file ? h.file.replace(/^.*[/\\]/, '') : '(unknown)';
+                    const codes = (h.error_codes || "").split(",").slice(0, 3).join(", ");
+                    parts.push(`| ${fileName} | ${h.total_count} | ${h.session_count} | ${codes} |`);
+                }
+                parts.push("");
+            }
+        }
+
+        // ── 3. 知识库健康度 ──
+        if (includeHealth) {
+            parts.push(`---\n`);
+            parts.push(`## 3. 知识库健康度\n`);
+
+            const fixRateTrend = await queryFixRateTrend();
+            const knowledgeGrowth = await queryKnowledgeGrowth();
+
+            // 修复率趋势
+            parts.push(`### 修复率趋势\n`);
+            if (fixRateTrend.length === 0) {
+                parts.push(`> 暂无修复率数据。\n`);
+            } else {
+                parts.push(`| 周 | 总捕获 | 已修复 | 修复率 |`);
+                parts.push(`|-----|-------|--------|--------|`);
+                for (const r of fixRateTrend) {
+                    parts.push(`| ${r.period} | ${r.total} | ${r.resolved} | ${r.rate_pct}% |`);
+                }
+                parts.push("");
+            }
+
+            // 知识增长速度
+            parts.push(`### 知识增长速度\n`);
+            if (knowledgeGrowth.length === 0) {
+                parts.push(`> 暂无增长速度数据。\n`);
+            } else {
+                parts.push(`| 周 | 新错误码 | 总捕获 |`);
+                parts.push(`|-----|---------|--------|`);
+                for (const k of knowledgeGrowth) {
+                    parts.push(`| ${k.period} | ${k.new_codes} | ${k.total_captures} |`);
+                }
+                parts.push("");
+            }
+
+            // 未解决概况
+            const unresolvedCount = summary.totalCaptures - summary.resolvedCaptures;
+            parts.push(`### 未解决概况\n`);
+            parts.push(`- 未解决 capture: ${unresolvedCount} 个\n`);
+            parts.push(`- 已知错误码: ${summary.distinctErrorCodes} 个（已解决 ${summary.resolvedCaptures} 条）\n`);
+            parts.push("");
+        }
+
+        parts.push(`---\n`);
+        parts.push(`*报告由 specmate 自动生成*\n`);
+
+        const reportMarkdown = parts.join("\n");
+        return { content: [{ type: "text", text: reportMarkdown }] };
     }
 );
 

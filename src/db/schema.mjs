@@ -594,3 +594,249 @@ export function getAllCapturesByCode(db, code) {
     stmt.free();
     return results;
 }
+
+// ── Q4: cross-session advanced analytics (specmate_report) ──
+
+/**
+ * Get a high-level summary of the entire knowledge base.
+ * @param {object} db
+ * @returns {{ totalSessions: number, activeSessions: number, totalCaptures: number,
+ *             distinctErrorCodes: number, resolvedCaptures: number, knowledgeEntries: number }}
+ */
+export function getReportSummary(db) {
+    const stmt = db.prepare(`
+        SELECT
+            (SELECT COUNT(*) FROM sessions) as total_sessions,
+            (SELECT COUNT(*) FROM sessions WHERE ended_at IS NULL) as active_sessions,
+            (SELECT COUNT(*) FROM captures) as total_captures,
+            (SELECT COUNT(DISTINCT code) FROM captures) as distinct_error_codes,
+            (SELECT COUNT(*) FROM captures WHERE status = 'resolved') as resolved_captures,
+            (SELECT COUNT(*) FROM errors) as knowledge_entries
+    `);
+    let row = { total_sessions: 0, active_sessions: 0, total_captures: 0, distinct_error_codes: 0, resolved_captures: 0, knowledge_entries: 0 };
+    if (stmt.step()) {
+        const obj = stmt.getAsObject();
+        row = obj;
+    }
+    stmt.free();
+    return {
+        totalSessions: row.total_sessions || 0,
+        activeSessions: row.active_sessions || 0,
+        totalCaptures: row.total_captures || 0,
+        distinctErrorCodes: row.distinct_error_codes || 0,
+        resolvedCaptures: row.resolved_captures || 0,
+        knowledgeEntries: row.knowledge_entries || 0,
+    };
+}
+
+/**
+ * Get error trend data over time (by week or month) for the TOP N error codes.
+ * @param {object} db
+ * @param {object} opts
+ * @param {'week'|'month'} opts.granularity - 'week' (strftime '%Y-W%W') or 'month' (strftime '%Y-%m')
+ * @param {number} opts.topN - how many top error codes to include
+ * @returns {{ periods: string[], series: Array<{ code: string, values: Array<{ period: string, count: number }> }>,
+ *             additionalInfo?: string }}
+ */
+export function getErrorTrend(db, { granularity = 'week', topN = 5 }) {
+    const periodFormat = granularity === 'month'
+        ? "%Y-%m"
+        : "%Y-W%W";
+
+    // 1. Find TOP N error codes by total occurrence
+    const topStmt = db.prepare(
+        `SELECT code, COUNT(*) as total
+         FROM captures
+         GROUP BY code
+         ORDER BY total DESC
+         LIMIT ?`
+    );
+    topStmt.bind([topN]);
+    const topCodes = [];
+    while (topStmt.step()) {
+        topCodes.push(topStmt.getAsObject().code);
+    }
+    topStmt.free();
+
+    if (topCodes.length === 0) {
+        return { periods: [], series: [], additionalInfo: '暂无捕获数据。' };
+    }
+
+    // 2. Collect all periods for ordering
+    const periodRows = [];
+    const periodStmt = db.prepare(
+        `SELECT DISTINCT strftime('${periodFormat}', timestamp) as period
+         FROM captures
+         WHERE code IN (${topCodes.map(() => '?').join(',')})
+         ORDER BY period`
+    );
+    periodStmt.bind(topCodes);
+    while (periodStmt.step()) {
+        const p = periodStmt.getAsObject().period;
+        periodRows.push(p);
+    }
+    periodStmt.free();
+
+    const periods = periodRows;
+
+    if (periods.length < 2) {
+        return {
+            periods,
+            series: [],
+            additionalInfo: '数据不足，需要至少 2 个周期才能显示趋势变化。',
+        };
+    }
+
+    // 3. For each top code, get counts per period
+    const series = [];
+    for (const code of topCodes) {
+        const valuesMap = {};
+        const codeStmt = db.prepare(
+            `SELECT strftime('${periodFormat}', timestamp) as period, COUNT(*) as count
+             FROM captures
+             WHERE code = ?
+             GROUP BY period
+             ORDER BY period`
+        );
+        codeStmt.bind([code]);
+        while (codeStmt.step()) {
+            const row = codeStmt.getAsObject();
+            valuesMap[row.period] = row.count;
+        }
+        codeStmt.free();
+
+        const values = periods.map(p => ({
+            period: p,
+            count: valuesMap[p] || 0,
+        }));
+        series.push({ code, values });
+    }
+
+    return { periods, series };
+}
+
+/**
+ * Get file hotspots: files with the most captures, with session spread and error codes.
+ * @param {object} db
+ * @param {number} limit
+ * @returns {Array<{ file: string, total_count: number, session_count: number, error_codes: string }>}
+ */
+export function getFileHotspots(db, limit = 10) {
+    const results = [];
+    const stmt = db.prepare(
+        `SELECT file, COUNT(*) as total_count, COUNT(DISTINCT session_id) as session_count,
+                GROUP_CONCAT(DISTINCT code) as error_codes
+         FROM captures WHERE file IS NOT NULL AND file != ''
+         GROUP BY file ORDER BY total_count DESC LIMIT ?`
+    );
+    stmt.bind([limit]);
+    while (stmt.step()) {
+        results.push(stmt.getAsObject());
+    }
+    stmt.free();
+    return results;
+}
+
+/**
+ * Get fix rate trend over time (by week).
+ * @param {object} db
+ * @returns {Array<{ period: string, total: number, resolved: number, rate_pct: number }>}
+ */
+export function getFixRateTrend(db) {
+    const results = [];
+    const stmt = db.prepare(
+        `SELECT strftime('%Y-W%W', timestamp) as period,
+                COUNT(*) as total,
+                SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) as resolved
+         FROM captures
+         GROUP BY period
+         ORDER BY period`
+    );
+    while (stmt.step()) {
+        const row = stmt.getAsObject();
+        results.push({
+            period: row.period,
+            total: row.total || 0,
+            resolved: row.resolved || 0,
+            rate_pct: row.total > 0 ? Number(((row.resolved / row.total) * 100).toFixed(1)) : 0,
+        });
+    }
+    stmt.free();
+    return results;
+}
+
+/**
+ * Get knowledge growth over time (by week): new distinct error codes and total captures per week.
+ * @param {object} db
+ * @returns {Array<{ period: string, new_codes: number, total_captures: number }>}
+ */
+export function getKnowledgeGrowth(db) {
+    const results = [];
+    const stmt = db.prepare(
+        `SELECT strftime('%Y-W%W', timestamp) as period,
+                COUNT(DISTINCT code) as new_codes,
+                COUNT(*) as total_captures
+         FROM captures
+         GROUP BY period
+         ORDER BY period`
+    );
+    while (stmt.step()) {
+        const row = stmt.getAsObject();
+        results.push({
+            period: row.period,
+            new_codes: row.new_codes || 0,
+            total_captures: row.total_captures || 0,
+        });
+    }
+    stmt.free();
+    return results;
+}
+
+/**
+ * Get TOP N error codes per week for the last N weeks.
+ * Returns data grouped by week, each with TOP N error codes.
+ * @param {object} db
+ * @param {number} topN - top N per week
+ * @param {number} weeks - number of recent weeks to look back
+ * @returns {Array<{ period: string, top: Array<{ code: string, count: number }> }>}
+ */
+export function getWeeklyTopErrors(db, topN = 5, weeks = 4) {
+    // Get recent distinct weeks
+    const weekStmt = db.prepare(
+        `SELECT DISTINCT strftime('%Y-W%W', timestamp) as period
+         FROM captures
+         ORDER BY period DESC
+         LIMIT ?`
+    );
+    weekStmt.bind([weeks]);
+    const recentWeeks = [];
+    while (weekStmt.step()) {
+        recentWeeks.push(weekStmt.getAsObject().period);
+    }
+    weekStmt.free();
+
+    // Reverse to chronological order
+    recentWeeks.reverse();
+
+    const results = [];
+    // For each week, query TOP N codes
+    for (const period of recentWeeks) {
+        const codeStmt = db.prepare(
+            `SELECT code, COUNT(*) as count
+             FROM captures
+             WHERE strftime('%Y-W%W', timestamp) = ?
+             GROUP BY code
+             ORDER BY count DESC
+             LIMIT ?`
+        );
+        codeStmt.bind([period, topN]);
+        const top = [];
+        while (codeStmt.step()) {
+            top.push(codeStmt.getAsObject());
+        }
+        codeStmt.free();
+        results.push({ period, top });
+    }
+
+    return results;
+}
