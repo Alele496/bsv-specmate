@@ -1341,6 +1341,7 @@ async function handleManagementRoutes(req, res) {
             try {
                 const granularity = url.searchParams.get('granularity') || 'week';
                 const topN = parseInt(url.searchParams.get('topN') || '5', 10);
+                if (isNaN(topN) || topN < 1) { apiError(res, 'Invalid topN parameter', 400); return true; }
                 const data = await queryErrorTrend({ granularity, topN });
                 apiResponse(res, data);
             } catch (err) { apiError(res, err.message, 500); }
@@ -1369,6 +1370,7 @@ async function handleManagementRoutes(req, res) {
         if (req.method === 'GET' && path === '/api/hotspots') {
             try {
                 const topN = parseInt(url.searchParams.get('topN') || '10', 10);
+                if (isNaN(topN) || topN < 1) { apiError(res, 'Invalid topN parameter', 400); return true; }
                 const data = await queryFileHotspots(topN);
                 apiResponse(res, data);
             } catch (err) { apiError(res, err.message, 500); }
@@ -1379,7 +1381,9 @@ async function handleManagementRoutes(req, res) {
         if (req.method === 'GET' && path === '/api/weekly-top-errors') {
             try {
                 const topN = parseInt(url.searchParams.get('topN') || '5', 10);
+                if (isNaN(topN) || topN < 1) { apiError(res, 'Invalid topN parameter', 400); return true; }
                 const weeks = parseInt(url.searchParams.get('weeks') || '4', 10);
+                if (isNaN(weeks) || weeks < 1) { apiError(res, 'Invalid weeks parameter', 400); return true; }
                 const data = await queryWeeklyTopErrors(topN, weeks);
                 apiResponse(res, data);
             } catch (err) { apiError(res, err.message, 500); }

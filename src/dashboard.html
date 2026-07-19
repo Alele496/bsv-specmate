@@ -558,6 +558,11 @@
 
   const trunc = (s, n = 50) => s ? (s.length > n ? s.slice(0, n) + '...' : s) : '-';
 
+  const escapeHtml = (str) => {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  };
+
   // ═══════════════════════════════════════════
   // SVG Chart Helpers
   // ═══════════════════════════════════════════
@@ -913,7 +918,6 @@
   // ═══════════════════════════════════════════
 
   let errorSearchTimer = null;
-  let allErrorsCache = null; // cache for client-side filtering
 
   async function loadErrors(query) {
     const table = document.getElementById('errorsTable');
@@ -926,7 +930,6 @@
         if (errors && !Array.isArray(errors)) errors = errors.errors || errors.results || [];
       } else {
         errors = await api('/api/errors');
-        allErrorsCache = errors; // cache only when loading full list
       }
       if (!errors || errors.length === 0) {
         table.innerHTML = '<div class="empty">' + (query ? '未找到匹配的知识条目' : '暂无知识条目') + '</div>';
@@ -1294,7 +1297,7 @@
     // Create drill panel after the chart grid
     const panel = document.createElement('div');
     panel.className = 'drill-panel';
-    panel.innerHTML = '<h5>文件: ' + file.replace(/&/g,'&amp;').replace(/</g,'&lt;') + ' — 加载中...</h5>';
+    panel.innerHTML = '<h5>文件: ' + escapeHtml(file) + ' — 加载中...</h5>';
     const chartGrid = document.getElementById('overviewCharts');
     chartGrid.after(panel);
 
@@ -1312,11 +1315,11 @@
       });
 
       if (fileErrors.length === 0) {
-        panel.innerHTML = '<h5>文件: ' + file + '</h5><div style="color:#64748b;font-size:0.82rem;">该文件暂无关联错误记录</div>';
+        panel.innerHTML = '<h5>文件: ' + escapeHtml(file) + '</h5><div style="color:#64748b;font-size:0.82rem;">该文件暂无关联错误记录</div>';
         return;
       }
 
-      panel.innerHTML = '<h5>文件: ' + file + ' (' + fileErrors.length + ' 个错误码)</h5><div>' +
+      panel.innerHTML = '<h5>文件: ' + escapeHtml(file) + ' (' + fileErrors.length + ' 个错误码)</h5><div>' +
         fileErrors.map(fe =>
           '<span class="drill-err" data-code="' + fe.code + '" title="点击查看 capture 记录">' + fe.code + '</span>'
         ).join('') + '</div>';
@@ -1339,7 +1342,7 @@
         });
       });
     } catch (e) {
-      panel.innerHTML = '<h5>文件: ' + file + '</h5><div class="error-msg">加载失败: ' + e.message + '</div>';
+      panel.innerHTML = '<h5>文件: ' + escapeHtml(file) + '</h5><div class="error-msg">加载失败: ' + e.message + '</div>';
     }
   });
 
