@@ -350,13 +350,19 @@ const GRAPH = {
         refs: ['patterns', 'schedule'],
         style: 'engineering',
         pattern: 'pipeline',
-        traps: [],
+        traps: [
+            { text: '流水线级间寄存器冲突：相邻 stage 同 cycle 写入同一寄存器会触发 G0004。用阶段寄存器（如 mkRegU + 显式写入）隔离各 stage 的数据通路，避免同 cycle 读写同一寄存器。级间 handshake 用 FIFO 而不是裸寄存器', severity: 'hard', phase: 'both', bscVersions: ['2025.07'], verified: false, alwaysShow: true },
+            { text: '流水线寄存器初始化遗漏：mkRegU 未初始化值在首个 cycle 导致不定态 X 传播。用 mkReg(initial_val) 或在首 cycle 用 rule 显式写入初始值，避免不定态进入流水线后续阶段后不可恢复', severity: 'quality', phase: 'code', bscVersions: ['2025.07'], verified: false, alwaysShow: true },
+        ],
     },
     clock: {
         errors: ['BSV-PORTS'],
         refs: ['module', 'attributes'],
         pattern: 'clock_cross',
-        traps: [],
+        traps: [
+            { text: '跨时钟域信号未同步：BSV 中直接连线不同 Clock 域的模块会导致综合后亚稳态。数据通路用 mkSyncFIFO 逐 bit 同步，控制信号用 mkSyncBit05。时钟域边界必须在顶层模块接口处明确切分，不可在深层子模块中隐式跨域', severity: 'hard', phase: 'design', bscVersions: ['2025.07'], verified: false, alwaysShow: true },
+            { text: 'ClockDomain 类型使用不当：mkClockDivider 返回的 Clock 需要配套 Reset。直接用 default_reset 跨 ClockDomain 会导致 reset 未同步到目标域，必须用 mkAsyncResetFromX（需暴露当前域 reset）生成目标域的同步 reset，否则仿真通过但硬件不定态', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: false, alwaysShow: true },
+        ],
     },
     reset: {
         errors: [],
@@ -368,7 +374,10 @@ const GRAPH = {
         refs: ['module', 'attributes', 'patterns'],
         style: 'engineering',
         pattern: 'axi_stream',
-        traps: [],
+        traps: [
+            { text: 'AXI valid/ready 握手机制：valid 拉高后必须等 ready 为高当拍才能拉低，提前拉低 valid 会导致 transaction 丢失（从端可能尚未采样）。valid 和 data 必须同一 cycle 有效，BSC rule 调度器不会自动保证 AXI 握手协议时序完整性，需在 rule guard 中显式检查双方状态', severity: 'hard', phase: 'both', bscVersions: ['2025.07'], verified: false, alwaysShow: true },
+            { text: 'AXI 通道间依赖关系：写响应（B channel）必须在最后一个写数据（W channel）之后才能返回，读响应（R channel）的返回顺序取决于 AR channel 的 burst 类型（INCR 可乱序，FIXED/WRAP 需保序）。各通道用独立 sub-rule 实现时需 descending_urgency 保证写通道内部顺序（AW→W→B）', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: false, alwaysShow: true },
+        ],
     },
     bram: {
         errors: ['G0004', 'T0060'],
@@ -425,7 +434,10 @@ const GRAPH = {
     struct: {
         errors: ['T0016', 'P0073'],
         refs: ['structs', 'types'],
-        traps: [],
+        traps: [
+            { text: 'struct 成员类型推导失败：BSV 中 struct 的 `defaultValue` 推导依赖所有字段类型可静态确定。包含 `Maybe#(t)` 或参数化类型的字段无法自动推导默认值，需显式定义 `defaultValue = StructName { field1: defaultValue, ... }` 或给每个字段指定默认值表达式', severity: 'quality', phase: 'code', bscVersions: ['2025.07'], verified: false, alwaysShow: true },
+            { text: 'deriving 子句使用限制：`deriving(Bits)` 要求 struct 所有字段都是 `Bits` 类型族成员（Bit#(n)、Bool、Int#(n)、UInt#(n)），包含 Vector、FIFO、interface 类型字段的 struct 无法 derive Bits——编译器报 T0016 类型推导失败。此类 struct 需手写 pack/unpack 函数或将不可 pack 字段移到 struct 外部', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: false, alwaysShow: true },
+        ],
     },
     union: {
         errors: ['T0144', 'T0016'],
@@ -440,7 +452,10 @@ const GRAPH = {
     interface: {
         errors: ['P0073', 'G0010'],
         refs: ['module', 'patterns'],
-        traps: [],
+        traps: [
+            { text: '接口方法未实现：BSV 中 interface 声明了 method 但 module 未提供对应实现会触发 P0073（method not found）。compiler pragma 场景下（如 (* synthesize *)）interface 与 module 的 method 签名必须完全匹配（含参数类型、返回类型和隐式条件），即使类型兼容也不等于签名匹配', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: false, alwaysShow: true },
+            { text: '接口参数化时类型不匹配：interface 用 `#(type t)` 参数化时，module 实例化处必须传入具体类型且类型变量名一致。嵌套 interface 参数化时内层类型变量可能遮蔽外层同名变量，导致 T0016 类型推导失败。建议不同层级的类型参数使用不同名称以避免遮蔽', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: false, alwaysShow: true },
+        ],
     },
     rule: {
         errors: ['G0004', 'G0010', 'G0054', 'G0030'],
