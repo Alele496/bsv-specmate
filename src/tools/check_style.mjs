@@ -47,10 +47,15 @@ export function checkStyle(args) {
     }
 
     const level = getLevel();
-    if (LEVEL_LIMITS[level].mode === 'passive') {
-        return results.filter(r => r.severity === 'error');
-    }
-    return results;
+    const filtered = LEVEL_LIMITS[level].mode === 'passive'
+        ? results.filter(r => r.severity === 'error')
+        : results;
+
+    // Add bsc_verified field — default null (set by specmate_check when compile=true)
+    return filtered.map(r => {
+        if (r.error) return r; // file-not-found results have no check code
+        return { ...r, bsc_verified: null };
+    });
 }
 
 function checkFile(filename, content, full = false) {

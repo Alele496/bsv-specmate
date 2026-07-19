@@ -10,13 +10,13 @@ import { checkStyle } from "../src/tools/check_style.mjs";
 import { guide, scan } from "../src/tools/specmate_guide.mjs";
 // specmate_learn.mjs import removed — deprecated. add_error.mjs retained for db:seed script only.
 import { getLevel, LEVEL_LIMITS } from "../src/config.mjs";
-import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots, ensureSession, getSessionId, endCurrentSession, querySessionStats, queryStubbornErrors, queryFixRate, queryErrorCodeStats, queryTopErrorCodes, queryUnresolvedCount, getCurrentSessionPhase, setCurrentSessionPhase } from "../src/db/query.mjs";
+import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots, ensureSession, getSessionId, endCurrentSession, querySessionStats, queryStubbornErrors, queryFixRate, queryErrorCodeStats, queryTopErrorCodes, queryUnresolvedCount, queryUnresolvedCaptures, getCurrentSessionPhase, setCurrentSessionPhase } from "../src/db/query.mjs";
 import { resolvePhase } from "../src/elicitation/elicit-phase.mjs";
 import { parseBSCWarnings } from "../src/tools/warning_diff.mjs";
 import { diagnose, diagnoseStream } from "../src/tools/specmate_diagnose.mjs";
 import { parseFile, extractAll, analyzeScheduling, buildCallGraph, buildDependencyGraph, findConflictPairs, extractMethods, extractRegWrites, extractRegDeclarations, queryNodeAt, analyzeRuleConflicts, analyzeMethodOrder, findImplicitConflicts } from "../src/tools/ast_query.mjs";
 import { existsSync } from "fs";
-import { isAbsolute } from "path";
+import { isAbsolute, resolve as resolvePath } from "path";
 import { extractKeywords, match as matchKeywords } from "../src/tools/_matcher.mjs";
 import { init as initNotify } from "../src/notify.mjs";
 import * as alerts from "../src/push/alerts.mjs";
@@ -225,6 +225,7 @@ server.tool(
 
         // ── Q3 Direction 2: compile=true — BSC compilation + diagnose pipeline (2.4, 2.5) ──
         let compileResult = '';
+        let uncoveredBSC = null;
         if (compile) {
             try {
                 const fs = await import('fs');
@@ -250,7 +251,85 @@ server.tool(
                     });
 
                     if (bscResult.success) {
+                        // ── 1.2: bsc_verified — annotate static check results with BSC verification ──
+                        const bscOutput = bscResult.stdout + bscResult.stderr;
+                        const bscCodeRegex = /\b([GPTBS]\d{4})\b/g;
+                        const bscCodes = [...new Set([...bscOutput.matchAll(bscCodeRegex)].map(m => m[1]))];
+
+                        // Annotate each static check issue with bsc_verified
+                        if (results.length > 0) {
+                            for (const issue of results) {
+                                if (issue.error || !issue.check) continue;
+                                const checkCode = issue.check;
+                                let matched = bscCodes.includes(checkCode);
+                                if (!matched) {
+                                    // Prefix match: G0004_FSM ↔ G0004, P0030_root ↔ P0030
+                                    for (const bc of bscCodes) {
+                                        if (checkCode.startsWith(bc + '_') || bc.startsWith(checkCode + '_')) {
+                                            matched = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                issue.bsc_verified = matched;
+                            }
+
+                            // Rebuild static result lines with bsc_verified annotations
+                            staticResultLines.length = 0;
+                            const text = results.map(r => {
+                                const v = r.bsc_verified === true ? ' [BSC ✓]' : r.bsc_verified === false ? ' [BSC ?]' : '';
+                                return `[${r.check}]${v} ${r.file}:${r.line} — ${r.message}\n  建议: ${r.suggestion}`;
+                            }).join("\n\n");
+                            staticResultLines.push(`发现 ${results.length} 个问题:\n\n${text}`);
+                        }
+
+                        // Detect BSC codes not covered by any static check
+                        if (bscCodes.length > 0) {
+                            const staticCheckCodes = new Set(results.map(r => r.check).filter(Boolean));
+                            const uncoveredCodes = bscCodes.filter(bc =>
+                                ![...staticCheckCodes].some(sc =>
+                                    sc === bc || sc.startsWith(bc + '_') || bc.startsWith(sc + '_')
+                                )
+                            );
+                            if (uncoveredCodes.length > 0) {
+                                uncoveredBSC = uncoveredCodes;
+                            }
+                        }
+
                         compileResult = `\n---\n### 🔧 编译通过 (BSC ${bscResult.bscType})\n\nBSC 编译成功，无错误。\n`;
+
+                        if (uncoveredBSC && uncoveredBSC.length > 0) {
+                            compileResult += `\n⚠️ BSC 检测到但 specmate 静检未覆盖: ${uncoveredBSC.join(', ')}\n`;
+                        }
+
+                        // ── 1.1: auto-resolve unresolved captures for files that now compile ──
+                        let autoResolved = 0;
+                        try {
+                            const unresolved = await queryUnresolvedCaptures();
+                            const sessionUnresolved = unresolved.filter(
+                                c => c.session_id === session_id && c.status === 'unresolved'
+                            );
+                            const currentFiles = new Set(files.map(f => resolvePath(f)));
+                            for (const c of sessionUnresolved) {
+                                // Normalize capture file paths and check for overlap
+                                const captureFilesRaw = c.files || c.file || '';
+                                const captureFiles = captureFilesRaw.split(',').map(f => {
+                                    try { return resolvePath(f.trim()); } catch (_) { return f.trim(); }
+                                });
+                                const overlap = captureFiles.some(f => currentFiles.has(f));
+                                if (overlap) {
+                                    await resolveCaptureById(c.id, {
+                                        cause: 'auto-resolved: BSC compilation passed',
+                                        solution: 'auto-detected by compile success'
+                                    });
+                                    autoResolved++;
+                                }
+                            }
+                        } catch (_) { /* auto-resolve is non-critical */ }
+
+                        if (autoResolved > 0) {
+                            compileResult += `\n✅ 自动归档了 ${autoResolved} 个未解决的 capture\n`;
+                        }
                     } else if (bscResult.bscType === 'unavailable') {
                         compileResult = `\n---\n### ⚠ 编译跳过\n\n${bscResult.combined}\n`;
                     } else {
