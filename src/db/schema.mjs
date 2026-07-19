@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     started_at      TEXT NOT NULL,
     ended_at        TEXT,
     compile_attempts INTEGER DEFAULT 0,
-    compile_failures INTEGER DEFAULT 0
+    compile_failures INTEGER DEFAULT 0,
+    phase           TEXT DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS warnings (
@@ -219,12 +220,28 @@ export function upsertCapture(db, { code, timestamp, bsc_output, files, status =
     return { id, deduped: false, repeat_count: 1 };
 }
 
-export function createSession(db, { id, task_name = null, started_at }) {
+export function createSession(db, { id, task_name = null, started_at, phase = null }) {
     db.run(
-        `INSERT OR REPLACE INTO sessions (id, task_name, started_at)
-         VALUES (?, ?, ?)`,
-        [id, task_name, started_at]
+        `INSERT OR REPLACE INTO sessions (id, task_name, started_at, phase)
+         VALUES (?, ?, ?, ?)`,
+        [id, task_name, started_at, phase]
     );
+}
+
+export function setSessionPhase(db, id, phase) {
+    db.run(`UPDATE sessions SET phase = ? WHERE id = ?`, [phase, id]);
+}
+
+export function getSessionPhase(db, id) {
+    const stmt = db.prepare('SELECT phase FROM sessions WHERE id = ?');
+    stmt.bind([id]);
+    let phase = null;
+    if (stmt.step()) {
+        const obj = stmt.getAsObject();
+        phase = obj.phase || null;
+    }
+    stmt.free();
+    return phase;
 }
 
 export function endSession(db, id) {

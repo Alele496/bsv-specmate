@@ -2,7 +2,7 @@ import { readFileSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import initSqlJs from 'sql.js';
 import { initDataDir, getDBPath } from '../config.mjs';
-import { initDB, insertError, getError, getAllErrors, getTopRules, searchErrors, incrementCount, getHotTopics, incrementRefHit, insertCapture, upsertCapture, resolveCapture, getCapturesByCode, getRecentCaptures, getUnresolvedCaptures, getLatestUnresolvedByCode, insertWarning, getWarningsBySnapshot, getLatestSnapshots, createSession, endSession, getSessionStats, getStubbornErrors, getFixRate, getErrorCodeStats, getTopErrorCodes, getUnresolvedCount, getClusteredCaptures, setCaptureReviewStatus, getAllCapturesByCode, CAPTURES_DDL } from './schema.mjs';
+import { initDB, insertError, getError, getAllErrors, getTopRules, searchErrors, incrementCount, getHotTopics, incrementRefHit, insertCapture, upsertCapture, resolveCapture, getCapturesByCode, getRecentCaptures, getUnresolvedCaptures, getLatestUnresolvedByCode, insertWarning, getWarningsBySnapshot, getLatestSnapshots, createSession, endSession, getSessionStats, getStubbornErrors, getFixRate, getErrorCodeStats, getTopErrorCodes, getUnresolvedCount, getClusteredCaptures, setCaptureReviewStatus, getAllCapturesByCode, setSessionPhase, getSessionPhase, CAPTURES_DDL } from './schema.mjs';
 import { collectErrorFiles, parseErrorFile } from './parser.mjs';
 
 let _db = null;
@@ -57,6 +57,45 @@ export async function endCurrentSession() {
     await saveDB();
 }
 
+// ── Session phase management (子任务 1.4: elicitation phase state) ──
+// In-memory cache to avoid DB reads on every tool call
+let _currentPhase = null;
+
+/**
+ * Return the current session's phase — 'design', 'code', 'debug', or null.
+ * Phase is persisted in the sessions table and cached in memory.
+ * @returns {Promise<'design'|'code'|'debug'|null>}
+ */
+export async function getCurrentSessionPhase() {
+    if (_currentPhase) return _currentPhase;
+    if (!_currentSessionId) return null;
+
+    try {
+        const db = await ensureDB();
+        _currentPhase = getSessionPhase(db, _currentSessionId);
+        return _currentPhase;
+    } catch (_) {
+        return null;
+    }
+}
+
+/**
+ * Persist the session phase and update the in-memory cache.
+ * @param {'design'|'code'|'debug'} phase
+ */
+export async function setCurrentSessionPhase(phase) {
+    _currentPhase = phase;
+    if (!_currentSessionId) return;
+
+    try {
+        const db = await ensureDB();
+        setSessionPhase(db, _currentSessionId, phase);
+        await saveDB();
+    } catch (_) {
+        // Non-critical — in-memory state is still valid
+    }
+}
+
 const MAX_SEED_FILES = 100;
 
 async function autoSeedIfEmpty(db) {
@@ -103,7 +142,8 @@ export async function ensureDB() {
             started_at      TEXT NOT NULL,
             ended_at        TEXT,
             compile_attempts INTEGER DEFAULT 0,
-            compile_failures INTEGER DEFAULT 0
+            compile_failures INTEGER DEFAULT 0,
+            phase           TEXT DEFAULT NULL
         )`);
         // Add new columns to existing captures table (ignore errors if already exist)
         // MUST run BEFORE creating the dedup index, because the index references
@@ -119,6 +159,8 @@ export async function ensureDB() {
             // ── Phase 1: review status fields ──
             "ALTER TABLE captures ADD COLUMN review_status TEXT DEFAULT 'unreviewed'",
             "ALTER TABLE captures ADD COLUMN reviewed_at TEXT",
+            // ── Q3 Phase: session elicitation phase state ──
+            "ALTER TABLE sessions ADD COLUMN phase TEXT DEFAULT NULL",
         ];
         for (const sql of migrateCols) {
             try { db.run(sql); } catch (_) { /* column already exists */ }
