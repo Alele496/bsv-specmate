@@ -6,12 +6,19 @@ import { getLevel, LEVEL_LIMITS } from '../config.mjs';
 import { parseFile, queryNodeAt } from './ast_query.mjs';
 import { preflight, scanAST } from './preflight.mjs';
 
-export async function guide({ phase, input, file }) {
+/**
+ * @param {object} args
+ * @param {string} args.phase - pre_code / on_error / continue / decide / pattern
+ * @param {string} args.input
+ * @param {string|null} [args.file]
+ * @param {string|null} [args.resolvedPhase] - Q3 elicitation: pre-resolved design phase (design/code/debug)
+ */
+export async function guide({ phase, input, file, resolvedPhase = null }) {
     const level = getLevel();
     const cfg = LEVEL_LIMITS[level];
 
     switch (phase) {
-        case 'pre_code': return preCode(input, level, cfg, file);
+        case 'pre_code': return preCode(input, level, cfg, file, resolvedPhase);
         case 'on_error': return onError(input, level, cfg);
         case 'continue': return continue_(input, level, cfg);
         case 'decide': return decide(input, level, cfg);
@@ -20,7 +27,7 @@ export async function guide({ phase, input, file }) {
     }
 }
 
-async function preCode(input, level, cfg, file = null) {
+async function preCode(input, level, cfg, file = null, resolvedPhase = null) {
     const lines = [];
 
     // ── Pillar 1a: run AST preflight if a file path is provided ──
@@ -32,9 +39,11 @@ async function preCode(input, level, cfg, file = null) {
     }
 
     // ── Unified trap warnings (Tier A always + Tier B keyword-matched) ──
+    // Q3 Direction 1: use pre-resolved phase (from elicitation) if available,
+    // otherwise fall back to inferPhase() keyword matching
     if (cfg.mode !== 'passive') {
-        const inferredPhase = inferPhase(input);
-        const trapOutput = renderTraps(inferredPhase, input, cfg.mode);
+        const phase = resolvedPhase || inferPhase(input);
+        const trapOutput = renderTraps(phase, input, cfg.mode);
         if (trapOutput) {
             lines.push(trapOutput);
         }
@@ -596,15 +605,17 @@ ${blocks.join('\n\n')}`;
  * @param {string|null} filePath — optional .bsv file for AST preflight scan
  * @returns {string} structured text output
  */
-export async function scan(taskDescription, filePath = null) {
+export async function scan(taskDescription, filePath = null, resolvedPhase = null) {
     const level = getLevel();
     const cfg = LEVEL_LIMITS[level];
     const lines = [];
 
     // ── Unified trap warnings (Tier A always + Tier B keyword-matched) ──
+    // Q3 Direction 1: use pre-resolved phase (from elicitation) if available,
+    // otherwise fall back to inferPhase() keyword matching
     if (cfg.mode !== 'passive') {
-        const inferredPhase = inferPhase(taskDescription);
-        const trapOutput = renderTraps(inferredPhase, taskDescription, cfg.mode);
+        const phase = resolvedPhase || inferPhase(taskDescription);
+        const trapOutput = renderTraps(phase, taskDescription, cfg.mode);
         if (trapOutput) {
             lines.push(trapOutput);
         }

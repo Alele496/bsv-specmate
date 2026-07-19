@@ -10,7 +10,8 @@ import { checkStyle } from "../src/tools/check_style.mjs";
 import { guide, scan } from "../src/tools/specmate_guide.mjs";
 // specmate_learn.mjs import removed — deprecated. add_error.mjs retained for db:seed script only.
 import { getLevel, LEVEL_LIMITS } from "../src/config.mjs";
-import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots, ensureSession, getSessionId, endCurrentSession, querySessionStats, queryStubbornErrors, queryFixRate, queryErrorCodeStats, queryTopErrorCodes, queryUnresolvedCount } from "../src/db/query.mjs";
+import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots, ensureSession, getSessionId, endCurrentSession, querySessionStats, queryStubbornErrors, queryFixRate, queryErrorCodeStats, queryTopErrorCodes, queryUnresolvedCount, getCurrentSessionPhase, setCurrentSessionPhase } from "../src/db/query.mjs";
+import { resolvePhase } from "../src/elicitation/elicit-phase.mjs";
 import { parseBSCWarnings } from "../src/tools/warning_diff.mjs";
 import { diagnose } from "../src/tools/specmate_diagnose.mjs";
 import { parseFile, extractAll, analyzeScheduling, buildCallGraph, buildDependencyGraph, findConflictPairs, extractMethods, extractRegWrites, extractRegDeclarations, queryNodeAt, analyzeRuleConflicts, analyzeMethodOrder, findImplicitConflicts } from "../src/tools/ast_query.mjs";
@@ -62,10 +63,21 @@ server.tool(
             await ensureSession(input);
         }
 
-        const result = await guide({ phase, input, file });
+        // ── Q3 Direction 1: Resolve Agent's design phase (elicitation → fallback) ──
+        let resolvedPhase = null;
+        if (phase === 'pre_code') {
+            try {
+                resolvedPhase = await resolvePhase(input, server, 'preCode', {
+                    getCachedPhase: getCurrentSessionPhase,
+                    cachePhase: setCurrentSessionPhase,
+                });
+            } catch (_) { /* phase resolution is non-critical — falls back to inferPhase */ }
+        }
+
+        const result = await guide({ phase, input, file, resolvedPhase });
 
         // Push alerts: extract traps from pre_code and pattern phases
-        // Pillar 2: phase-aware push — infer Agent's stage before pushing
+        // Q3: use resolved phase for push filtering
         if (phase === 'pre_code' || phase === 'pattern') {
             try {
                 const keywords = extractKeywords(input);
@@ -75,7 +87,7 @@ server.tool(
                     if (phase === 'pattern') {
                         alerts.onPattern(trapItems, input);
                     } else {
-                        alerts.onPreCode(trapItems, input);
+                        alerts.onPreCode(trapItems, input).catch(() => {});
                     }
                 }
             } catch (_) { /* push is non-critical */ }
@@ -105,7 +117,16 @@ server.tool(
         // Lazily create session (idempotent; Agent never sees session_id)
         await ensureSession(task);
 
-        const result = await scan(task, file || null);
+        // ── Q3 Direction 1: Resolve Agent's design phase (elicitation → fallback) ──
+        let resolvedPhase = null;
+        try {
+            resolvedPhase = await resolvePhase(task, server, 'preCode', {
+                getCachedPhase: getCurrentSessionPhase,
+                cachePhase: setCurrentSessionPhase,
+            });
+        } catch (_) { /* phase resolution is non-critical — falls back to inferPhase */ }
+
+        const result = await scan(task, file || null, resolvedPhase);
 
         // Append cross-session historical statistics
         let historyBlock = '';

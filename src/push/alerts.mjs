@@ -13,6 +13,7 @@
 import { sendAlert, sendMemory, sendDiff } from '../notify.mjs'
 import { getLevel, LEVEL_LIMITS } from '../config.mjs'
 import { inferPhase } from '../tools/_matcher.mjs'
+import { getCurrentSessionPhase } from '../db/query.mjs'
 
 function shouldPush(flag) {
   const cfg = LEVEL_LIMITS[getLevel()]
@@ -22,15 +23,23 @@ function shouldPush(flag) {
 /**
  * After specmate_guide(pre_code) — push design-level traps as alerts.
  *
- * Pillar 2: phase-aware filtering.
- * Only pushes traps whose `phase` matches the inferred Agent stage.
+ * Q3 Direction 1: Phase resolution uses elicitation first (cached in session),
+ * then falls back to inferPhase() keyword matching.
+ * Only pushes traps whose `phase` matches the Agent's current stage.
  * This prevents "Bit#(1) 不用 Bool" from interrupting architecture design.
  */
-export function onPreCode(traps, input) {
+export async function onPreCode(traps, input) {
   if (!shouldPush('pushPreCode')) return
   if (!traps || traps.length === 0) return
 
-  const agentPhase = inferPhase(input);
+  // Q3: Use cached session phase if available, otherwise infer
+  let agentPhase = null;
+  try {
+    agentPhase = await getCurrentSessionPhase();
+  } catch (_) { /* fall through */ }
+  if (!agentPhase) {
+    agentPhase = inferPhase(input);
+  }
 
   for (const t of traps) {
     // Phase gate: only push if trap phase matches Agent's current phase
