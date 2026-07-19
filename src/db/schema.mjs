@@ -840,3 +840,186 @@ export function getWeeklyTopErrors(db, topN = 5, weeks = 4) {
 
     return results;
 }
+
+// ── Dashboard: session listing, capture pagination, error CRUD, import/export ──
+
+export function listSessions(db) {
+    const results = [];
+    const stmt = db.prepare(
+        'SELECT id, task_name, started_at, ended_at, compile_attempts, compile_failures, phase FROM sessions ORDER BY started_at DESC'
+    );
+    while (stmt.step()) {
+        results.push(stmt.getAsObject());
+    }
+    stmt.free();
+    return results;
+}
+
+export function listCaptures(db, { page = 1, pageSize = 20, status = null, code = null }) {
+    const results = [];
+    const conditions = [];
+    const params = [];
+
+    if (status) {
+        conditions.push('status = ?');
+        params.push(status);
+    }
+    if (code) {
+        conditions.push('code = ?');
+        params.push(code);
+    }
+
+    const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+    const offset = (page - 1) * pageSize;
+
+    const stmt = db.prepare(
+        `SELECT * FROM captures ${whereClause} ORDER BY id DESC LIMIT ? OFFSET ?`
+    );
+    params.push(pageSize, offset);
+    stmt.bind(params);
+    while (stmt.step()) {
+        results.push(stmt.getAsObject());
+    }
+    stmt.free();
+    return results;
+}
+
+export function countCaptures(db, { status = null, code = null }) {
+    const conditions = [];
+    const params = [];
+
+    if (status) {
+        conditions.push('status = ?');
+        params.push(status);
+    }
+    if (code) {
+        conditions.push('code = ?');
+        params.push(code);
+    }
+
+    const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+
+    const stmt = db.prepare(`SELECT COUNT(*) as total FROM captures ${whereClause}`);
+    stmt.bind(params);
+    let total = 0;
+    if (stmt.step()) {
+        total = stmt.getAsObject().total || 0;
+    }
+    stmt.free();
+    return total;
+}
+
+export function updateError(db, code, fields) {
+    const setClauses = [];
+    const params = [];
+
+    if (fields.title !== undefined) {
+        setClauses.push('title = ?');
+        params.push(fields.title);
+    }
+    if (fields.cause !== undefined) {
+        setClauses.push('cause = ?');
+        params.push(fields.cause);
+    }
+    if (fields.solution !== undefined) {
+        setClauses.push('solution = ?');
+        params.push(fields.solution);
+    }
+    if (fields.keywords !== undefined) {
+        setClauses.push('keywords = ?');
+        params.push(fields.keywords);
+    }
+    if (fields.phenomena !== undefined) {
+        setClauses.push('phenomena = ?');
+        params.push(fields.phenomena);
+    }
+    if (fields.rules !== undefined) {
+        setClauses.push('rules = ?');
+        params.push(fields.rules);
+    }
+
+    if (setClauses.length === 0) return;
+
+    params.push(code);
+    db.run(`UPDATE errors SET ${setClauses.join(', ')} WHERE code = ?`, params);
+}
+
+export function deleteError(db, code) {
+    db.run('DELETE FROM errors WHERE code = ?', [code]);
+}
+
+export function deleteCapture(db, id) {
+    db.run('DELETE FROM captures WHERE id = ?', [id]);
+}
+
+export function exportKnowledge(db) {
+    const errors = [];
+    let stmt = db.prepare('SELECT * FROM errors');
+    while (stmt.step()) {
+        errors.push(stmt.getAsObject());
+    }
+    stmt.free();
+
+    const captures = [];
+    stmt = db.prepare('SELECT * FROM captures');
+    while (stmt.step()) {
+        captures.push(stmt.getAsObject());
+    }
+    stmt.free();
+
+    return {
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        errors,
+        captures,
+    };
+}
+
+export function importKnowledge(db, { errors, captures }) {
+    let errorsImported = 0;
+    let capturesImported = 0;
+
+    db.run('BEGIN');
+
+    try {
+        if (errors && errors.length > 0) {
+            const insertStmt = db.prepare(
+                `INSERT OR REPLACE INTO errors (code, title, keywords, phenomena, cause, solution, rules, count)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+            );
+            for (const e of errors) {
+                insertStmt.bind([e.code, e.title, e.keywords || '', e.phenomena || '', e.cause || '', e.solution || '', e.rules || '', e.count || 1]);
+                insertStmt.step();
+                insertStmt.reset();
+                errorsImported++;
+            }
+            insertStmt.free();
+        }
+
+        if (captures && captures.length > 0) {
+            const insertStmt = db.prepare(
+                `INSERT OR IGNORE INTO captures (code, timestamp, bsc_output, files, file, source, session_id, error_token, repeat_count, cause, solution, status, review_status, reviewed_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            );
+            for (const c of captures) {
+                insertStmt.bind([
+                    c.code, c.timestamp, c.bsc_output || '', c.files || null, c.file || null,
+                    c.source || 'bsc', c.session_id || null, c.error_token || null,
+                    c.repeat_count || 1, c.cause || null, c.solution || null,
+                    c.status || 'unresolved', c.review_status || 'unreviewed', c.reviewed_at || null,
+                ]);
+                insertStmt.step();
+                insertStmt.reset();
+                capturesImported++;
+            }
+            insertStmt.free();
+        }
+
+        db.run('COMMIT');
+    } catch (err) {
+        db.run('ROLLBACK');
+        throw err;
+    }
+
+    return { errorsImported, capturesImported };
+}

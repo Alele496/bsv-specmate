@@ -2,7 +2,7 @@ import { readFileSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import initSqlJs from 'sql.js';
 import { initDataDir, getDBPath } from '../config.mjs';
-import { initDB, insertError, getError, getAllErrors, getTopRules, searchErrors, incrementCount, getHotTopics, incrementRefHit, insertCapture, upsertCapture, resolveCapture, getCapturesByCode, getRecentCaptures, getUnresolvedCaptures, getLatestUnresolvedByCode, insertWarning, getWarningsBySnapshot, getLatestSnapshots, createSession, endSession, getSessionStats, getStubbornErrors, getFixRate, getErrorCodeStats, getTopErrorCodes, getFileTopErrors, getUnresolvedCount, getClusteredCaptures, setCaptureReviewStatus, getAllCapturesByCode, setSessionPhase, getSessionPhase, getReportSummary, getErrorTrend, getFileHotspots, getFixRateTrend, getKnowledgeGrowth, getWeeklyTopErrors, CAPTURES_DDL } from './schema.mjs';
+import { initDB, insertError, getError, getAllErrors, getTopRules, searchErrors, incrementCount, getHotTopics, incrementRefHit, insertCapture, upsertCapture, resolveCapture, getCapturesByCode, getRecentCaptures, getUnresolvedCaptures, getLatestUnresolvedByCode, insertWarning, getWarningsBySnapshot, getLatestSnapshots, createSession, endSession, getSessionStats, getStubbornErrors, getFixRate, getErrorCodeStats, getTopErrorCodes, getFileTopErrors, getUnresolvedCount, getClusteredCaptures, setCaptureReviewStatus, getAllCapturesByCode, setSessionPhase, getSessionPhase, getReportSummary, getErrorTrend, getFileHotspots, getFixRateTrend, getKnowledgeGrowth, getWeeklyTopErrors, listSessions, listCaptures, countCaptures, updateError, deleteError, deleteCapture, exportKnowledge, importKnowledge, CAPTURES_DDL } from './schema.mjs';
 import { collectErrorFiles, parseErrorFile } from './parser.mjs';
 
 let _db = null;
@@ -527,6 +527,53 @@ export async function queryKnowledgeGrowth() {
 export async function queryWeeklyTopErrors(topN = 5, weeks = 4) {
     const db = await ensureDB();
     return getWeeklyTopErrors(db, topN, weeks);
+}
+
+// ── Dashboard: session listing, capture pagination, error CRUD, import/export ──
+
+export async function queryListSessions() {
+    const db = await ensureDB();
+    return listSessions(db);
+}
+
+export async function queryListCaptures(opts = {}) {
+    const db = await ensureDB();
+    return listCaptures(db, opts);
+}
+
+export async function queryCountCaptures(filters = {}) {
+    const db = await ensureDB();
+    return countCaptures(db, filters);
+}
+
+export async function queryUpdateError(code, fields) {
+    const db = await ensureDB();
+    updateError(db, code, fields);
+    await saveDB();
+}
+
+export async function queryDeleteError(code) {
+    const db = await ensureDB();
+    deleteError(db, code);
+    await saveDB();
+}
+
+export async function queryDeleteCapture(id) {
+    const db = await ensureDB();
+    deleteCapture(db, id);
+    await saveDB();
+}
+
+export async function queryExportKnowledge() {
+    const db = await ensureDB();
+    return exportKnowledge(db);
+}
+
+export async function queryImportKnowledge(data) {
+    const db = await ensureDB();
+    const result = importKnowledge(db, data);
+    await saveDB();
+    return result;
 }
 
 export function closeDB() {

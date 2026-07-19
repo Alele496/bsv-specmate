@@ -3,7 +3,7 @@
 const SITEDATA = {
   // ===== 统计数字 =====
   stats: {
-    tools: 8,
+    tools: 9,
     errors: 29,
     traps: 41,
     tests: 158,
@@ -21,6 +21,7 @@ const SITEDATA = {
     { name: "specmate_diff", file: "server 内联 + warning_diff.mjs", status: "active", desc: "编译变化追踪", phase: "编译后" },
     { name: "specmate_learn", file: "specmate_learn.mjs (53B 空壳)", status: "deprecated", desc: "被 capture + resolve 替代", phase: "—" },
     { name: "add_error", file: "add_error.mjs", status: "cli", desc: "保留用于 db:seed 脚本", phase: "—" },
+    { name: "specmate_report", file: "server.mjs", status: "active", desc: "跨 session 高级分析报告：错误趋势、文件热点、知识库健康度", phase: "定期回顾" },
   ],
 
   // ===== 知识陷阱展示 =====

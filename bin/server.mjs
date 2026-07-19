@@ -10,17 +10,43 @@ import { checkStyle } from "../src/tools/check_style.mjs";
 import { guide, scan } from "../src/tools/specmate_guide.mjs";
 // specmate_learn.mjs import removed — deprecated. add_error.mjs retained for db:seed script only.
 import { getLevel, LEVEL_LIMITS } from "../src/config.mjs";
-import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots, ensureSession, getSessionId, endCurrentSession, querySessionStats, queryStubbornErrors, queryFixRate, queryErrorCodeStats, queryTopErrorCodes, queryUnresolvedCount, queryUnresolvedCaptures, queryFileTopErrors, queryClusteredCaptures, getCurrentSessionPhase, setCurrentSessionPhase, queryReportSummary, queryErrorTrend, queryFileHotspots, queryFixRateTrend, queryKnowledgeGrowth, queryWeeklyTopErrors } from "../src/db/query.mjs";
+import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots, ensureSession, getSessionId, endCurrentSession, querySessionStats, queryStubbornErrors, queryFixRate, queryErrorCodeStats, queryTopErrorCodes, queryUnresolvedCount, queryUnresolvedCaptures, queryFileTopErrors, queryClusteredCaptures, getCurrentSessionPhase, setCurrentSessionPhase, queryReportSummary, queryErrorTrend, queryFileHotspots, queryFixRateTrend, queryKnowledgeGrowth, queryWeeklyTopErrors, queryError, queryAllErrors, queryAllCapturesByCode, queryListSessions, queryListCaptures, queryCountCaptures, queryUpdateError, queryDeleteError, queryDeleteCapture, queryExportKnowledge, queryImportKnowledge } from "../src/db/query.mjs";
 import { resolvePhase } from "../src/elicitation/elicit-phase.mjs";
 import { parseBSCWarnings } from "../src/tools/warning_diff.mjs";
 import { diagnose, diagnoseStream } from "../src/tools/specmate_diagnose.mjs";
 import { parseFile, extractAll, analyzeScheduling, buildCallGraph, buildDependencyGraph, findConflictPairs, extractMethods, extractRegWrites, extractRegDeclarations, queryNodeAt, analyzeRuleConflicts, analyzeMethodOrder, findImplicitConflicts } from "../src/tools/ast_query.mjs";
-import { existsSync } from "fs";
-import { isAbsolute, resolve as resolvePath } from "path";
+import { existsSync, readFileSync } from "fs";
+import { isAbsolute, resolve as resolvePath, dirname } from "path";
+import { fileURLToPath } from "url";
 import { extractKeywords, match as matchKeywords } from "../src/tools/_matcher.mjs";
 import { autoFixP0200 } from "../src/tools/auto_fix.mjs";
 import { init as initNotify } from "../src/notify.mjs";
 import * as alerts from "../src/push/alerts.mjs";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const DASHBOARD_HTML = readFileSync(resolvePath(__dirname, '../src/dashboard.html'), 'utf-8');
+
+// ── Dashboard API helpers ──
+
+function parseBody(req) {
+    return new Promise((resolve, reject) => {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', () => {
+            try { resolve(JSON.parse(body)); }
+            catch (e) { reject(e); }
+        });
+    });
+}
+
+function apiResponse(res, data, status = 200) {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(data));
+}
+
+function apiError(res, message, status = 400) {
+    apiResponse(res, { error: message }, status);
+}
 
 /**
  * 校验文件路径：必须是绝对路径，且文件必须存在。
@@ -1243,6 +1269,152 @@ if (TRANSPORT === 'stdio') {
     if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok', transport: 'streamable-http' }));
+      return;
+    }
+
+    // Dashboard page
+    if (req.method === 'GET' && req.url === '/dashboard') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(DASHBOARD_HTML);
+      return;
+    }
+
+    // ── API routes ──
+    if (req.url.startsWith('/api/')) {
+      const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
+      const path = url.pathname;
+
+      // GET /api/summary
+      if (req.method === 'GET' && path === '/api/summary') {
+        try {
+          const summary = await queryReportSummary();
+          apiResponse(res, summary);
+        } catch (err) {
+          apiError(res, err.message, 500);
+        }
+        return;
+      }
+
+      // GET /api/errors
+      if (req.method === 'GET' && path === '/api/errors') {
+        try {
+          const errors = await queryAllErrors();
+          apiResponse(res, errors);
+        } catch (err) {
+          apiError(res, err.message, 500);
+        }
+        return;
+      }
+
+      // GET /api/errors/:code
+      const errorDetailMatch = path.match(/^\/api\/errors\/([^/]+)$/);
+      if (req.method === 'GET' && errorDetailMatch) {
+        try {
+          const code = errorDetailMatch[1];
+          const err = await queryError(code);
+          if (!err) { apiError(res, 'Error not found', 404); return; }
+          const captures = await queryAllCapturesByCode(code);
+          apiResponse(res, { error: err, captures });
+        } catch (err) {
+          apiError(res, err.message, 500);
+        }
+        return;
+      }
+
+      // PUT /api/errors/:code
+      if (req.method === 'PUT' && errorDetailMatch) {
+        try {
+          const code = errorDetailMatch[1];
+          const body = await parseBody(req);
+          await queryUpdateError(code, body);
+          apiResponse(res, { ok: true });
+        } catch (err) {
+          apiError(res, err.message, 500);
+        }
+        return;
+      }
+
+      // DELETE /api/errors/:code
+      if (req.method === 'DELETE' && errorDetailMatch) {
+        try {
+          const code = errorDetailMatch[1];
+          await queryDeleteError(code);
+          apiResponse(res, { ok: true });
+        } catch (err) {
+          apiError(res, err.message, 500);
+        }
+        return;
+      }
+
+      // GET /api/captures
+      if (req.method === 'GET' && path === '/api/captures') {
+        try {
+          const page = parseInt(url.searchParams.get('page') || '1', 10);
+          const pageSize = parseInt(url.searchParams.get('pageSize') || '20', 10);
+          const status = url.searchParams.get('status') || null;
+          const code = url.searchParams.get('code') || null;
+          const items = await queryListCaptures({ page, pageSize, status, code });
+          const total = await queryCountCaptures({ status, code });
+          apiResponse(res, { items, total, page, pageSize });
+        } catch (err) {
+          apiError(res, err.message, 500);
+        }
+        return;
+      }
+
+      // DELETE /api/captures/:id
+      const captureDeleteMatch = path.match(/^\/api\/captures\/(\d+)$/);
+      if (req.method === 'DELETE' && captureDeleteMatch) {
+        try {
+          const id = parseInt(captureDeleteMatch[1], 10);
+          await queryDeleteCapture(id);
+          apiResponse(res, { ok: true });
+        } catch (err) {
+          apiError(res, err.message, 500);
+        }
+        return;
+      }
+
+      // GET /api/sessions
+      if (req.method === 'GET' && path === '/api/sessions') {
+        try {
+          const sessions = await queryListSessions();
+          apiResponse(res, sessions);
+        } catch (err) {
+          apiError(res, err.message, 500);
+        }
+        return;
+      }
+
+      // GET /api/export
+      if (req.method === 'GET' && path === '/api/export') {
+        try {
+          const data = await queryExportKnowledge();
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Content-Disposition': 'attachment; filename="specmate-knowledge.json"',
+          });
+          res.end(JSON.stringify(data));
+        } catch (err) {
+          apiError(res, err.message, 500);
+        }
+        return;
+      }
+
+      // POST /api/import
+      if (req.method === 'POST' && path === '/api/import') {
+        try {
+          const body = await parseBody(req);
+          const result = await queryImportKnowledge(body);
+          apiResponse(res, result);
+        } catch (err) {
+          apiError(res, err.message, 500);
+        }
+        return;
+      }
+
+      // Unhandled API route
+      apiError(res, 'Not Found', 404);
       return;
     }
 
