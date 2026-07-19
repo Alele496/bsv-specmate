@@ -182,7 +182,9 @@
     font-weight: 600;
     color: #c7d2fe;
     margin-bottom: 14px;
+    margin-top: 24px;
   }
+  .section-title:first-of-type { margin-top: 0; }
 
   /* ── Detail row ── */
   .detail-row {
@@ -281,12 +283,130 @@
   .truncate { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mono { font-family: "SF Mono", "Fira Code", monospace; font-size: 0.82rem; }
 
+  /* ── Chart grid ── */
+  .chart-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .chart-card {
+    background: rgba(15, 15, 35, 0.6);
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    border-radius: 10px;
+    padding: 14px 10px 8px;
+  }
+  .chart-card h4 {
+    font-size: 0.8rem;
+    color: #64748b;
+    margin-bottom: 8px;
+    font-weight: 600;
+    text-align: center;
+  }
+  .chart-card .chart-mini { width: 100%; min-height: 160px; }
+
+  /* ── Inline bar ── */
+  .inline-bar {
+    display: inline-block;
+    height: 14px;
+    background: rgba(129, 140, 248, 0.4);
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-right: 6px;
+    min-width: 2px;
+  }
+
+  /* ── Search ── */
+  .search-box { margin-bottom: 14px; }
+  .search-box input {
+    width: 100%;
+    max-width: 360px;
+    padding: 7px 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    background: rgba(15, 15, 35, 0.8);
+    color: #e2e8f0;
+    font-size: 0.88rem;
+  }
+  .search-box input:focus { outline: none; border-color: #818cf8; }
+
+  /* ── Trends tab ── */
+  .trends-selectors {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .trends-selectors label { font-size: 0.85rem; color: #94a3b8; }
+  .trends-selectors select {
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    background: rgba(15, 15, 35, 0.8);
+    color: #e2e8f0;
+    font-size: 0.85rem;
+  }
+  .trends-selectors select:focus { outline: none; border-color: #818cf8; }
+
+  .trend-chart {
+    background: rgba(15, 15, 35, 0.6);
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    border-radius: 10px;
+    padding: 20px 16px 14px;
+    margin-bottom: 24px;
+  }
+  .trend-chart h4 {
+    font-size: 0.95rem;
+    color: #a5b4fc;
+    margin-bottom: 12px;
+  }
+  .trend-chart .chart-large { width: 100%; min-height: 300px; }
+
+  /* ── Drill-down panel ── */
+  .drill-panel {
+    margin-top: 14px;
+    padding: 14px;
+    background: rgba(15, 15, 35, 0.5);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 8px;
+  }
+  .drill-panel h5 {
+    font-size: 0.85rem;
+    color: #94a3b8;
+    margin-bottom: 10px;
+    font-weight: 600;
+  }
+  .drill-err {
+    display: inline-block;
+    margin: 3px 6px 3px 0;
+    padding: 3px 10px;
+    background: rgba(129, 140, 248, 0.15);
+    border: 1px solid rgba(129, 140, 248, 0.25);
+    border-radius: 14px;
+    font-size: 0.78rem;
+    color: #a5b4fc;
+    cursor: pointer;
+    font-family: "SF Mono", "Fira Code", monospace;
+    transition: background 0.15s;
+  }
+  .drill-err:hover { background: rgba(129, 140, 248, 0.28); }
+
+  .hotspot-bar { cursor: pointer; transition: opacity 0.15s; }
+  .hotspot-bar:hover { opacity: 0.75; }
+
+  /* ── Heatmap table ── */
+  .heatmap-table td { text-align: center; font-size: 0.82rem; padding: 6px 10px; }
+  .heatmap-table th:first-child { text-align: left; }
+
   @media (max-width: 768px) {
     .nav { padding: 0 12px; gap: 16px; }
     .nav-tab { padding: 14px 12px; font-size: 0.82rem; }
     .main { padding: 16px; }
     .card-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
     .filters { flex-direction: column; align-items: stretch; }
+    .chart-grid { grid-template-columns: 1fr; }
+    .trends-selectors { flex-direction: column; align-items: stretch; }
   }
 </style>
 </head>
@@ -299,6 +419,7 @@
     <button class="nav-tab" data-tab="errors">错误知识库</button>
     <button class="nav-tab" data-tab="captures">Capture 记录</button>
     <button class="nav-tab" data-tab="sessions">Session 历史</button>
+    <button class="nav-tab" data-tab="trends">趋势分析</button>
     <button class="nav-tab" data-tab="io">导入导出</button>
   </div>
 </nav>
@@ -308,12 +429,17 @@
   <!-- ═══ Tab 1: 概览 ═══ -->
   <section class="tab-panel active" id="tab-overview">
     <div class="card-grid" id="summaryCards"></div>
-    <h3 class="section-title">最新 Capture 记录</h3>
-    <div class="table-wrap" id="recentTable"></div>
+    <h3 class="section-title">趋势预览</h3>
+    <div class="chart-grid" id="overviewCharts"></div>
+    <h3 class="section-title">本周热门错误</h3>
+    <div class="table-wrap" id="weeklyHotErrors"></div>
   </section>
 
   <!-- ═══ Tab 2: 错误知识库 ═══ -->
   <section class="tab-panel" id="tab-errors">
+    <div class="search-box">
+      <input type="search" id="errorSearch" placeholder="搜索错误码或关键词...">
+    </div>
     <div class="table-wrap" id="errorsTable"></div>
   </section>
 
@@ -337,7 +463,27 @@
     <div class="table-wrap" id="sessionsTable"></div>
   </section>
 
-  <!-- ═══ Tab 5: 导入导出 ═══ -->
+  <!-- ═══ Tab 5: 趋势分析 ═══ -->
+  <section class="tab-panel" id="tab-trends">
+    <div class="trends-selectors">
+      <label>粒度：</label>
+      <select id="trendsGranularity">
+        <option value="week">按周</option>
+        <option value="month">按月</option>
+      </select>
+      <label>TOP-N：</label>
+      <select id="trendsTopN">
+        <option value="3">3</option>
+        <option value="5" selected>5</option>
+        <option value="10">10</option>
+      </select>
+      <button class="btn btn-sm" id="trendsRefresh">刷新</button>
+      <span class="loading" id="trendsLoading" style="display:none;margin-left:8px;">加载中...</span>
+    </div>
+    <div id="trendsContent"></div>
+  </section>
+
+  <!-- ═══ Tab 6: 导入导出 ═══ -->
   <section class="tab-panel" id="tab-io">
     <h3 class="section-title">导出知识库</h3>
     <p style="color:#94a3b8; margin-bottom:14px;">下载完整的错误知识和 capture 记录为 JSON 文件。</p>
@@ -394,6 +540,7 @@
       else if (t.dataset.tab === 'errors') loadErrors();
       else if (t.dataset.tab === 'captures') loadCaptures();
       else if (t.dataset.tab === 'sessions') loadSessions();
+      else if (t.dataset.tab === 'trends') loadTrends();
     });
   });
 
@@ -411,9 +558,262 @@
 
   const trunc = (s, n = 50) => s ? (s.length > n ? s.slice(0, n) + '...' : s) : '-';
 
-  // ── Tab 1: 概览 ──
+  // ═══════════════════════════════════════════
+  // SVG Chart Helpers
+  // ═══════════════════════════════════════════
+
+  /** Linear scale: map values from their own [min, max] to [outMin, outMax] */
+  function scaleValues(values, outMin, outMax) {
+    const inMin = Math.min(...values);
+    const inMax = Math.max(...values);
+    if (inMin === inMax) return values.map(() => (outMin + outMax) / 2);
+    return values.map(v => outMin + (v - inMin) / (inMax - inMin) * (outMax - outMin));
+  }
+
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const COLORS = ['#818cf8', '#4ade80', '#f87171', '#facc15', '#fb923c',
+                  '#38bdf8', '#a78bfa', '#f472b6', '#34d399', '#e879f9'];
+
+  function _createSVG(width, height) {
+    const svg = document.createElementNS(SVGNS, 'svg');
+    svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', height);
+    svg.style.display = 'block';
+    return svg;
+  }
+
+  /**
+   * drawLineChart(container, config)
+   * config: { periods: string[], series: { name: string, data: number[], color?: string }[] }
+   */
+  function drawLineChart(container, config) {
+    const { periods, series } = config;
+    if (!series || !series.length || !periods || !periods.length) {
+      container.innerHTML = '<div class="empty" style="padding:20px;font-size:0.8rem;">暂无数据</div>';
+      return;
+    }
+    const margin = { top: 14, right: 16, bottom: 32, left: 38 };
+    const width = container.clientWidth || 480;
+    const height = Math.max(container.clientHeight || 200, 180);
+    const pw = width - margin.left - margin.right;
+    const ph = height - margin.top - margin.bottom;
+
+    const allVals = series.flatMap(s => s.data);
+    const dMax = Math.max(...allVals, 1);
+    const yMax = Math.ceil(dMax * 1.2);
+    const yTicks = Math.min(4, yMax);
+
+    const svg = _createSVG(width, height);
+    const g = mkEl('g', { transform: `translate(${margin.left},${margin.top})` });
+
+    // Y axis grid + labels
+    for (let i = 0; i <= yTicks; i++) {
+      const y = ph - (i / yTicks) * ph;
+      const val = Math.round((i / yTicks) * yMax);
+      g.appendChild(mkEl('line', { x1: 0, y1: y, x2: pw, y2: y, stroke: 'rgba(99,102,241,0.1)' }));
+      const t = mkEl('text', { x: -6, y: y + 4, 'text-anchor': 'end', fill: '#64748b', 'font-size': '10' });
+      t.textContent = val;
+      g.appendChild(t);
+    }
+
+    // X labels
+    const step = Math.max(1, Math.floor(periods.length / 8));
+    periods.forEach((p, i) => {
+      if (i % step !== 0 && i !== periods.length - 1) return;
+      const x = periods.length > 1 ? (i / (periods.length - 1)) * pw : pw / 2;
+      const t = mkEl('text', { x, y: ph + 16, 'text-anchor': 'middle', fill: '#64748b', 'font-size': '10' });
+      t.textContent = (p || '').length > 8 ? p.slice(0, 8) : (p || '');
+      g.appendChild(t);
+    });
+
+    // Lines
+    series.forEach((s, si) => {
+      const color = s.color || COLORS[si % COLORS.length];
+      const scaledY = scaleValues(s.data, ph - 2, 2);
+      const pts = s.data.map((_, i) => {
+        const x = s.data.length > 1 ? (i / (s.data.length - 1)) * pw : pw / 2;
+        return x + ',' + scaledY[i];
+      });
+
+      g.appendChild(mkEl('polyline', { points: pts.join(' '), fill: 'none', stroke: color, 'stroke-width': '2' }));
+
+      // Circles with title tooltips
+      s.data.forEach((val, i) => {
+        const x = s.data.length > 1 ? (i / (s.data.length - 1)) * pw : pw / 2;
+        const c = mkEl('circle', { cx: x, cy: scaledY[i], r: '3', fill: color });
+        const title = document.createElementNS(SVGNS, 'title');
+        title.textContent = s.name + ': ' + val + ' (' + (periods[i] || '') + ')';
+        c.appendChild(title);
+        g.appendChild(c);
+      });
+    });
+
+    // Legend
+    if (series.length > 1) {
+      const lg = mkEl('g', { transform: `translate(0,${ph + 28})` });
+      series.forEach((s, si) => {
+        const cx = si * 80 + 4;
+        lg.appendChild(mkEl('rect', { x: cx, y: -3, width: 8, height: 8, rx: 2, fill: s.color || COLORS[si % COLORS.length] }));
+        const label = mkEl('text', { x: cx + 12, y: 5, fill: '#94a3b8', 'font-size': '9' });
+        label.textContent = s.name;
+        lg.appendChild(label);
+      });
+      g.appendChild(lg);
+    }
+
+    svg.appendChild(g);
+    container.innerHTML = '';
+    container.appendChild(svg);
+  }
+
+  /**
+   * drawBarChart(container, config)
+   * config: { periods: string[], series: { name: string, data: number[], color?: string }[],
+   *           type?: 'grouped'|'stacked'|'horizontal' }
+   */
+  function drawBarChart(container, config) {
+    const { periods, series, type = 'grouped' } = config;
+    if (!series || !series.length || !periods || !periods.length) {
+      container.innerHTML = '<div class="empty" style="padding:20px;font-size:0.8rem;">暂无数据</div>';
+      return;
+    }
+    const isHorizontal = type === 'horizontal';
+    const margin = isHorizontal
+      ? { top: 8, right: 40, bottom: 8, left: 140 }
+      : { top: 14, right: 16, bottom: 40, left: 38 };
+    const width = container.clientWidth || 480;
+    const height = Math.max(container.clientHeight || 200, Math.max(180, periods.length * 28 + 20));
+    const pw = width - margin.left - margin.right;
+    const ph = height - margin.top - margin.bottom;
+
+    let allVals = series.flatMap(s => s.data);
+    if (type === 'stacked') {
+      // stacked: yMax is max of sums per period
+      allVals = periods.map((_, i) => series.reduce((sum, s) => sum + (s.data[i] || 0), 0));
+    }
+    const dMax = Math.max(...allVals, 1);
+    const yMax = Math.ceil(dMax * 1.15);
+    const yTicks = Math.min(4, yMax);
+
+    const svg = _createSVG(width, height);
+    const g = mkEl('g', { transform: `translate(${margin.left},${margin.top})` });
+
+    if (isHorizontal) {
+      // ── Horizontal bars ──
+      // Y axis bar labels
+      periods.forEach((p, i) => {
+        const y = ph - (i / Math.max(periods.length - 1, 1)) * ph - 10;
+        const t = mkEl('text', { x: -6, y: y + 6, 'text-anchor': 'end', fill: '#cbd5e1', 'font-size': '11' });
+        t.textContent = trunc(p, 30);
+        g.appendChild(t);
+      });
+
+      // X axis ticks
+      for (let i = 0; i <= yTicks; i++) {
+        const x = (i / yTicks) * pw;
+        const val = Math.round((i / yTicks) * yMax);
+        g.appendChild(mkEl('line', { x1: x, y1: 0, x2: x, y2: ph, stroke: 'rgba(99,102,241,0.08)' }));
+        const t = mkEl('text', { x, y: ph + 16, 'text-anchor': 'middle', fill: '#64748b', 'font-size': '10' });
+        t.textContent = val;
+        g.appendChild(t);
+      }
+
+      // Bars
+      series.forEach((s, si) => {
+        const color = s.color || COLORS[si % COLORS.length];
+        s.data.forEach((val, i) => {
+          const y = ph - (i / Math.max(periods.length - 1, 1)) * ph - 18;
+          const barH = Math.max(16, ph / periods.length - 4);
+          const barW = Math.max(2, (val / yMax) * pw);
+          const rect = mkEl('rect', {
+            x: 0, y, width: barW, height: barH, rx: 3,
+            fill: color, class: 'hotspot-bar',
+            'data-idx': i, 'data-file': periods[i], 'data-val': val
+          });
+          const title = document.createElementNS(SVGNS, 'title');
+          title.textContent = (s.name ? s.name + ': ' : '') + periods[i] + ' (' + val + ')';
+          rect.appendChild(title);
+          g.appendChild(rect);
+        });
+      });
+    } else {
+      // ── Vertical bars (grouped or stacked) ──
+      // Y axis
+      for (let i = 0; i <= yTicks; i++) {
+        const y = ph - (i / yTicks) * ph;
+        const val = Math.round((i / yTicks) * yMax);
+        g.appendChild(mkEl('line', { x1: 0, y1: y, x2: pw, y2: y, stroke: 'rgba(99,102,241,0.1)' }));
+        const t = mkEl('text', { x: -6, y: y + 4, 'text-anchor': 'end', fill: '#64748b', 'font-size': '10' });
+        t.textContent = val;
+        g.appendChild(t);
+      }
+
+      // X labels
+      const xStep = Math.max(1, Math.floor(periods.length / 10));
+      periods.forEach((p, i) => {
+        if (i % xStep !== 0 && i !== periods.length - 1) return;
+        const x = periods.length > 1 ? ((i + 0.5) / periods.length) * pw : pw / 2;
+        const t = mkEl('text', { x, y: ph + 14, 'text-anchor': 'middle', fill: '#64748b', 'font-size': '9' });
+        t.textContent = (p || '').length > 8 ? p.slice(0, 8) : (p || '');
+        g.appendChild(t);
+      });
+
+      // Bars
+      const slotW = pw / periods.length;
+      const barGap = 2;
+      const numSeries = series.length;
+
+      periods.forEach((_, pi) => {
+        if (type === 'stacked') {
+          let accY = 0;
+          series.forEach((s, si) => {
+            const color = s.color || COLORS[si % COLORS.length];
+            const val = s.data[pi] || 0;
+            const barH = (val / yMax) * ph;
+            const barY = ph - accY - barH;
+            accY += barH;
+            const bx = pi * slotW + barGap;
+            const bw = slotW - barGap * 2;
+            g.appendChild(mkEl('rect', { x: bx, y: barY, width: bw, height: barH, fill: color, rx: 1 }));
+          });
+        } else {
+          // grouped
+          const groupW = slotW - barGap * 2;
+          const barW = numSeries > 0 ? (groupW - (numSeries - 1) * 2) / numSeries : groupW;
+          series.forEach((s, si) => {
+            const color = s.color || COLORS[si % COLORS.length];
+            const val = s.data[pi] || 0;
+            const barH = Math.max(1, (val / yMax) * ph);
+            const bx = pi * slotW + barGap + si * (barW + 2);
+            const by = ph - barH;
+            g.appendChild(mkEl('rect', { x: bx, y: by, width: barW, height: barH, fill: color, rx: 1 }));
+          });
+        }
+      });
+    }
+
+    svg.appendChild(g);
+    container.innerHTML = '';
+    container.appendChild(svg);
+  }
+
+  /** Shorthand: create SVG element with attributes */
+  function mkEl(tag, attrs) {
+    const el = document.createElementNS(SVGNS, tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'class') el.classList.add(v);
+      else el.setAttribute(k, v);
+    }
+    return el;
+  }
+
+  // ═══════════════════════════════════════════
+  // Tab 1: 概览
+  // ═══════════════════════════════════════════
+
   async function loadOverview() {
-    // Summary cards
+    // 1) Summary cards
     const cards = document.getElementById('summaryCards');
     cards.innerHTML = '<div class="loading">加载中...</div>';
     try {
@@ -430,118 +830,196 @@
       cards.innerHTML = '<div class="error-msg">加载失败: ' + e.message + '</div>';
     }
 
-    // Recent captures table
-    const table = document.getElementById('recentTable');
-    table.innerHTML = '<div class="loading">加载中...</div>';
+    // 2) 2x2 trend mini charts
+    const chartGrid = document.getElementById('overviewCharts');
+    chartGrid.innerHTML = '<div class="loading" style="grid-column:1/-1;">加载趋势数据...</div>';
+
+    const miniCharts = [
+      { id: 'mini-errors', title: '错误趋势 (近4周)', loader: async (c) => {
+        const d = await api('/api/trends/errors?granularity=week&topN=3');
+        if (d.additionalInfo) { c.innerHTML = '<div class="empty" style="padding:20px;font-size:0.8rem;">' + d.additionalInfo + '</div>'; return; }
+        const series = (d.topErrors || d.series || []).map((se, i) => ({
+          name: se.code || se.name || ('#' + (i + 1)),
+          data: se.data || se.values || [],
+          color: se.color || COLORS[i % COLORS.length]
+        }));
+        drawLineChart(c, { periods: d.periods || [], series });
+      }},
+      { id: 'mini-fix', title: '修复率趋势', loader: async (c) => {
+        const d = await api('/api/trends/fix-rate');
+        if (d.additionalInfo) { c.innerHTML = '<div class="empty" style="padding:20px;font-size:0.8rem;">' + d.additionalInfo + '</div>'; return; }
+        drawLineChart(c, { periods: d.periods || [], series: [{ name: '修复率 %', data: d.data || d.rates || [], color: '#4ade80' }] });
+      }},
+      { id: 'mini-knowledge', title: '知识增长', loader: async (c) => {
+        const d = await api('/api/trends/knowledge-growth');
+        if (d.additionalInfo) { c.innerHTML = '<div class="empty" style="padding:20px;font-size:0.8rem;">' + d.additionalInfo + '</div>'; return; }
+        drawLineChart(c, { periods: d.periods || [], series: [{ name: '条目数', data: d.data || d.counts || [], color: '#a78bfa' }] });
+      }},
+      { id: 'mini-hotspots', title: '文件热点 TOP 5', loader: async (c) => {
+        const d = await api('/api/hotspots?topN=5');
+        if (d.additionalInfo) { c.innerHTML = '<div class="empty" style="padding:20px;font-size:0.8rem;">' + d.additionalInfo + '</div>'; return; }
+        const items = d.items || d.hotspots || d || [];
+        if (!items.length) { c.innerHTML = '<div class="empty" style="padding:20px;font-size:0.8rem;">暂无数据</div>'; return; }
+        const labels = items.map(it => it.file || it.name || '');
+        const vals = items.map(it => it.count || it.total || 0);
+        drawBarChart(c, { periods: labels, series: [{ name: '错误数', data: vals, color: '#f87171' }], type: 'horizontal' });
+      }},
+    ];
+
+    // Build card DOM before loading async
+    chartGrid.innerHTML = miniCharts.map(mc =>
+      `<div class="chart-card"><h4>${mc.title}</h4><div class="chart-mini" id="${mc.id}"><div class="loading">加载中...</div></div></div>`
+    ).join('');
+
+    // Load each chart async
+    miniCharts.forEach(mc => {
+      const container = document.getElementById(mc.id);
+      if (container) mc.loader(container).catch(e => {
+        container.innerHTML = '<div class="error-msg" style="font-size:0.78rem;">加载失败</div>';
+      });
+    });
+
+    // 3) Weekly hot errors table
+    const hotTable = document.getElementById('weeklyHotErrors');
+    hotTable.innerHTML = '<div class="loading">加载中...</div>';
     try {
-      const c = await api('/api/captures?pageSize=10');
-      if (!c.items || c.items.length === 0) {
-        table.innerHTML = '<div class="empty">暂无 capture 记录</div>';
+      const items = await api('/api/weekly-top-errors?topN=10&weeks=1');
+      if (!items || !items.length) {
+        hotTable.innerHTML = '<div class="empty">本周暂无错误记录</div>';
         return;
       }
-      table.innerHTML = `<table>
-        <thead><tr><th>ID</th><th>Code</th><th>File</th><th>Timestamp</th><th>Status</th><th>Repeat</th></tr></thead>
-        <tbody>${c.items.map(r => `<tr>
-          <td>${r.id}</td>
-          <td class="mono">${r.code}</td>
-          <td class="truncate" style="max-width:220px;" title="${r.file||''}">${r.file||'-'}</td>
-          <td>${fmtTime(r.timestamp)}</td>
-          <td><span class="badge ${r.status==='resolved'?'badge-resolved':'badge-unresolved'}">${r.status}</span></td>
-          <td>${r.repeat_count||1}</td>
-        </tr>`).join('')}</tbody>
+      const maxCount = Math.max(...items.map(x => x.total_count || 0), 1);
+      hotTable.innerHTML = `<table>
+        <thead><tr><th>#</th><th>Code</th><th>Title</th><th>Count</th></tr></thead>
+        <tbody>${items.map((item, i) => `
+          <tr>
+            <td style="color:#64748b;">${i + 1}</td>
+            <td class="mono" style="color:#a5b4fc;">${item.code}</td>
+            <td>${trunc(item.title || item.error_title || '-', 48)}</td>
+            <td>
+              <span class="inline-bar" style="width:${Math.max((item.total_count||0)/maxCount*120, 2)}px;"></span>
+              ${item.total_count||0}
+            </td>
+          </tr>
+        `).join('')}</tbody>
       </table>`;
     } catch (e) {
-      table.innerHTML = '<div class="error-msg">加载失败: ' + e.message + '</div>';
+      hotTable.innerHTML = '<div class="error-msg">加载失败: ' + e.message + '</div>';
     }
   }
 
-  // ── Tab 2: 错误知识库 ──
-  async function loadErrors() {
+  // ═══════════════════════════════════════════
+  // Tab 2: 错误知识库 (with search)
+  // ═══════════════════════════════════════════
+
+  let errorSearchTimer = null;
+  let allErrorsCache = null; // cache for client-side filtering
+
+  async function loadErrors(query) {
     const table = document.getElementById('errorsTable');
     table.innerHTML = '<div class="loading">加载中...</div>';
     try {
-      const errors = await api('/api/errors');
+      let errors;
+      if (query && query.trim()) {
+        errors = await api('/api/search?q=' + encodeURIComponent(query.trim()));
+        // /api/search might return { errors: [...] } or just [...]
+        if (errors && !Array.isArray(errors)) errors = errors.errors || errors.results || [];
+      } else {
+        errors = await api('/api/errors');
+        allErrorsCache = errors; // cache only when loading full list
+      }
       if (!errors || errors.length === 0) {
-        table.innerHTML = '<div class="empty">暂无知识条目</div>';
+        table.innerHTML = '<div class="empty">' + (query ? '未找到匹配的知识条目' : '暂无知识条目') + '</div>';
         return;
       }
-      let html = `<table>
-        <thead><tr><th>Code</th><th>Title</th><th>Keywords</th><th>Count</th><th>操作</th></tr></thead><tbody>`;
-      errors.forEach((e, idx) => {
-        html += `<tr class="clickable" data-err-idx="${idx}" data-code="${e.code}">
-          <td class="mono">${e.code}</td>
-          <td>${e.title}</td>
-          <td>${e.keywords||'-'}</td>
-          <td>${e.count||0}</td>
-          <td>
-            <button class="btn btn-sm edit-btn" data-code="${e.code}">编辑</button>
-            <button class="btn btn-sm btn-danger del-btn" data-code="${e.code}">删除</button>
-          </td>
-        </tr>
-        <tr class="detail-row" id="detail-${idx}">
-          <td colspan="5"><div class="detail-content" id="detail-content-${idx}"></div></td>
-        </tr>`;
-      });
-      html += '</tbody></table>';
-      table.innerHTML = html;
-
-      // Click row to expand
-      table.querySelectorAll('tr.clickable').forEach(row => {
-        row.addEventListener('click', async (ev) => {
-          if (ev.target.closest('button')) return; // don't toggle on button clicks
-          const idx = row.dataset.errIdx;
-          const detail = document.getElementById('detail-' + idx);
-          const content = document.getElementById('detail-content-' + idx);
-          if (detail.classList.contains('open')) {
-            detail.classList.remove('open');
-            return;
-          }
-          // Close all others
-          table.querySelectorAll('.detail-row.open').forEach(r => r.classList.remove('open'));
-          detail.classList.add('open');
-          if (content.dataset.loaded) return;
-          content.innerHTML = '<span class="loading">加载详情...</span>';
-          try {
-            const d = await api('/api/errors/' + row.dataset.code);
-            content.innerHTML =
-              '<div class="detail-label">现象 (Phenomena)</div><div class="detail-text">' + (d.error.phenomena||'-') + '</div>' +
-              '<div class="detail-label">原因 (Cause)</div><div class="detail-text">' + (d.error.cause||'-') + '</div>' +
-              '<div class="detail-label">解决方案 (Solution)</div><div class="detail-text">' + (d.error.solution||'-') + '</div>' +
-              (d.error.rules ? '<div class="detail-label">规则 (Rules)</div><div class="detail-text">' + d.error.rules + '</div>' : '');
-            content.dataset.loaded = '1';
-          } catch (e) {
-            content.innerHTML = '<div class="error-msg">加载失败</div>';
-          }
-        });
-      });
-
-      // Edit buttons
-      table.querySelectorAll('.edit-btn').forEach(btn => {
-        btn.addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          openEditModal(btn.dataset.code);
-        });
-      });
-
-      // Delete buttons
-      table.querySelectorAll('.del-btn').forEach(btn => {
-        btn.addEventListener('click', async (ev) => {
-          ev.stopPropagation();
-          if (!confirm('确定删除错误知识条目 ' + btn.dataset.code + ' 吗？此操作不可撤销。')) return;
-          try {
-            await api('/api/errors/' + btn.dataset.code, { method: 'DELETE' });
-            loadErrors();
-          } catch (e) {
-            alert('删除失败: ' + e.message);
-          }
-        });
-      });
+      renderErrorsTable(table, errors);
     } catch (e) {
       table.innerHTML = '<div class="error-msg">加载失败: ' + e.message + '</div>';
     }
   }
 
-  // ── Tab 3: Capture 记录 ──
+  function renderErrorsTable(table, errors) {
+    let html = `<table>
+      <thead><tr><th>Code</th><th>Title</th><th>Keywords</th><th>Count</th><th>操作</th></tr></thead><tbody>`;
+    errors.forEach((e, idx) => {
+      html += `<tr class="clickable" data-err-idx="${idx}" data-code="${e.code}">
+        <td class="mono">${e.code}</td>
+        <td>${e.title}</td>
+        <td>${e.keywords||'-'}</td>
+        <td>${e.count||0}</td>
+        <td>
+          <button class="btn btn-sm edit-btn" data-code="${e.code}">编辑</button>
+          <button class="btn btn-sm btn-danger del-btn" data-code="${e.code}">删除</button>
+        </td>
+      </tr>
+      <tr class="detail-row" id="detail-${idx}">
+        <td colspan="5"><div class="detail-content" id="detail-content-${idx}"></div></td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    table.innerHTML = html;
+    bindErrorTableEvents(table);
+  }
+
+  function bindErrorTableEvents(table) {
+    // Click row to expand
+    table.querySelectorAll('tr.clickable').forEach(row => {
+      row.addEventListener('click', async (ev) => {
+        if (ev.target.closest('button')) return;
+        const idx = row.dataset.errIdx;
+        const detail = document.getElementById('detail-' + idx);
+        const content = document.getElementById('detail-content-' + idx);
+        if (detail.classList.contains('open')) {
+          detail.classList.remove('open');
+          return;
+        }
+        table.querySelectorAll('.detail-row.open').forEach(r => r.classList.remove('open'));
+        detail.classList.add('open');
+        if (content.dataset.loaded) return;
+        content.innerHTML = '<span class="loading">加载详情...</span>';
+        try {
+          const d = await api('/api/errors/' + row.dataset.code);
+          content.innerHTML =
+            '<div class="detail-label">现象 (Phenomena)</div><div class="detail-text">' + (d.error.phenomena||'-') + '</div>' +
+            '<div class="detail-label">原因 (Cause)</div><div class="detail-text">' + (d.error.cause||'-') + '</div>' +
+            '<div class="detail-label">解决方案 (Solution)</div><div class="detail-text">' + (d.error.solution||'-') + '</div>' +
+            (d.error.rules ? '<div class="detail-label">规则 (Rules)</div><div class="detail-text">' + d.error.rules + '</div>' : '');
+          content.dataset.loaded = '1';
+        } catch (e) {
+          content.innerHTML = '<div class="error-msg">加载失败</div>';
+        }
+      });
+    });
+
+    // Edit
+    table.querySelectorAll('.edit-btn').forEach(btn => {
+      btn.addEventListener('click', (ev) => { ev.stopPropagation(); openEditModal(btn.dataset.code); });
+    });
+
+    // Delete
+    table.querySelectorAll('.del-btn').forEach(btn => {
+      btn.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        if (!confirm('确定删除错误知识条目 ' + btn.dataset.code + ' 吗？此操作不可撤销。')) return;
+        try {
+          await api('/api/errors/' + btn.dataset.code, { method: 'DELETE' });
+          loadErrors();
+        } catch (e) { alert('删除失败: ' + e.message); }
+      });
+    });
+  }
+
+  // Debounced search
+  document.getElementById('errorSearch').addEventListener('input', function() {
+    clearTimeout(errorSearchTimer);
+    const q = this.value;
+    errorSearchTimer = setTimeout(() => loadErrors(q), 300);
+  });
+
+  // ═══════════════════════════════════════════
+  // Tab 3: Capture 记录
+  // ═══════════════════════════════════════════
+
   let capturesPage = 1;
   async function loadCaptures(page = 1) {
     capturesPage = page;
@@ -575,7 +1053,6 @@
         </tr>`).join('')}</tbody>
       </table>`;
 
-      // Pagination
       const totalPages = Math.ceil(c.total / c.pageSize);
       pagination.innerHTML = `
         <span>共 ${c.total} 条，第 ${c.page} / ${totalPages} 页</span>
@@ -583,16 +1060,13 @@
         <button class="btn btn-sm" ${c.page >= totalPages ? 'disabled' : ''} onclick="loadCaptures(${c.page + 1})">下一页</button>
       `;
 
-      // Delete buttons
       table.querySelectorAll('.cap-del-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
           if (!confirm('确定删除该 capture 记录吗？')) return;
           try {
             await api('/api/captures/' + btn.dataset.id, { method: 'DELETE' });
             loadCaptures(capturesPage);
-          } catch (e) {
-            alert('删除失败: ' + e.message);
-          }
+          } catch (e) { alert('删除失败: ' + e.message); }
         });
       });
     } catch (e) {
@@ -603,7 +1077,10 @@
 
   document.getElementById('captureFilterBtn').addEventListener('click', () => loadCaptures(1));
 
-  // ── Tab 4: Session 历史 ──
+  // ═══════════════════════════════════════════
+  // Tab 4: Session 历史
+  // ═══════════════════════════════════════════
+
   async function loadSessions() {
     const table = document.getElementById('sessionsTable');
     table.innerHTML = '<div class="loading">加载中...</div>';
@@ -630,7 +1107,246 @@
     }
   }
 
-  // ── Edit Modal ──
+  // ═══════════════════════════════════════════
+  // Tab 5: 趋势分析
+  // ═══════════════════════════════════════════
+
+  async function loadTrends() {
+    const content = document.getElementById('trendsContent');
+    const loading = document.getElementById('trendsLoading');
+    const granularity = document.getElementById('trendsGranularity').value;
+    const topN = parseInt(document.getElementById('trendsTopN').value, 10);
+
+    loading.style.display = 'inline';
+    content.innerHTML = '';
+
+    try {
+      // Fetch all 4 endpoints in parallel
+      const [errTrend, fixRate, knowledge, weeklyTop] = await Promise.all([
+        api(`/api/trends/errors?granularity=${granularity}&topN=${topN}`),
+        api('/api/trends/fix-rate'),
+        api('/api/trends/knowledge-growth'),
+        api(`/api/weekly-top-errors?topN=${topN}&weeks=4`),
+      ]);
+
+      let html = '';
+
+      // 1) Error trend chart
+      html += '<div class="trend-chart"><h4>错误趋势 (' + (granularity === 'month' ? '按月' : '按周') + ', TOP ' + topN + ')</h4><div class="chart-large" id="trend-errors-chart"></div></div>';
+
+      // 2) Fix rate chart
+      html += '<div class="trend-chart"><h4>修复率趋势</h4><div class="chart-large" id="trend-fix-chart"></div></div>';
+
+      // 3) Knowledge growth chart
+      html += '<div class="trend-chart"><h4>知识增长趋势</h4><div class="chart-large" id="trend-knowledge-chart"></div></div>';
+
+      // 4) Weekly top errors heatmap table
+      html += '<div class="trend-chart"><h4>每周热门错误码</h4><div id="trend-heatmap"></div></div>';
+
+      content.innerHTML = html;
+
+      // Render charts
+      // 1) Error trend
+      const errContainer = document.getElementById('trend-errors-chart');
+      if (errContainer) {
+        const errPeriods = errTrend.periods || [];
+        const errSeries = (errTrend.topErrors || errTrend.series || []).map((se, i) => ({
+          name: se.code || se.name || ('#' + (i + 1)),
+          data: se.data || se.values || [],
+          color: se.color || COLORS[i % COLORS.length]
+        }));
+        if (errTrend.additionalInfo && errSeries.length === 0) {
+          errContainer.innerHTML = '<div class="empty" style="padding:30px;">' + errTrend.additionalInfo + '</div>';
+        } else {
+          drawLineChart(errContainer, { periods: errPeriods, series: errSeries });
+        }
+      }
+
+      // 2) Fix rate
+      const fixContainer = document.getElementById('trend-fix-chart');
+      if (fixContainer) {
+        if (fixRate.additionalInfo && (!fixRate.data || fixRate.data.length === 0)) {
+          fixContainer.innerHTML = '<div class="empty" style="padding:30px;">' + fixRate.additionalInfo + '</div>';
+        } else {
+          drawLineChart(fixContainer, {
+            periods: fixRate.periods || [],
+            series: [{ name: '修复率 %', data: fixRate.data || fixRate.rates || [], color: '#4ade80' }]
+          });
+        }
+      }
+
+      // 3) Knowledge growth
+      const knowContainer = document.getElementById('trend-knowledge-chart');
+      if (knowContainer) {
+        if (knowledge.additionalInfo && (!knowledge.data || knowledge.data.length === 0)) {
+          knowContainer.innerHTML = '<div class="empty" style="padding:30px;">' + knowledge.additionalInfo + '</div>';
+        } else {
+          drawLineChart(knowContainer, {
+            periods: knowledge.periods || [],
+            series: [{ name: '条目数', data: knowledge.data || knowledge.counts || [], color: '#a78bfa' }]
+          });
+        }
+      }
+
+      // 4) Heatmap: weekly top errors
+      const heatmap = document.getElementById('trend-heatmap');
+      if (heatmap) {
+        renderHeatmap(heatmap, weeklyTop, topN);
+      }
+
+    } catch (e) {
+      content.innerHTML = '<div class="error-msg">加载趋势数据失败: ' + e.message + '</div>';
+    } finally {
+      loading.style.display = 'none';
+    }
+  }
+
+  function renderHeatmap(container, data, topN) {
+    if (!data || !data.length) {
+      container.innerHTML = '<div class="empty" style="padding:20px;">暂无数据</div>';
+      return;
+    }
+    // Data is array of {code, title, total_count} or per-week data
+    // If it's per-week grouped: [{ week, errors: [{code, count}] }]
+    const first = data[0];
+    const isAggregated = first && first.total_count !== undefined;
+    const isPerWeek = first && first.week !== undefined;
+
+    if (isAggregated) {
+      // Simple ranking table
+      const maxCount = Math.max(...data.map(d => d.total_count || 0), 1);
+      container.innerHTML = `<table class="heatmap-table" style="width:100%;">
+        <thead><tr><th>Error Code</th><th>Title</th><th>Count</th><th>分布</th></tr></thead>
+        <tbody>${data.slice(0, topN).map((d, i) => `
+          <tr>
+            <td class="mono" style="color:#a5b4fc;">${d.code}</td>
+            <td style="text-align:left;">${trunc(d.title || d.error_title || '-', 40)}</td>
+            <td>${d.total_count||0}</td>
+            <td style="text-align:left;width:140px;">
+              <span class="inline-bar" style="width:${Math.max((d.total_count||0)/maxCount*100, 2)}px;"></span>
+            </td>
+          </tr>
+        `).join('')}</tbody>
+      </table>`;
+    } else if (isPerWeek) {
+      // Per-week matrix: rows=error codes, cols=weeks
+      const weeks = [...new Set(data.map(d => d.week))];
+      const byCode = {};
+      data.forEach(d => {
+        if (!byCode[d.code]) byCode[d.code] = { title: d.title || d.error_title || '', counts: {} };
+        byCode[d.code].counts[d.week] = d.total_count || d.count || 0;
+      });
+      const codes = Object.entries(byCode).slice(0, topN);
+      const allVals = data.map(d => d.total_count || d.count || 0);
+      const maxVal = Math.max(...allVals, 1);
+
+      container.innerHTML = `<table class="heatmap-table" style="width:100%;">
+        <thead><tr><th>Code</th>${weeks.map(w => '<th>' + w + '</th>').join('')}</tr></thead>
+        <tbody>${codes.map(([code, info]) => `
+          <tr>
+            <td class="mono" style="color:#a5b4fc;text-align:left;">${code}</td>
+            ${weeks.map(w => {
+              const v = info.counts[w] || 0;
+              const opacity = v > 0 ? (0.15 + (v / maxVal) * 0.7) : 0.03;
+              return `<td style="background:rgba(129,140,248,${opacity.toFixed(2)});">${v || '-'}</td>`;
+            }).join('')}
+          </tr>
+        `).join('')}</tbody>
+      </table>`;
+    } else {
+      // Array of {code, total_count} — treat as aggregated
+      const maxCount = Math.max(...data.map(d => d.total_count || d.count || 0), 1);
+      container.innerHTML = `<table class="heatmap-table" style="width:100%;">
+        <thead><tr><th>Error Code</th><th>Count</th><th>分布</th></tr></thead>
+        <tbody>${data.slice(0, topN).map(d => `
+          <tr>
+            <td class="mono" style="color:#a5b4fc;">${d.code}</td>
+            <td>${d.total_count || d.count || 0}</td>
+            <td style="text-align:left;width:120px;">
+              <span class="inline-bar" style="width:${Math.max((d.total_count||d.count||0)/maxCount*90, 2)}px;"></span>
+            </td>
+          </tr>
+        `).join('')}</tbody>
+      </table>`;
+    }
+  }
+
+  // Trends selectors refresh
+  document.getElementById('trendsRefresh').addEventListener('click', loadTrends);
+  document.getElementById('trendsGranularity').addEventListener('change', loadTrends);
+  document.getElementById('trendsTopN').addEventListener('change', loadTrends);
+
+  // ═══════════════════════════════════════════
+  // File hotspot drill-down (overview chart)
+  // ═══════════════════════════════════════════
+
+  // Delegated click on overviewCharts for hotspot bars
+  document.getElementById('overviewCharts').addEventListener('click', async (ev) => {
+    const bar = ev.target.closest('.hotspot-bar');
+    if (!bar) return;
+    const file = bar.getAttribute('data-file');
+    if (!file) return;
+
+    // Remove existing drill panel
+    const existing = document.querySelector('.drill-panel');
+    if (existing) existing.remove();
+
+    // Create drill panel after the chart grid
+    const panel = document.createElement('div');
+    panel.className = 'drill-panel';
+    panel.innerHTML = '<h5>文件: ' + file.replace(/&/g,'&amp;').replace(/</g,'&lt;') + ' — 加载中...</h5>';
+    const chartGrid = document.getElementById('overviewCharts');
+    chartGrid.after(panel);
+
+    try {
+      // Fetch captures for this file
+      const captures = await api('/api/captures?code=&pageSize=100');
+      // Filter by file (captures API doesn't have file filter, do client-side)
+      const fileErrors = [];
+      const seen = new Set();
+      (captures.items || []).forEach(c => {
+        if (c.file && c.file.includes(file) && !seen.has(c.code)) {
+          seen.add(c.code);
+          fileErrors.push({ code: c.code, count: c.repeat_count || 1 });
+        }
+      });
+
+      if (fileErrors.length === 0) {
+        panel.innerHTML = '<h5>文件: ' + file + '</h5><div style="color:#64748b;font-size:0.82rem;">该文件暂无关联错误记录</div>';
+        return;
+      }
+
+      panel.innerHTML = '<h5>文件: ' + file + ' (' + fileErrors.length + ' 个错误码)</h5><div>' +
+        fileErrors.map(fe =>
+          '<span class="drill-err" data-code="' + fe.code + '" title="点击查看 capture 记录">' + fe.code + '</span>'
+        ).join('') + '</div>';
+
+      // Click error code → jump to captures tab with code filter
+      panel.querySelectorAll('.drill-err').forEach(el => {
+        el.addEventListener('click', () => {
+          // Switch to captures tab
+          document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+          document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+          const capTab = document.querySelector('.nav-tab[data-tab="captures"]');
+          if (capTab) capTab.classList.add('active');
+          const capPanel = document.getElementById('tab-captures');
+          if (capPanel) capPanel.classList.add('active');
+          // Pre-fill code filter
+          const codeFilter = document.getElementById('captureCodeFilter');
+          if (codeFilter) codeFilter.value = el.dataset.code;
+          // Load
+          loadCaptures(1);
+        });
+      });
+    } catch (e) {
+      panel.innerHTML = '<h5>文件: ' + file + '</h5><div class="error-msg">加载失败: ' + e.message + '</div>';
+    }
+  });
+
+  // ═══════════════════════════════════════════
+  // Edit Modal
+  // ═══════════════════════════════════════════
+
   const editModal = document.getElementById('editModal');
 
   async function openEditModal(code) {
@@ -683,7 +1399,10 @@
     if (ev.target === editModal) editModal.classList.remove('open');
   });
 
-  // ── Tab 5: Import/Export ──
+  // ═══════════════════════════════════════════
+  // Tab 6: Import/Export
+  // ═══════════════════════════════════════════
+
   document.getElementById('exportBtn').addEventListener('click', async () => {
     try {
       const res = await fetch('/api/export');

@@ -10,7 +10,7 @@ import { checkStyle } from "../src/tools/check_style.mjs";
 import { guide, scan } from "../src/tools/specmate_guide.mjs";
 // specmate_learn.mjs import removed — deprecated. add_error.mjs retained for db:seed script only.
 import { getLevel, LEVEL_LIMITS } from "../src/config.mjs";
-import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots, ensureSession, getSessionId, endCurrentSession, querySessionStats, queryStubbornErrors, queryFixRate, queryErrorCodeStats, queryTopErrorCodes, queryUnresolvedCount, queryUnresolvedCaptures, queryFileTopErrors, queryClusteredCaptures, getCurrentSessionPhase, setCurrentSessionPhase, queryReportSummary, queryErrorTrend, queryFileHotspots, queryFixRateTrend, queryKnowledgeGrowth, queryWeeklyTopErrors, queryError, queryAllErrors, queryAllCapturesByCode, queryListSessions, queryListCaptures, queryCountCaptures, queryUpdateError, queryDeleteError, queryDeleteCapture, queryExportKnowledge, queryImportKnowledge } from "../src/db/query.mjs";
+import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots, ensureSession, getSessionId, endCurrentSession, querySessionStats, queryStubbornErrors, queryFixRate, queryErrorCodeStats, queryTopErrorCodes, queryUnresolvedCount, queryUnresolvedCaptures, queryFileTopErrors, queryClusteredCaptures, getCurrentSessionPhase, setCurrentSessionPhase, queryReportSummary, queryErrorTrend, queryFileHotspots, queryFixRateTrend, queryKnowledgeGrowth, queryWeeklyTopErrors, querySearch, queryError, queryAllErrors, queryAllCapturesByCode, queryListSessions, queryListCaptures, queryCountCaptures, queryUpdateError, queryDeleteError, queryDeleteCapture, queryExportKnowledge, queryImportKnowledge } from "../src/db/query.mjs";
 import { resolvePhase } from "../src/elicitation/elicit-phase.mjs";
 import { parseBSCWarnings } from "../src/tools/warning_diff.mjs";
 import { diagnose, diagnoseStream } from "../src/tools/specmate_diagnose.mjs";
@@ -1332,6 +1332,67 @@ async function handleManagementRoutes(req, res) {
                 const body = await parseBody(req);
                 const result = await queryImportKnowledge(body);
                 apiResponse(res, result);
+            } catch (err) { apiError(res, err.message, 500); }
+            return true;
+        }
+
+        // GET /api/trends/errors?granularity=week&topN=5
+        if (req.method === 'GET' && path === '/api/trends/errors') {
+            try {
+                const granularity = url.searchParams.get('granularity') || 'week';
+                const topN = parseInt(url.searchParams.get('topN') || '5', 10);
+                const data = await queryErrorTrend({ granularity, topN });
+                apiResponse(res, data);
+            } catch (err) { apiError(res, err.message, 500); }
+            return true;
+        }
+
+        // GET /api/trends/fix-rate
+        if (req.method === 'GET' && path === '/api/trends/fix-rate') {
+            try {
+                const data = await queryFixRateTrend();
+                apiResponse(res, data);
+            } catch (err) { apiError(res, err.message, 500); }
+            return true;
+        }
+
+        // GET /api/trends/knowledge-growth
+        if (req.method === 'GET' && path === '/api/trends/knowledge-growth') {
+            try {
+                const data = await queryKnowledgeGrowth();
+                apiResponse(res, data);
+            } catch (err) { apiError(res, err.message, 500); }
+            return true;
+        }
+
+        // GET /api/hotspots?topN=10
+        if (req.method === 'GET' && path === '/api/hotspots') {
+            try {
+                const topN = parseInt(url.searchParams.get('topN') || '10', 10);
+                const data = await queryFileHotspots(topN);
+                apiResponse(res, data);
+            } catch (err) { apiError(res, err.message, 500); }
+            return true;
+        }
+
+        // GET /api/weekly-top-errors?topN=5&weeks=4
+        if (req.method === 'GET' && path === '/api/weekly-top-errors') {
+            try {
+                const topN = parseInt(url.searchParams.get('topN') || '5', 10);
+                const weeks = parseInt(url.searchParams.get('weeks') || '4', 10);
+                const data = await queryWeeklyTopErrors(topN, weeks);
+                apiResponse(res, data);
+            } catch (err) { apiError(res, err.message, 500); }
+            return true;
+        }
+
+        // GET /api/search?q=keyword
+        if (req.method === 'GET' && path === '/api/search') {
+            try {
+                const q = url.searchParams.get('q') || '';
+                if (!q) { apiError(res, 'Missing query parameter q', 400); return true; }
+                const data = await querySearch(q);
+                apiResponse(res, data);
             } catch (err) { apiError(res, err.message, 500); }
             return true;
         }
