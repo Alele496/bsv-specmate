@@ -40,7 +40,7 @@
     "start": "node bin/server.mjs",
     "db:seed": "node src/db/seed.mjs",
     "db:export": "node src/db/export.mjs",
-    "test": "node --test src/db/query.test.mjs src/tools/_matcher.test.mjs src/tools/ast_query.test.mjs test/knowledge-validation.test.mjs && node test/fixtures/run-fixtures.mjs && node scripts/smoke-test.mjs",
+    "test": "node --test src/db/query.test.mjs src/tools/_matcher.test.mjs src/tools/ast_query.test.mjs test/knowledge-validation.test.mjs && node test/fixtures/run-fixtures.mjs && node scripts/smoke-test.mjs && node scripts/http-smoke-test.mjs",
     "test:unit": "node --test src/db/query.test.mjs src/tools/_matcher.test.mjs src/tools/ast_query.test.mjs",
     "test:knowledge": "node --test test/knowledge-validation.test.mjs",
     "test:fixtures": "node test/fixtures/run-fixtures.mjs",
