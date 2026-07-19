@@ -654,6 +654,11 @@ export function formatTrapsOutput(grouped, mode) {
  * Returns 'design' | 'code'.
  * Used by pillar 2 (stage-aware SPP) to filter which traps to push.
  *
+ * **As of Q3 Direction 1 (MCP Elicitation)**: This function is now a FALLBACK only.
+ * The primary phase resolution path is resolvePhase() in src/elicitation/elicit-phase.mjs,
+ * which tries MCP elicitation first (Agent actively selects phase via form),
+ * then falls back to inferPhase() keyword matching when elicitation is unsupported.
+ *
  * Design keywords: architecture, module selection, clocking, connectivity
  * Code keywords: implementation, writing rules/methods, syntax
  */

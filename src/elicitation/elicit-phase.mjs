@@ -22,6 +22,7 @@
  */
 
 import { getLevel } from '../config.mjs';
+import { inferPhase } from '../tools/_matcher.mjs';
 
 // ─── Elicitation trigger strategy (子任务 1.2) ───────────────────────────────
 
@@ -143,4 +144,56 @@ export async function elicitPhase(mcpServer) {
         // Elicitation not supported by client/transport — silent fallback
         return null;
     }
+}
+
+// ─── Phase resolution — elicitation first, inferPhase fallback (子任务 1.5) ───
+
+/**
+ * 解析 Agent 当前设计阶段：优先使用 MCP elicitation，失败则回退到 inferPhase() 关键词推断。
+ *
+ * 调用流程：
+ *   1. 检查 session 缓存 → 如果有缓存，直接返回（develop 模式只问一次）
+ *   2. 检查应否触发 elicitation（根据 SPECMATE_LEVEL + triggerPoint）
+ *   3. 触发 → 尝试 elicitInput() → 成功则缓存并返回
+ *   4. 失败/跳过 → 调用 inferPhase(input) 关键词推断 → 返回
+ *
+ * @param {string} input - 任务描述（用于 inferPhase 关键词匹配）
+ * @param {object} mcpServer - McpServer 实例
+ * @param {'preCode'|'onError'|'afterCheck'|'beforeIntegration'} triggerPoint - 触发点
+ * @param {object} options
+ * @param {Promise<'design'|'code'|'debug'|null>} options.getCachedPhase - 获取缓存的 session phase
+ * @param {Function} options.cachePhase - 缓存 phase 到 session
+ * @returns {Promise<'design'|'code'|'debug'>}
+ */
+export async function resolvePhase(input, mcpServer, triggerPoint, { getCachedPhase, cachePhase } = {}) {
+    // 1. Check session cache — if phase was already determined this session, reuse it
+    if (getCachedPhase) {
+        try {
+            const cached = await getCachedPhase();
+            if (cached) return cached;
+        } catch (_) { /* proceed to elicitation */ }
+    }
+
+    // 2. Check if elicitation should trigger
+    const hasElicited = false; // We already checked cache above — if we reach here, we haven't elicited
+    if (shouldElicit(triggerPoint, hasElicited)) {
+        const elicited = await elicitPhase(mcpServer);
+        if (elicited) {
+            // Cache the result for this session
+            if (cachePhase) {
+                try { await cachePhase(elicited); } catch (_) { /* non-critical */ }
+            }
+            return elicited;
+        }
+    }
+
+    // 3. Fallback: keyword-based inference
+    const inferred = inferPhase(input);
+
+    // Cache even inferred phases (so develop mode doesn't re-ask via elicitation)
+    if (cachePhase) {
+        try { await cachePhase(inferred); } catch (_) { /* non-critical */ }
+    }
+
+    return inferred;
 }
