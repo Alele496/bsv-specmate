@@ -5,6 +5,29 @@ import { getLevel, LEVEL_LIMITS } from '../config.mjs';
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+// ── 架构说明 ──
+// check_style.mjs 是 specmate 的"快速第一遍扫描"层。
+// 所有 19 条规则使用正则实现，不依赖 tree-sitter AST 解析器。
+//
+// 原因：
+// 1. 正则兼容残缺/格式错误的代码（tree-sitter 解析在语法错误时会失败）
+// 2. 正则秒出结果，适合 Agent 编码过程中频繁调用
+// 3. 大部分规则 BSC 编译器最终也会报——specmate 的价值是"提前"和"友好"
+//
+// 与 ast_query.mjs 的关系：
+// - ast_query.mjs 用 tree-sitter 做深度分析（调度冲突/依赖图/寄存器追踪）
+// - check_style.mjs 不做深度分析——那是 specmate_analyze 的工作
+// - 两者是互补的：check_style = 快速 lint，ast_query = 深度审查
+//
+// 与 preflight.mjs 的关系：
+// - preflight.mjs 用 tree-sitter 覆盖 6 条高频规则（P0030/P0005/G0004/G0005/G0053/T0043）
+// - 与 check_style 有部分规则重叠，但实现技术不同
+// - preflight 由 specmate_scan/specmate_guide(pre_code) 自动调用
+//
+// 议会决议（2026-07-18）：不将正则规则重写为 tree-sitter。
+// 而是加 confidence 字段让 Agent 知道每个规则的"可信度"。
+// 精力投入到 TRAPS 扩充而非静态分析精度提升。
+
 export function checkStyle(args) {
     const files = Array.isArray(args.files) ? args.files : [args.files];
     const full = args.full === true;
@@ -128,6 +151,7 @@ function checkBoolOperators(filename, lines, issues) {
                     line: i + 1,
                     check: 'T0061',
                     severity: 'warning',
+                    confidence: 'high',
                     message: `对 Bool 变量 "${varName}" 使用了位取反 ~，应改用逻辑取反 !`,
                     suggestion: `改为 !${varName}`
                 });
@@ -229,6 +253,7 @@ function checkMultiSubmodule(filename, content, issues) {
             issues.push({
                 file: filename, line: lineEst, check: 'G0004_FSM',
                 severity: 'warning',
+                confidence: 'high',
                 message: `Rule "${ruleName}" 内调用了 ${mods.size} 个子模块 (${[...mods].join(', ')}) — 可能触发 G0004`,
                 suggestion: '拆为独立规则，每个规则只调一个子模块。见 lookup_ref(topic="schedule")'
             });
@@ -260,6 +285,7 @@ function checkRuleDoubleWrite(filename, content, issues) {
                     line: lineEstimate,
                     check: 'G0004',
                     severity: 'warning',
+                    confidence: 'medium',
                     message: `同一寄存器有多次 \`<=\` 赋值 — 如果在不同互斥 case 分支中，BSC 可正确处理；如果在同一无条件路径中会触发 G0004`,
                     suggestion: '检查是否是 case/if 分支导致的重复检测。如果是真正多次写入，拆分寄存器或拆分为独立 rule。'
                 });
@@ -317,6 +343,7 @@ function checkVecUsage(filename, lines, issues) {
                 line: i + 1,
                 check: 'T0004',
                 severity: 'warning',
+                confidence: 'medium',
                 message: '`vec()` 在 BSC 2025.07 标准库中不可用',
                 suggestion: '用 genWith(fromInteger) 或显式 genWith(fn) 替代'
             });
@@ -343,6 +370,7 @@ function checkBoolBitMismatch(filename, lines, issues) {
                 issues.push({
                     file: filename, line: i + 1, check: 'T0061',
                     severity: 'warning',
+                    confidence: 'medium',
                     message: `Reg#(Bool) "${reg}" 用于位拼接 { } — Bool 不能拼入 Bit 表达式`,
                     suggestion: `将 "${reg}" 改为 Reg#(Bit#(1))，或改用 Bool 逻辑而非位拼接`
                 });
@@ -361,6 +389,7 @@ function checkValueMethodSyntax(filename, lines, issues) {
                 issues.push({
                     file: filename, line: i + 1, check: 'P0030',
                     severity: 'warning',
+                    confidence: 'high',
                     message: 'Value method 使用 if-return — BSV 要求用 = expr 或 ?: 三元链',
                     suggestion: '改为 method Type name = (cond) ? a : b; 或提取 function'
                 });
@@ -421,6 +450,7 @@ function checkLiteralOverflow(filename, lines, issues) {
                 issues.push({
                     file: filename, line: i + 1, check: 'T0132',
                     severity: 'warning',
+                    confidence: 'high',
                     message: `字面量 ${m[0]} 值 ${val} 需要 ${bitsNeeded} bits，但声明位宽仅 ${width} bits`,
                     suggestion: `最大值 ${max}，减少字面量值或增到位宽 Bit#(${bitsNeeded})`
                 });
@@ -429,6 +459,7 @@ function checkLiteralOverflow(filename, lines, issues) {
                 issues.push({
                     file: filename, line: i + 1, check: 'T0132',
                     severity: 'warning',
+                    confidence: 'high',
                     message: `负字面量 ${m[0]} 超出 ${width}-bit 有符号范围 [${min}, ${max}]`,
                     suggestion: `扩大位宽或使用无符号字面量`
                 });
@@ -455,7 +486,8 @@ function checkDupTypeParams(filename, lines, issues) {
             if (c > 1) {
                 issues.push({
                     file: filename, line: i + 1, check: 'P0073',
-                    severity: 'error',
+                    severity: 'info',
+                    confidence: 'low',
                     message: `类型参数 "${n}" 在 #(...) 中重复定义`,
                     suggestion: `每个 type 参数必须唯一，删除重复的 "${n}"`
                 });
@@ -535,7 +567,8 @@ function checkDupAttr(filename, lines, issues) {
             if (c > 1) {
                 issues.push({
                     file: filename, line: i + 1, check: 'P0085',
-                    severity: 'error',
+                    severity: 'info',
+                    confidence: 'low',
                     message: `属性 "${k}" 在同一 (* *) 中重复`,
                     suggestion: `删除重复的属性 "${k}"`
                 });
@@ -545,7 +578,8 @@ function checkDupAttr(filename, lines, issues) {
         if (/\bsynthesized\b/.test(am[1])) {
             issues.push({
                 file: filename, line: i + 1, check: 'P0085',
-                severity: 'warning',
+                severity: 'info',
+                confidence: 'low',
                 message: `属性 "synthesized" 是拼写错误，应为 "synthesize"`,
                 suggestion: `改为 (* synthesize *)`
             });
@@ -565,7 +599,8 @@ function checkUrgencyCycle(filename, content, issues) {
                 const lineEst = content.substring(0, um.index).split('\n').length + 1;
                 issues.push({
                     file: filename, line: lineEst, check: 'G0030',
-                    severity: 'error',
+                    severity: 'info',
+                    confidence: 'low',
                     message: `urgency 声明中规则 "${r}" 在同一组内重复引用 — 形成自环 (G0040)`,
                     suggestion: `从 descending_urgency 中移除重复的 "${r}"`
                 });
@@ -603,7 +638,8 @@ function checkUrgencyCycle(filename, content, issues) {
             const lineEst = idx >= 0 ? content.substring(0, idx).split('\n').length + 1 : 1;
             issues.push({
                 file: filename, line: lineEst, check: 'G0030',
-                severity: 'error',
+                severity: 'info',
+                confidence: 'low',
                 message: `descending_urgency 形成循环依赖，涉及规则 "${node}"`,
                 suggestion: `检查所有 descending_urgency 声明，消除循环`
             });
@@ -632,7 +668,8 @@ function checkAttrBadRule(filename, content, issues) {
                 const lineEst = content.substring(0, um.index).split('\n').length + 1;
                 issues.push({
                     file: filename, line: lineEst, check: 'G0054',
-                    severity: 'error',
+                    severity: 'info',
+                    confidence: 'low',
                     message: `属性引用的规则 "${r}" 在文件中未定义`,
                     suggestion: `检查规则名拼写，或确认该规则已在本模块中声明`
                 });
@@ -702,7 +739,8 @@ function checkArgCountMismatch(filename, lines, issues) {
             if (actual !== expected && !trimmed.startsWith(name + ' ')) {
                 issues.push({
                     file: filename, line: i + 1, check: 'T0080',
-                    severity: 'error',
+                    severity: 'info',
+                    confidence: 'low',
                     message: `函数 "${name}" 需要 ${expected} 个参数，但调用处传了 ${actual} 个`,
                     suggestion: actual > expected
                         ? `删除多余的参数`
@@ -722,6 +760,7 @@ function checkSizedLiteralZero(filename, lines, issues) {
             issues.push({
                 file: filename, line: i + 1, check: 'T0132',
                 severity: 'warning',
+                confidence: 'high',
                 message: `零位宽字面量 "${m[0].trim()}" — Bit#(0) 尺寸为 0，不能容纳任何值`,
                 suggestion: `使用非零位宽，或直接使用 ? 作为 don't-care`
             });
@@ -755,6 +794,7 @@ function checkG0053(filename, lines, issues) {
                 line: i + 1,
                 check: 'G0053',
                 severity: 'warning',
+                confidence: 'high',
                 message: `mkReg 初始化值 "${init}" 可能是模块参数或变量——非编译期静态常量，编译时可能触发 G0053`,
                 suggestion: '改用 mkRegU（不初始化），然后在 rule/method 中显式赋初值。或确认该值确实是编译期常量。'
             });
@@ -784,6 +824,7 @@ function checkInterfaceBoolReturn(filename, content, issues) {
                 line: methodLineEst,
                 check: 'interface-bool-return',
                 severity: 'warning',
+                confidence: 'high',
                 message: `接口方法 "${methodName}" 返回 Bool 类型 — 硬件接口应返回 Bit#(1)`,
                 suggestion: `将 method Bool ${methodName} 改为 method Bit#(1) ${methodName}。Bool 不能参与位拼接，会导致下游模块连接困难。`
             });
@@ -801,6 +842,7 @@ function checkInterfaceBoolReturn(filename, content, issues) {
                     line: methodLineEst,
                     check: 'interface-bool-param',
                     severity: 'info',
+                    confidence: 'high',
                     message: `接口方法参数 "${paramName}" 使用 Bool 类型 — 硬件接口参数应使用 Bit#(1)`,
                     suggestion: `将 Bool ${paramName} 改为 Bit#(1) ${paramName}`
                 });
@@ -875,6 +917,7 @@ function checkAlwaysAttrMisuse(filename, content, issues) {
                     line: i + 1,
                     check: 'always-attr-guard-conflict',
                     severity: 'warning',
+                    confidence: 'high',
                     message: `方法 "${methodName}" 有 guard 条件但标记了 always_ready/enabled — 属性与实际语义矛盾`,
                     suggestion: '移除 always_ready/enabled 属性，或移除 guard 条件。有 guard 的 method 不是每周期可用，不应标 always。'
                 });
@@ -945,6 +988,7 @@ function checkP0022AttrOnMethod(filename, lines, issues) {
                     line: i + 1,
                     check: 'P0022',
                     severity: 'warning',
+                    confidence: 'high',
                     message: `方法 "${methodName}" 在 module 实现上使用了 (* always_enabled/always_ready *) pragma — module 内 method 不能用 pragma 形式`,
                     suggestion: `删除 (* always_enabled *) pragma，改为 method Action ${methodName}(...) always_enabled;（suffix 关键字形式）`
                 });
@@ -981,6 +1025,7 @@ function checkBVIScheduleGroupSyntax(filename, content, issues) {
                     line: lineEst,
                     check: 'P0200',
                     severity: 'warning',
+                    confidence: 'medium',
                     message: `BVI schedule 使用了分组语法 schedule ${schedMatch[1]} ${schedMatch[2]} (${methods.join(', ')}) — BSC 不支持分组，必须逐对声明`,
                     suggestion: `展开为逐对声明：${methods.map(m => `schedule ${schedMatch[1]} ${schedMatch[2]} ${m}`).join('; ')}`
                 });
@@ -1029,6 +1074,7 @@ function checkSynthesizeAnnotationOrder(filename, content, issues) {
                 line: i + 1,
                 check: 'G0010',
                 severity: 'warning',
+                confidence: 'medium',
                 message: `模块 "${modName}" 的调度注解在 (* synthesize *) 模块体内 — synthesize 创建调度边界，跨 method/rule 冲突的 G0010 可能不会消除`,
                 suggestion: `将 (* descending_urgency = "..." *) 移到 (* synthesize *) 之前作为模块级属性，使注解传递给代码生成阶段`
             });

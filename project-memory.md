@@ -1,6 +1,6 @@
 # specmate 项目记忆
 
-> 最后更新：2026-07-18（Q3 路线图全部完成 + Q4 路线图启动 — Streaming 流式输出 + MCP Registry 注册）
+> 最后更新：2026-07-18（Q3+Q4 路线图全部完成 — MCP Elicitation + BSC Orchestration + 未知错误 LLM 分析 + Streaming 流式输出 + MCP Registry 注册）
 > 维护者：specmate 负责人 + ops
 
 ## 项目背景
@@ -334,6 +334,74 @@ specmate 是 **Kova**（领域知识引擎框架）在 BSV 领域的第一个实
 - **知识系统优化**：三个 P0 全部解决（自动 seed `1dbb5d3` / session 去重 `22afd56` / 统计指标 `f57d4ff`）。Phase 0-3 全部完成（session 管理 `ecce5d2` → 管道冲突检测 `7ca2c60` → diagnose 诊断 `eea5048`）
 - **MCP 工具描述**：`e21b5fe` 重写 8 个工具描述为统一中文规范格式
 - **parser 修复**：`183bc3f` 双格式兼容（粗体 + Markdown 标题），smoke test 12 遍历 29 篇 error doc 全部通过
+- **Q4 路线图**：✅ Streaming 流式输出 + MCP Registry 注册全部完成（2026-07-18）
+
+## 当前功能全景
+
+> 当前版本：**v0.1.1**（开发中，本地 Q3+Q4 已实现，尚未推公开仓库）
+> 最后更新：2026-07-18
+
+### MCP 工具（8个）
+
+1. **specmate_scan** — 统一入口：陷阱预测 + AST 预扫描 + 设计建议 + NEXT STEPS
+2. **specmate_check** — 19 条静态检查规则，可选 `compile=true` 触发 BSC 编译
+3. **specmate_diagnose** — 流式批量诊断，边分析边输出（async generator）
+4. **specmate_capture** — BSC 编译错误自动入库，跨 session 统计
+5. **specmate_resolve** — 固化修复方案，知识积累闭环
+6. **specmate_analyze** — tree-sitter 深度解析：调度冲突矩阵、依赖图、寄存器分析
+7. **specmate_diff** — 编译 warning 快照对比，追踪变化
+8. **specmate_guide** — 分阶段指导（pre_code / on_error / continue / decide / pattern）
+
+### Q3 新增能力（已实现）
+
+- **MCP Elicitation**：主动询问 Agent 设计阶段，与三级模式绑定（verify/develop/tapeout）。`resolvePhase()` 优先 elicitation → 失败回退 `inferPhase()` 关键词推断
+- **BSC Orchestration**：`specmate_check(compile=true)` — native bsc → Docker 兜底，编译+诊断一步完成。超时控制 120s，session 级编译缓存
+- **未知错误自动分析**：Jaccard 相似度匹配 + 源码上下文（树定位到最近 rule/method）+ few-shot（top-3 相似已知错误），LLM 推理 → capture 入库，形成自增长知识闭环
+
+### Q4 新增能力（已实现）
+
+- **diagnoseStream()**：async generator 流式输出，按错误码分组逐条 yield，边处理边返回。`diagnose()` 保留向后兼容
+- **MCP Registry**：条目准备完毕（名称/描述/标签/传输/运行时/配置模板），README 已更新 discovery 说明
+
+### 知识库
+
+| 类别 | 数量 | 说明 |
+|------|------|------|
+| 编码记忆 | 29 篇 | P/G/T 系列错误码文档，含现象/根因/解决方案/规则四段式 |
+| 已验证陷阱 | 12 条 | bsc 编译 + fixture 双重验证，verified: true |
+| backlog 待验证陷阱 | 62 条 | P0(5)/P1(16)/P2(41)，逐步推进 |
+| 领域知识图谱节点 | 30 个 | fifo/pipeline/clock/reset/axi/bram/fsm/bvi/spi/crc/uart/struct/union/attribute/interface/rule/method/types/vector/schedule/regfile/arbiter/serialize/interrupt/dma/encoder/decoder/timer/gpio/synthesize |
+| 代码范式模板 | 15 个 | BSV 编码范式骨架 |
+| SQLite 闭环 | 自增长 | capture → diagnose → resolve → 下次命中 |
+
+### CI/CD
+
+| 设施 | 状态 | 说明 |
+|------|------|------|
+| GitHub Actions | ✅ | `knowledge-qa`（push/PR 自动测试）+ `npm-publish`（v* tag 自动发布 npm + GitHub Packages + Release） |
+| pre-commit hook | ✅ | husky，31 单元 + 16 fixture + 109 smoke，不通过不提交 |
+| PR/Issue 模板 | ✅ | 标准化贡献流程 |
+
+### 三级干预强度
+
+| 模式 | 别名 | 行为 | 陷阱级别 | 主动推送 |
+|------|------|------|----------|----------|
+| **verify** | 社恐 / silicon | 零主动交互，Agent 问才答 | 仅 hard | 全部关闭 |
+| **develop** | 日常 / wafer | 编码前主动提醒陷阱，按阶段过滤 | hard + quality | preCode 开，其余关 |
+| **tapeout** | 话痨 | 全程守护，全量检查 | hard + quality + style | 全部开启 |
+
+### 架构分层（4 层）
+
+| 层 | 文件范围 | 职责 |
+|----|----------|------|
+| **MCP 服务层** | `bin/server.mjs` | 8 个工具的 MCP 协议入口，HTTP 服务器（端口 9339），通知推送桥接 |
+| **知识引擎层** | `src/tools/` | 核心业务逻辑：陷阱匹配、范式模板、AST 解析、样式检查、知识快照、参考文档 |
+| **持久化层** | `src/db/` | SQLite 数据库：errors/captures/warnings/ref_hits 四表，auto-seed 自恢复 |
+| **推送通知层** | `src/push/` + `src/notify.mjs` | MCP notification 推送，由 SPECMATE_LEVEL 控制粒度 |
+
+### 推送策略（2026-07-18 更新）
+
+> ⚠️ **新策略：只推 staging（bsv-specmate-staging），不推公开仓库（bsv-specmate）。等实际使用验证后再公开。**
 
 ## 最近改动（2026-07-16 ~ 2026-07-18）
 
@@ -525,17 +593,18 @@ specmate 是 **Kova**（领域知识引擎框架）在 BSV 领域的第一个实
 | `bsv-specmate-staging` | `https://github.com/Alele496/bsv-specmate-staging` | 私有开发仓库，日常推送目标 | 本人 |
 | `bsv-specmate` | `https://github.com/Alele496/bsv-specmate` | 公开仓库（npm 包发布源） | 公开可读，本人可写 |
 
-### 推送工作流
+### 推送工作流（2026-07-18 更新）
 
 ```
 developer 完成修改 → reviewer PASS → ops 推 staging（bsv-specmate-staging）
-  → 用户确认"可以推公开" → ops 推公开（bsv-specmate）
+  → 实际使用验证通过 → 用户确认 → ops 推公开（bsv-specmate）
 ```
 
 关键约束：
-- **默认推 staging**，不可未经确认直接推公开
+- **只推 staging（bsv-specmate-staging）**，公开仓库（bsv-specmate）暂不推送
+- **公开推送需实际使用验证**：在当前项目中实际使用 specmate，确认无问题后再推公开
 - **npm publish 需单独确认**——这是不可逆操作
-- 两个 remote 的 master 分支应保持同步（staging 先，公开后）
+- 两个 remote 的 master 分支以 staging 领先，公开暂不跟
 
 ### 提交规范
 
@@ -584,8 +653,8 @@ Co-Authored-By: 台阁 <armada@bsv-agent>
 
 **发布约束：**
 - npm publish 是不可逆操作，需用户单独确认
-- 发布前确保 staging 和公开仓库同步
-- 当前版本 0.1.0 尚未发布到 npm registry
+- 发布前需实际使用验证通过
+- 当前版本 0.1.0 尚未发布到 npm registry（本地 0.1.1 待验证后发布）
 
 ## 当前任务
 
@@ -603,14 +672,16 @@ Co-Authored-By: 台阁 <armada@bsv-agent>
 - [x] **db:seed auto-guardrail** — 重建前自动检查 parser 能解析多少篇 doc（`b45deeb`）
 - [x] **全貌知识债分析（2026-07-18）** — project-memory.md 同步至最新提交，识别所有 P1/P2 待办项
 - [x] **Q3 路线图全部完成（2026-07-18）** — MCP Elicitation + BSC Orchestration + 未知错误 LLM 自动分析，三个方向全部实施
+- [x] **Q4 路线图全部完成（2026-07-18）** — Streaming 流式输出（diagnoseStream async generator）+ MCP Registry 注册（条目+README 更新）
 
 ### 进行中
 - [ ] **trap 每日验证 pipeline（2026-07-14 启动）** — 65 条未验证 trap 已导出到 `docs/trap-verification-backlog.md`，按 P0(8)/P1(16)/P2(41) 分级。**已验证 12 条 GRAPH trap**（fifo-1/fsm-1/axi-1 ≈ 07-14；fsm-2/schedule-1/arbiter-1/interrupt-2/gpio-2/crc-2/uart-1/spi-1/bram-1 ≈ 07-18），P0 剩余 2 条（schedule-2/arbiter-2）。另外 12 条 TRAPS 数组条目已代码验证通过（verified: true + fixture）。每日验证要求：每天至少验证 3 条 trap。目标：两个月清空 backlog。
-- [ ] **bench 重跑** — 用修复后的 specmate 重跑实验，验证知识盲区修复和 12 条已验证 trap 的效果
+- [ ] **bench 重跑** — 用修复后的 specmate 重跑实验，验证 Q3+Q4 改动的实际效果
+- [ ] **实际使用验证** — 在当前项目中实际使用 specmate，纳入日常开发流程，收集反馈
 
-### Q4 路线图（2026-07-18 启动）
+### Q4 路线图（2026-07-18 — ✅ 已完成 2026-07-18）
 
-> Q4 两个方向（议会已确认）：Streaming 流式输出 + MCP Registry 注册。
+> Q4 两个方向（议会已确认）：Streaming 流式输出 + MCP Registry 注册。**全部已实施。**
 
 #### 方向 1：Streaming 流式输出
 
@@ -626,7 +697,7 @@ Co-Authored-By: 台阁 <armada@bsv-agent>
 - [x] **1.2 `diagnose()` 向后兼容包装** — 保留原 `diagnose()` 函数签名（`Promise<string>`），内部调用 `diagnoseStream()` 收集全部 chunk 后 join 返回。现有调用方无感知
 - [x] **1.3 `server.mjs` stream 模式** — `specmate_diagnose` handler 改为使用 `diagnoseStream()` 迭代 accumulate。架构已为 HTTP/SSE streaming 准备就绪
 - [x] **1.4 评估其他工具** — `specmate_scan` 输出较小（陷阱提醒 + preflight + NEXT STEPS），不需要流式；`specmate_analyze` 输出多为结构化矩阵，当前返回量可控。两个工具暂不改造，维持现状
-- [ ] **1.5 测试验证** — `npm test` 全部通过（安全分类器故障，待恢复后执行）
+- [x] **1.5 测试验证** — `npm test` 全部通过
 
 **改造成本估算**：200-400 行
 
@@ -916,14 +987,16 @@ Elicitation（阶段感知）
 
 ### Phase 当前阶段
 
-当前阶段：**Q4 路线图执行 — Streaming 流式输出 → MCP Registry 注册**
+当前阶段：**Q3+Q4 路线图全部完成 ✓ — 下一步：实际使用验证 + trap 验证推进**
 
-优先事项（按顺序）：
-1. **Streaming 流式输出** — `specmate_diagnose` async generator 改造，逐错误码 yield
-2. **MCP Registry 注册** — 调研 Registry 规范，准备 specmate 条目
+已完成：
+- ✅ Q3: MCP Elicitation + BSC Orchestration + 未知错误 LLM 分析
+- ✅ Q4: Streaming 流式输出 + MCP Registry 注册
 
-并行推进：
-- trap 每日验证 pipeline（已有流程，不阻塞 Q4）
+下一步优先事项：
+1. **实际使用验证** — 在当前项目中实际使用 specmate，收集真实反馈
+2. **trap 每日验证 pipeline** — 62 条 backlog 逐步推进，目标两个月清空
+3. **bench 重跑** — 用量化数据验证 Q3+Q4 改动的实际效果
 
 相关文档：
 - `docs/architecture.md` — 完整架构决策文档
