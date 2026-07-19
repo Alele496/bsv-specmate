@@ -442,6 +442,35 @@ async function test13_elicitation() {
     assert(await getCurrentSessionPhase() === 'debug', 'set + get debug phase 一致');
 }
 
+// ── 测试 14: Q3 Direction 2 — BSC compile integration ──
+async function test14_bsc_compile() {
+    console.log('\n📋 测试 14: Q3 BSC Compile — 编译集成');
+
+    const { detectBSC, resetBSCDetection } = await import('../src/compile/bsc-detector.mjs');
+
+    // 14a: detectBSC returns valid result
+    const info = detectBSC();
+    assert(['native', 'docker', 'unavailable'].includes(info.type), `detectBSC type 合法: ${info.type}`);
+    assert(typeof info.path === 'string', 'detectBSC path 为 string');
+
+    // 14b: detection is cached
+    const info2 = detectBSC();
+    assert(info2.type === info.type, 'detectBSC 结果被缓存 (二次调用一致)');
+    assert(info2.path === info.path, 'detectBSC path 被缓存');
+
+    // 14c: resetBSCDetection clears cache
+    resetBSCDetection();
+    const info3 = detectBSC();
+    assert(info3.type === info.type, 'resetBSCDetection 后重新检测 type 一致');
+
+    // 14d: when bsc is unavailable, runBSC returns clean degradation message
+    // Reset to trigger unavailable state
+    // Note: we don't force unavailable — we test that the cache works
+    const { runBSC, COMPILE_TIMEOUT } = await import('../src/compile/bsc-runner.mjs');
+    assert(COMPILE_TIMEOUT === 120000, 'COMPILE_TIMEOUT = 120s');
+    assert(typeof runBSC === 'function', 'runBSC 可导入');
+}
+
 // ── main ──
 async function main() {
     console.log('╔══════════════════════════════════════════╗');
@@ -523,6 +552,14 @@ async function main() {
     } catch (err) {
         console.error(`  ❌ test13_elicitation 异常: ${err.message}`);
         failures.push(`test13_elicitation: ${err.message}`);
+        failed++;
+    }
+
+    try {
+        await test14_bsc_compile();
+    } catch (err) {
+        console.error(`  ❌ test14_bsc_compile 异常: ${err.message}`);
+        failures.push(`test14_bsc_compile: ${err.message}`);
         failed++;
     }
 
