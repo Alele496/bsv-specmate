@@ -471,6 +471,55 @@ async function test14_bsc_compile() {
     assert(typeof runBSC === 'function', 'runBSC 可导入');
 }
 
+// ── 测试 15: Q3 Direction 3 — Unknown error similarity + context ──
+async function test15_unknown_errors() {
+    console.log('\n📋 测试 15: Q3 未知错误 LLM 分析 — similarity + context');
+
+    const { findSimilarErrors, resetSimilarityCache } = await import('../src/tools/_similarity.mjs');
+
+    // 15a: findSimilarErrors returns results for an error message with BSV terms
+    const results = findSimilarErrors('P9999', 'Error: function keyword not allowed in genWith, use partial application');
+    assert(Array.isArray(results), 'findSimilarErrors 返回数组');
+    assert(results.length <= 3, '最多返回 3 个结果');
+
+    // 15b: P-series error message should prefer P-series known errors
+    if (results.length > 0) {
+        const pMatches = results.filter(r => r.code.startsWith('P'));
+        const hasPMatch = pMatches.length > 0 || results.some(r => r.code.startsWith('G') || r.code.startsWith('T'));
+        assert(hasPMatch, '至少返回一个相似错误 (P/G/T 系列)');
+        assert(results[0].score > 0, '最佳匹配 score > 0');
+    }
+
+    // 15c: extractSourceContext with valid file
+    const { extractSourceContext } = await import('../src/tools/_context.mjs');
+    const { resolve } = await import('path');
+    const testFile = resolve(PROJECT_ROOT, 'test/fixtures/traps/fifo-1.bsv');
+    const ctx = extractSourceContext(testFile, 5, 3);
+    if (ctx) {
+        assert(typeof ctx.text === 'string', 'extractSourceContext 返回 text 字符串');
+        assert(ctx.startLine >= 1, 'extractSourceContext startLine >= 1');
+        assert(ctx.endLine >= ctx.startLine, 'extractSourceContext endLine >= startLine');
+    }
+
+    // 15d: buildUnknownErrorResponse generates expected sections
+    const { buildUnknownErrorResponse } = await import('../src/tools/_context.mjs');
+    const response = buildUnknownErrorResponse({
+        errorCode: 'P9999',
+        errorMessage: 'function keyword is a reserved word in Verilog-2001 mode',
+        similarErrors: results,
+        sourceContext: ctx,
+    });
+    assert(typeof response === 'string', 'buildUnknownErrorResponse 返回字符串');
+    assert(response.includes('P9999'), '响应包含错误码');
+    assert(response.includes('请使用你自己的 LLM 推理能力'), '响应包含 LLM 分析引导');
+    assert(response.includes('specmate_capture'), '响应提示调 specmate_capture');
+
+    // 15e: Reset cache for clean state
+    resetSimilarityCache();
+    const results2 = findSimilarErrors('G9999', 'conflicting rules writing register');
+    assert(Array.isArray(results2), 'resetSimilarityCache 后 findSimilarErrors 仍然可用');
+}
+
 // ── main ──
 async function main() {
     console.log('╔══════════════════════════════════════════╗');
@@ -560,6 +609,14 @@ async function main() {
     } catch (err) {
         console.error(`  ❌ test14_bsc_compile 异常: ${err.message}`);
         failures.push(`test14_bsc_compile: ${err.message}`);
+        failed++;
+    }
+
+    try {
+        await test15_unknown_errors();
+    } catch (err) {
+        console.error(`  ❌ test15_unknown_errors 异常: ${err.message}`);
+        failures.push(`test15_unknown_errors: ${err.message}`);
         failed++;
     }
 
