@@ -10,7 +10,7 @@ import { checkStyle } from "../src/tools/check_style.mjs";
 import { guide, scan } from "../src/tools/specmate_guide.mjs";
 // specmate_learn.mjs import removed — deprecated. add_error.mjs retained for db:seed script only.
 import { getLevel, LEVEL_LIMITS } from "../src/config.mjs";
-import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots, ensureSession, getSessionId, endCurrentSession, querySessionStats, queryStubbornErrors, queryFixRate, queryErrorCodeStats, queryTopErrorCodes, queryUnresolvedCount, queryUnresolvedCaptures, getCurrentSessionPhase, setCurrentSessionPhase } from "../src/db/query.mjs";
+import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots, ensureSession, getSessionId, endCurrentSession, querySessionStats, queryStubbornErrors, queryFixRate, queryErrorCodeStats, queryTopErrorCodes, queryUnresolvedCount, queryUnresolvedCaptures, queryFileTopErrors, queryClusteredCaptures, getCurrentSessionPhase, setCurrentSessionPhase } from "../src/db/query.mjs";
 import { resolvePhase } from "../src/elicitation/elicit-phase.mjs";
 import { parseBSCWarnings } from "../src/tools/warning_diff.mjs";
 import { diagnose, diagnoseStream } from "../src/tools/specmate_diagnose.mjs";
@@ -152,7 +152,16 @@ server.tool(
             }
         } catch (_) { /* non-critical */ }
 
-        const responseText = result + historyBlock;
+        // ── 3.1: Cluster hint — suggest auto-cluster when unknown errors repeat ──
+        let clusterBlock = '';
+        try {
+            const clusters = await queryClusteredCaptures(3, 2);
+            if (clusters.length > 0) {
+                clusterBlock = `\n---\n### 💡 知识增长机会\n\n检测到 ${clusters.length} 个未知错误已重复出现 3+ 次（跨 2+ session），运行 \`node scripts/auto-cluster.mjs\` 自动生成知识条目。\n`;
+            }
+        } catch (_) { /* non-critical */ }
+
+        const responseText = result + historyBlock + clusterBlock;
 
         // Push alerts for pre_code-like behavior (phase-aware)
         try {
@@ -400,8 +409,20 @@ server.tool(
             }
         }
 
+        // ── 3.2: Cross-session hot tracking — show top errors for current files ──
+        let hotTrackingBlock = '';
+        try {
+            const fileTopErrors = await queryFileTopErrors(files, 3);
+            if (fileTopErrors.length > 0) {
+                const entries = fileTopErrors.map(e =>
+                    `${e.code}(${e.total_count}次 跨${e.session_count}个session)`
+                ).join('\n  \u2022 ');
+                hotTrackingBlock = `\u26a0\ufe0f 历史热点：这些文件最常触发的错误码 \u2014\n  \u2022 ${entries}\n\n`;
+            }
+        } catch (_) { /* non-critical */ }
+
         // Build final output: static check results + optional compile results
-        const parts = [`### 📋 静态检查${compile ? ' + BSC编译' : ''}\n\n${staticResultLines.join('\n')}`];
+        const parts = [`### 📋 静态检查${compile ? ' + BSC编译' : ''}\n\n${hotTrackingBlock}${staticResultLines.join('\n')}`];
 
         if (compileResult) {
             parts.push(compileResult);

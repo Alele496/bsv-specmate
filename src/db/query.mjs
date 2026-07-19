@@ -2,7 +2,7 @@ import { readFileSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import initSqlJs from 'sql.js';
 import { initDataDir, getDBPath } from '../config.mjs';
-import { initDB, insertError, getError, getAllErrors, getTopRules, searchErrors, incrementCount, getHotTopics, incrementRefHit, insertCapture, upsertCapture, resolveCapture, getCapturesByCode, getRecentCaptures, getUnresolvedCaptures, getLatestUnresolvedByCode, insertWarning, getWarningsBySnapshot, getLatestSnapshots, createSession, endSession, getSessionStats, getStubbornErrors, getFixRate, getErrorCodeStats, getTopErrorCodes, getUnresolvedCount, getClusteredCaptures, setCaptureReviewStatus, getAllCapturesByCode, setSessionPhase, getSessionPhase, CAPTURES_DDL } from './schema.mjs';
+import { initDB, insertError, getError, getAllErrors, getTopRules, searchErrors, incrementCount, getHotTopics, incrementRefHit, insertCapture, upsertCapture, resolveCapture, getCapturesByCode, getRecentCaptures, getUnresolvedCaptures, getLatestUnresolvedByCode, insertWarning, getWarningsBySnapshot, getLatestSnapshots, createSession, endSession, getSessionStats, getStubbornErrors, getFixRate, getErrorCodeStats, getTopErrorCodes, getFileTopErrors, getUnresolvedCount, getClusteredCaptures, setCaptureReviewStatus, getAllCapturesByCode, setSessionPhase, getSessionPhase, CAPTURES_DDL } from './schema.mjs';
 import { collectErrorFiles, parseErrorFile } from './parser.mjs';
 
 let _db = null;
@@ -421,6 +421,19 @@ export async function queryErrorCodeStats(code) {
 export async function queryTopErrorCodes(limit = 5) {
     const db = await ensureDB();
     return getTopErrorCodes(db, limit);
+}
+
+/**
+ * Get TOP N most frequently captured error codes for given files (cross-session hot tracking).
+ * Matches captures whose `files` field contains the file's basename.
+ * Used by specmate_check to show historical hotspots for current files.
+ * @param {string[]} files - array of file paths
+ * @param {number} limit - max results (default 3)
+ * @returns {Promise<Array<{ code: string, total_count: number, session_count: number }>>}
+ */
+export async function queryFileTopErrors(files, limit = 3) {
+    const db = await ensureDB();
+    return getFileTopErrors(db, files, limit);
 }
 
 /**

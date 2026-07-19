@@ -457,6 +457,61 @@ export function getTopErrorCodes(db, limit = 5) {
 }
 
 /**
+ * Get TOP N error codes for given file basenames (cross-session hot tracking).
+ * Matches captures whose `files` field contains the basename via LIKE.
+ * Merges results across all provided files, taking the top N by total_count.
+ * @param {object} db
+ * @param {string[]} files - array of file paths (basename extracted internally)
+ * @param {number} limit - max results (default 3)
+ * @returns {Array<{ code: string, total_count: number, session_count: number }>}
+ */
+export function getFileTopErrors(db, files, limit = 3) {
+    // Aggregate: code → { total_count, session_ids: Set }
+    const agg = {};
+
+    for (const f of files) {
+        // Extract basename from path (cross-platform)
+        const name = f.replace(/^.*[/\\]/, '');
+        const stmt = db.prepare(
+            `SELECT
+                code,
+                COUNT(*) as total_count,
+                COUNT(DISTINCT session_id) as session_count
+             FROM captures
+             WHERE files LIKE '%' || ? || '%'
+             GROUP BY code
+             ORDER BY total_count DESC
+             LIMIT ?`
+        );
+        stmt.bind([name, limit]);
+        while (stmt.step()) {
+            const row = stmt.getAsObject();
+            if (!agg[row.code]) {
+                agg[row.code] = { total: 0, sessions: new Set() };
+            }
+            agg[row.code].total += row.total_count;
+            // session_count from each file query is partial; we use the max as a heuristic
+            agg[row.code].sessions.add(row.session_count);
+        }
+        stmt.free();
+    }
+
+    // Convert to sorted array
+    const results = Object.entries(agg)
+        .map(([code, data]) => ({
+            code,
+            total_count: data.total,
+            // Use the sum of session_counts across files as an approximation
+            // of cross-session spread
+            session_count: Math.max(...data.sessions),
+        }))
+        .sort((a, b) => b.total_count - a.total_count)
+        .slice(0, limit);
+
+    return results;
+}
+
+/**
  * Get count of unresolved captures (cross-session).
  * @param {object} db
  * @returns {number}
