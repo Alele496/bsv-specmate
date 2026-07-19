@@ -388,6 +388,60 @@ async function test12_parse_all_errors() {
     assert(failCount === 0, `所有 ${files.length} 篇 error doc 解析成功（失败 ${failCount} 篇）`);
 }
 
+// ── 测试 13: Q3 Direction 1 — MCP Elicitation 场景 ──
+async function test13_elicitation() {
+    console.log('\n📋 测试 13: Q3 MCP Elicitation — 阶段感知');
+
+    // 13a: Trigger decision table
+    const { ELICIT_TRIGGERS, shouldElicit, PHASE_FORM_SCHEMA } = await import('../src/elicitation/elicit-phase.mjs');
+
+    assert(ELICIT_TRIGGERS.verify.preCode === false, 'verify 模式不触发 preCode elicitation');
+    assert(ELICIT_TRIGGERS.verify.onError === false, 'verify 模式不触发 onError elicitation');
+    assert(ELICIT_TRIGGERS.develop.preCode === true, 'develop 模式触发 preCode elicitation');
+    assert(ELICIT_TRIGGERS.develop.onError === false, 'develop 模式不触发 onError elicitation');
+    assert(ELICIT_TRIGGERS.tapeout.preCode === true, 'tapeout 模式触发 preCode elicitation');
+    assert(ELICIT_TRIGGERS.tapeout.onError === true, 'tapeout 模式触发 onError elicitation');
+    assert(ELICIT_TRIGGERS.tapeout.afterCheck === true, 'tapeout 模式触发 afterCheck elicitation');
+
+    // 13b: shouldElicit respects alreadyElicited flag (develop mode only asks once)
+    // Temporarily override SPECMATE_LEVEL for this test
+    const oldLevel = process.env.SPECMATE_LEVEL;
+    process.env.SPECMATE_LEVEL = 'develop';
+    assert(shouldElicit('preCode', false) === true, 'develop 首次 preCode 应触发 elicitation');
+    assert(shouldElicit('preCode', true) === false, 'develop 已询问过不再触发 elicitation');
+    process.env.SPECMATE_LEVEL = oldLevel;
+
+    // 13c: Form schema validity
+    assert(PHASE_FORM_SCHEMA.type === 'object', 'form schema type 为 object');
+    assert(PHASE_FORM_SCHEMA.required.includes('phase'), 'form schema required 包含 phase');
+    assert(PHASE_FORM_SCHEMA.properties.phase.oneOf.length === 3, 'form schema 包含 3 个阶段选项');
+    assert(PHASE_FORM_SCHEMA.properties.phase.oneOf[0].const === 'design', '选项 A 为 design');
+    assert(PHASE_FORM_SCHEMA.properties.phase.oneOf[1].const === 'code', '选项 B 为 code');
+    assert(PHASE_FORM_SCHEMA.properties.phase.oneOf[2].const === 'debug', '选项 C 为 debug');
+
+    // 13d: inferPhase fallback — keyword recognition
+    const { inferPhase } = await import('../src/tools/_matcher.mjs');
+    assert(inferPhase('设计SPI模块架构') === 'design', '"架构" 关键词 → design');
+    assert(inferPhase('write a SPI controller with interface') === 'design', '"interface" 关键词 → design');
+    assert(inferPhase('写一个 2 选 1 MUX 的 method') === 'code', '无架构关键词 → code (default)');
+    assert(inferPhase('cross clock domain FIFO') === 'design', '"clock domain" + "FIFO" → design');
+    assert(inferPhase('') === 'code', '空输入 → code (default)');
+
+    // 13e: Session phase persistence
+    const { ensureSession, getCurrentSessionPhase, setCurrentSessionPhase } = await import('../src/db/query.mjs');
+    await ensureSession('elicitation-smoke-test');
+    assert(await getCurrentSessionPhase() === null, '新 session phase 初始为 null');
+
+    await setCurrentSessionPhase('design');
+    assert(await getCurrentSessionPhase() === 'design', 'set + get design phase 一致');
+
+    await setCurrentSessionPhase('code');
+    assert(await getCurrentSessionPhase() === 'code', 'set + get code phase 一致');
+
+    await setCurrentSessionPhase('debug');
+    assert(await getCurrentSessionPhase() === 'debug', 'set + get debug phase 一致');
+}
+
 // ── main ──
 async function main() {
     console.log('╔══════════════════════════════════════════╗');
@@ -461,6 +515,14 @@ async function main() {
     } catch (err) {
         console.error(`  ❌ test12_parse_all_errors 异常: ${err.message}`);
         failures.push(`test12_parse_all_errors: ${err.message}`);
+        failed++;
+    }
+
+    try {
+        await test13_elicitation();
+    } catch (err) {
+        console.error(`  ❌ test13_elicitation 异常: ${err.message}`);
+        failures.push(`test13_elicitation: ${err.message}`);
         failed++;
     }
 
