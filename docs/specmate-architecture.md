@@ -107,6 +107,37 @@ ast_query.mjs  (full analysis, tree-sitter)
 
 **设计说明（议会决议）**：不是 bug——是有意的分工。check_style 追求速度+容错，preflight 追求精度，ast_query 追求深度。不改正则→tree-sitter（ROI 太低），而是加 `confidence` 字段让 Agent 知道每个规则的"可信度"。
 
+### 何时用哪条路径
+
+Agent 面对 specmate 的三条检查路径时，按以下决策树选择：
+
+```
+Agent 应该调用哪个？
+  ├── 编码前、拿到新任务 → specmate_scan（自动走 preflight AST 扫描）
+  ├── 写完一段代码、编译前 → specmate_check（走 check_style 正则 + 可选 compile=true 走 BSC）
+  └── 编译通过但有调度疑问、依赖关系不清楚 → specmate_analyze（走 ast_query 深度分析）
+```
+
+**详细说明**：
+
+| 阶段 | 调用工具 | 底层路线 | 为什么 |
+|------|---------|---------|--------|
+| **编码前** | `specmate_scan` | preflight (tree-sitter) | 拿到任务后先扫一遍已有代码，提前暴露 P0030、P0005、G0004 等硬约束，避免写到一半才发现方向错误。scan 内部自动调 preflight 做 AST 扫描。 |
+| **写完一段代码，编译前** | `specmate_check` | check_style (正则) | 写完代码立刻 lint。19 条正则规则（11 always-on + 8 full-scan），秒出结果，容错强（语法残缺也能跑）。可选 `compile=true` 串联 BSC 编译。 |
+| **写完一段代码，编译前 + 要跑 BSC** | `specmate_check(compile=true)` | check_style + BSC runner + diagnose | 先 lint 再编译，编译输出自动喂给 diagnose 诊断。编译失败时自动尝试 P0200 自动修复（BVI schedule 展开）。 |
+| **编译通过，但有调度疑问** | `specmate_analyze` | ast_query (tree-sitter) | 编译过了但不确定 rule 之间的调度关系是否正确、方法调用顺序是否合理、是否存在隐式冲突。ast_query 做深度分析：调用图、依赖图、冲突对检测。 |
+
+**三者关系**：
+
+```
+specmate_scan (编码前)     → preflight.mjs     — 轻量 AST 扫描，快速暴露已知陷阱
+specmate_check (编码后)    → check_style.mjs   — 正则 lint，快速+容错
+specmate_check(compile=true)→ +BSC runner       — 编译+诊断全流程
+specmate_analyze (深度分析) → ast_query.mjs     — tree-sitter 深度分析调度/依赖
+```
+
+> 三条路线互不调用、各有分工。check_style 不依赖 tree-sitter，ast_query 不做快速 lint。这是有意的架构分离，不是缺陷。
+
 ---
 
 ## 方向四：知识积累闭环 📈

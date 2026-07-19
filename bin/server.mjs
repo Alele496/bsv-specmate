@@ -18,6 +18,7 @@ import { parseFile, extractAll, analyzeScheduling, buildCallGraph, buildDependen
 import { existsSync } from "fs";
 import { isAbsolute, resolve as resolvePath } from "path";
 import { extractKeywords, match as matchKeywords } from "../src/tools/_matcher.mjs";
+import { autoFixP0200 } from "../src/tools/auto_fix.mjs";
 import { init as initNotify } from "../src/notify.mjs";
 import * as alerts from "../src/push/alerts.mjs";
 
@@ -340,6 +341,50 @@ server.tool(
                         } catch (_) { /* diagnose is non-critical */ }
 
                         compileResult = `\n---\n### 🔧 编译结果 (BSC ${bscResult.bscType})\n\n${bscResult.timedOut ? '⚠ 编译超时 (120s)\n\n' : ''}${bscResult.combined}${diagnoseText ? '\n\n' + diagnoseText : ''}`;
+
+                        // ── 2.1: P0200 auto-fix — expand BVI schedule groups ──
+                        const hasP0200 = /\bP0200\b/.test(bscResult.combined);
+                        if (hasP0200) {
+                            let autoFixApplied = false;
+                            let autoFixSuccess = false;
+                            try {
+                                const fs = await import('fs');
+                                for (const f of files) {
+                                    if (!fs.existsSync(f)) continue;
+                                    const originalSource = fs.readFileSync(f, 'utf-8');
+                                    const fixResult = autoFixP0200(originalSource);
+                                    if (fixResult.fixed) {
+                                        autoFixApplied = true;
+                                        fs.writeFileSync(f, fixResult.newSource, 'utf-8');
+                                        let fixLog = `\n---\n### 🔧 自动修复: P0200\n\n`;
+                                        fixLog += fixResult.changes.map(c => `- ${c}`).join('\n') + '\n';
+                                        compileResult += fixLog;
+
+                                        // Recompile after auto-fix
+                                        try {
+                                            const recompile = await runBSC({
+                                                files,
+                                                topModule,
+                                                flags: ['-verilog'],
+                                            });
+                                            if (recompile.success) {
+                                                autoFixSuccess = true;
+                                                compileResult += `\n✅ P0200 自动修复成功: schedule 分组已展开为逐对声明\n`;
+                                                compileResult += `\n### 🔧 重新编译通过 (BSC ${recompile.bscType})\n`;
+                                            } else {
+                                                compileResult += `\n⚠️ 自动修复尝试未完全解决问题，请手动检查\n`;
+                                                if (recompile.combined) {
+                                                    compileResult += `\n${recompile.combined}`;
+                                                }
+                                            }
+                                        } catch (_) {
+                                            compileResult += `\n⚠️ 自动修复后重新编译失败，请手动检查\n`;
+                                        }
+                                        break; // Only fix the first file with P0200
+                                    }
+                                }
+                            } catch (_) { /* auto-fix is non-critical */ }
+                        }
                     }
 
                     // Cache the result (子任务 2.6)

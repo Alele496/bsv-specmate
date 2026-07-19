@@ -376,7 +376,7 @@ const GRAPH = {
         pattern: 'bram',
         traps: [
             { text: 'BRAMCore: 读/写端口分离, BRAM: 单端口 — 选对类型', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: true, verifiedAt: '2026-07-18' },
-            { text: 'BRAM 数据位宽 vs 外部总线位宽对齐', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: false },
+            { text: 'BRAM 数据位宽 vs 外部总线位宽对齐', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: true, verifiedAt: '2026-07-19' },
         ],
     },
     fsm: {
@@ -401,7 +401,7 @@ const GRAPH = {
         pattern: 'spi',
         traps: [
             { text: 'SPI 命令字 Bit#(8), 移位寄存器匹配', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: true, verifiedAt: '2026-07-18' },
-            { text: 'CS/SCK/MOSI/MISO 信号命名统一', severity: 'style', phase: 'design', bscVersions: ['2025.07'], verified: false },
+            { text: 'CS/SCK/MOSI/MISO 信号命名统一', severity: 'style', phase: 'design', bscVersions: ['2025.07'], verified: true, verifiedAt: '2026-07-19' },
         ],
     },
     crc: {
@@ -409,7 +409,7 @@ const GRAPH = {
         refs: ['types'],
         pattern: 'crc',
         traps: [
-            { text: 'CRC 多项式位宽确认', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: false },
+            { text: 'CRC 多项式位宽确认', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: true, verifiedAt: '2026-07-19' },
             { text: 'Bool vs Bit#(1) 区分 — done/error 等硬件控制信号用 Bit#(1)，便于位拼接和 interface 集成', severity: 'quality', phase: 'code', bscVersions: ['2025.07'], verified: true, verifiedAt: '2026-07-18' },
         ],
     },
@@ -419,7 +419,7 @@ const GRAPH = {
         pattern: 'uart',
         traps: [
             { text: '波特率分频用 Bit#(n) 而非 Integer', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: true, verifiedAt: '2026-07-18' },
-            { text: 'UART 帧格式 start + 8bit + stop', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: false },
+            { text: 'UART 帧格式 start + 8bit + stop', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: true, verifiedAt: '2026-07-19' },
         ],
     },
     struct: {
@@ -467,7 +467,7 @@ const GRAPH = {
         refs: ['schedule'],
         traps: [
             { text: 'descending_urgency 不循环', severity: 'hard', phase: 'design', bscVersions: ['2025.07'], verified: true, verifiedAt: '2026-07-18' },
-            { text: 'execution_order 用于 SE 而非 SB', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: false },
+            { text: 'execution_order 用于 SE 而非 SB', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: true, verifiedAt: '2026-07-19' },
         ],
     },
     regfile: {
@@ -482,7 +482,7 @@ const GRAPH = {
         pattern: 'arbiter',
         traps: [
             { text: '同一 cycle 超 5 读端口 → G0002', severity: 'hard', phase: 'design', bscVersions: ['2025.07'], verified: true, verifiedAt: '2026-07-18' },
-            { text: 'winner 丢失 → 需缓冲 FIFO', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: false },
+            { text: 'winner 丢失 → 需缓冲 FIFO', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: true, verifiedAt: '2026-07-19' },
         ],
     },
     serialize: {
@@ -496,7 +496,7 @@ const GRAPH = {
         refs: ['types', 'patterns'],
         pattern: 'interrupt',
         traps: [
-            { text: 'IRQ 信号用 Bit#(n) 便于多中断检测', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: false },
+            { text: 'IRQ 信号用 Bit#(n) 便于多中断检测', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: true, verifiedAt: '2026-07-19' },
             { text: 'mask 位宽 vs pending 位宽对齐', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: true, verifiedAt: '2026-07-18' },
         ],
     },
@@ -525,9 +525,9 @@ const GRAPH = {
         errors: ['T0061', 'BSV-PORTS'],
         refs: ['module', 'types'],
         traps: [
-            { text: 'GPIO 方向寄存器用 Bool 还是 Bit#(1) — 建议 Bit#(1) 可拼总线', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: false },
+            { text: 'GPIO 方向寄存器用 Bool 还是 Bit#(1) — 建议 Bit#(1) 可拼总线', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: true, verifiedAt: '2026-07-19' },
             { text: 'GPIO inout 信号通过 BVI 机制处理：BSV interface 中定义独立的 data_in、data_out、oe（output enable）method，Verilog wrapper 中用 assign io = oe ? data_out : \'bz 实现三态控制。Inout#() 包装器属于旧版 BSC 库用法，BSC 2025.07 中不推荐直接使用', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: true, verifiedAt: '2026-07-18' },
-            { text: '输出端口在顶层模块直接接 method', severity: 'quality', phase: 'code', bscVersions: ['2025.07'], verified: false },
+            { text: '输出端口在顶层模块直接接 method', severity: 'quality', phase: 'code', bscVersions: ['2025.07'], verified: true, verifiedAt: '2026-07-19' },
         ],
     },
     synthesize: {
