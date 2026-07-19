@@ -1,0 +1,650 @@
+鼠标交互：// Kinetic Grid — Originkit
+// Using component defaults.
+
+"use client"
+
+import { useRef, useEffect, type CSSProperties } from "react"
+const useIsStaticRenderer = () => false
+
+interface KineticGridProps {
+    background: string
+    dotColor: string
+    lineColor: string
+    trailColor: string
+    spacing: number // grid spacing in px
+    radius: number // cursor attraction radius in px
+    strength: number // 1-10 attraction strength
+    trail: boolean // show cursor trail line
+    style?: CSSProperties
+}
+
+/**
+ * Kinetic Grid
+ *
+ * A reactive dot grid that is pulled toward the cursor within a chosen
+ * radius, with a trail line that follows the mouse as it moves.
+ *
+ * @framerSupportedLayoutWidth any-prefer-fixed
+ * @framerSupportedLayoutHeight any-prefer-fixed
+ * @framerIntrinsicWidth 600
+ * @framerIntrinsicHeight 600
+ */
+export default function KineticGrid(props: KineticGridProps) {
+    props = { ...COMPONENT_DEFAULTS, ...props }
+    const {
+        background = "#000000",
+        dotColor = "#FFFFFF",
+        lineColor = "#2563EB",
+        trailColor = "#2664EB",
+        spacing = 50,
+        radius = 200,
+        strength = 4,
+        trail = true,
+    } = props
+
+    const hostRef = useRef<HTMLDivElement>(null)
+    const canvasRef = useRef<HTMLCanvasElement>(null)
+    const mouseRef = useRef({ x: -9999, y: -9999, active: false })
+    const trailRef = useRef<{ x: number; y: number; t: number }[]>([])
+    const isStatic = useIsStaticRenderer()
+
+    useEffect(() => {
+        const host = hostRef.current
+        const canvas = canvasRef.current
+        if (!host || !canvas) return
+        const ctx = canvas.getContext("2d")
+        if (!ctx) return
+
+        const GAP = Math.max(8, spacing)
+        const R = Math.max(1, radius)
+        const PULL = (Math.max(1, Math.min(10, strength)) / 10) * 4
+
+        let W = 1
+        let H = 1
+        let cols: {
+            hx: number
+            hy: number
+            x: number
+            y: number
+            vx: number
+            vy: number
+        }[][] = []
+        let dots: {
+            hx: number
+            hy: number
+            x: number
+            y: number
+            vx: number
+            vy: number
+        }[] = []
+
+        const build = (mw?: number, mh?: number) => {
+            const r = host.getBoundingClientRect()
+            W = Math.max(1, Math.floor(mw ?? r.width))
+            H = Math.max(1, Math.floor(mh ?? r.height))
+            const dpr = window.devicePixelRatio || 1
+            canvas.width = Math.floor(W * dpr)
+            canvas.height = Math.floor(H * dpr)
+            canvas.style.width = W + "px"
+            canvas.style.height = H + "px"
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+            cols = []
+            dots = []
+            const nCols = Math.floor(W / GAP) + 2
+            const nRows = Math.floor(H / GAP) + 2
+            for (let c = 0; c < nCols; c++) {
+                const col: typeof dots = []
+                for (let rIdx = 0; rIdx < nRows; rIdx++) {
+                    const hx = c * GAP
+                    const hy = rIdx * GAP
+                    const d = { hx, hy, x: hx, y: hy, vx: 0, vy: 0 }
+                    col.push(d)
+                    dots.push(d)
+                }
+                cols.push(col)
+            }
+        }
+        // One-shot grid render for the Framer canvas / thumbnail (no cursor,
+        // no animation) — draws the full mesh at home positions so the grid
+        // fills the whole component instead of a top-left patch.
+        const drawStatic = () => {
+            ctx.clearRect(0, 0, W, H)
+            ctx.globalAlpha = 0.14
+            ctx.strokeStyle = lineColor
+            ctx.lineWidth = 0.75
+            for (let c = 0; c < cols.length; c++) {
+                for (let rIdx = 0; rIdx < cols[c].length; rIdx++) {
+                    const d = cols[c][rIdx]
+                    const right = cols[c + 1]?.[rIdx]
+                    const down = cols[c]?.[rIdx + 1]
+                    if (right) {
+                        ctx.beginPath()
+                        ctx.moveTo(d.hx, d.hy)
+                        ctx.lineTo(right.hx, right.hy)
+                        ctx.stroke()
+                    }
+                    if (down) {
+                        ctx.beginPath()
+                        ctx.moveTo(d.hx, d.hy)
+                        ctx.lineTo(down.hx, down.hy)
+                        ctx.stroke()
+                    }
+                }
+            }
+            ctx.globalAlpha = 0.4
+            ctx.fillStyle = dotColor
+            for (const d of dots) {
+                ctx.beginPath()
+                ctx.arc(d.hx, d.hy, 1.2, 0, 2 * Math.PI)
+                ctx.fill()
+            }
+            ctx.globalAlpha = 1
+        }
+
+        build()
+
+        const ro =
+            typeof ResizeObserver !== "undefined"
+                ? new ResizeObserver((entries) => {
+                      // contentRect is the reliable size — getBoundingClientRect
+                      // can be stale (pre-layout) when the effect first runs.
+                      const cr = entries[0]?.contentRect
+                      build(cr?.width, cr?.height)
+                      if (isStatic) drawStatic()
+                  })
+                : null
+        ro?.observe(host)
+
+        // Static renderer: draw once, skip interaction + animation loop.
+        if (isStatic) {
+            drawStatic()
+            return () => ro?.disconnect()
+        }
+
+        const setMouse = (clientX: number, clientY: number) => {
+            const r = canvas.getBoundingClientRect()
+            const mx = clientX - r.left
+            const my = clientY - r.top
+            mouseRef.current.x = mx
+            mouseRef.current.y = my
+            mouseRef.current.active = true
+            const now = performance.now()
+            const trail = trailRef.current
+            trail.push({ x: mx, y: my, t: now })
+            if (trail.length > 80) trail.shift()
+        }
+
+        const onMove = (e: MouseEvent) => setMouse(e.clientX, e.clientY)
+        const onLeave = () => {
+            mouseRef.current.active = false
+            mouseRef.current.x = -9999
+            mouseRef.current.y = -9999
+        }
+        const onTouch = (e: TouchEvent) => {
+            const t = e.touches[0]
+            if (t) setMouse(t.clientX, t.clientY)
+        }
+
+        host.addEventListener("mousemove", onMove)
+        host.addEventListener("mouseleave", onLeave)
+        host.addEventListener("touchmove", onTouch, { passive: true })
+        host.addEventListener("touchend", onLeave)
+
+        let raf = 0
+        const frame = () => {
+            const m = mouseRef.current
+            ctx.clearRect(0, 0, W, H)
+
+            // Update dot physics: spring home + attraction toward cursor.
+            for (const d of dots) {
+                let ax = (d.hx - d.x) * 0.08
+                let ay = (d.hy - d.y) * 0.08
+                if (m.active) {
+                    const dx = m.x - d.x
+                    const dy = m.y - d.y
+                    const dist = Math.sqrt(dx * dx + dy * dy)
+                    if (dist < R && dist > 0.001) {
+                        const f = (1 - dist / R) * PULL
+                        ax += (dx / dist) * f
+                        ay += (dy / dist) * f
+                    }
+                }
+                d.vx = (d.vx + ax) * 0.82
+                d.vy = (d.vy + ay) * 0.82
+                d.x += d.vx
+                d.y += d.vy
+            }
+
+            // Grid mesh lines (brighten near the cursor).
+            for (let c = 0; c < cols.length; c++) {
+                for (let rIdx = 0; rIdx < cols[c].length; rIdx++) {
+                    const d = cols[c][rIdx]
+                    const right = cols[c + 1]?.[rIdx]
+                    const down = cols[c]?.[rIdx + 1]
+                    const prox = m.active
+                        ? Math.max(
+                              0,
+                              1 -
+                                  Math.sqrt(
+                                      (m.x - d.x) ** 2 + (m.y - d.y) ** 2
+                                  ) /
+                                      R
+                          )
+                        : 0
+                    if (right) {
+                        ctx.globalAlpha = 0.06 + prox * 0.7
+                        ctx.strokeStyle = lineColor
+                        ctx.lineWidth = 0.5 + prox * 1.5
+                        ctx.beginPath()
+                        ctx.moveTo(d.x, d.y)
+                        ctx.lineTo(right.x, right.y)
+                        ctx.stroke()
+                    }
+                    if (down) {
+                        ctx.globalAlpha = 0.06 + prox * 0.7
+                        ctx.strokeStyle = lineColor
+                        ctx.lineWidth = 0.5 + prox * 1.5
+                        ctx.beginPath()
+                        ctx.moveTo(d.x, d.y)
+                        ctx.lineTo(down.x, down.y)
+                        ctx.stroke()
+                    }
+                }
+            }
+
+            // Dots.
+            for (const d of dots) {
+                const prox = m.active
+                    ? Math.max(
+                          0,
+                          1 - Math.sqrt((m.x - d.x) ** 2 + (m.y - d.y) ** 2) / R
+                      )
+                    : 0
+                ctx.globalAlpha = 0.22 + prox * 0.78
+                ctx.fillStyle = dotColor
+                ctx.beginPath()
+                ctx.arc(d.x, d.y, 0.8 + prox * 2.2, 0, 2 * Math.PI)
+                ctx.fill()
+            }
+
+            // Cursor trail line — visible on plain mouse move, fades out.
+            if (trail) {
+                const now = performance.now()
+                const tr = trailRef.current
+                ctx.lineCap = "round"
+                ctx.lineJoin = "round"
+                for (let i = 1; i < tr.length; i++) {
+                    const a = tr[i - 1]
+                    const b = tr[i]
+                    const age = now - b.t
+                    if (age > 260) continue
+                    ctx.globalAlpha = Math.max(0, 1 - age / 260) * 0.85
+                    ctx.strokeStyle = trailColor
+                    ctx.lineWidth = 2
+                    ctx.beginPath()
+                    ctx.moveTo(a.x, a.y)
+                    ctx.lineTo(b.x, b.y)
+                    ctx.stroke()
+                }
+            }
+
+            ctx.globalAlpha = 1
+            raf = requestAnimationFrame(frame)
+        }
+        raf = requestAnimationFrame(frame)
+
+        return () => {
+            cancelAnimationFrame(raf)
+            ro?.disconnect()
+            host.removeEventListener("mousemove", onMove)
+            host.removeEventListener("mouseleave", onLeave)
+            host.removeEventListener("touchmove", onTouch)
+            host.removeEventListener("touchend", onLeave)
+        }
+    }, [
+        background,
+        dotColor,
+        lineColor,
+        trailColor,
+        spacing,
+        radius,
+        strength,
+        trail,
+        isStatic,
+    ])
+
+    return (
+        <div
+            ref={hostRef}
+            style={{
+                position: "relative",
+                width: "100%",
+                height: "100%",
+                overflow: "hidden",
+                background,
+                cursor: "crosshair",
+                ...(props.style || {}),
+            }}
+        >
+            <canvas
+                ref={canvasRef}
+                style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    pointerEvents: "none",
+                }}
+            />
+        </div>
+    )
+}
+
+const COMPONENT_DEFAULTS = {
+    background: "#000000",
+    dotColor: "#FFFFFF",
+    lineColor: "#80ACFF",
+    trail: true,
+    trailColor: "#2664EB",
+    spacing: 30,
+    radius: 400,
+    strength: 4,
+}
+
+KineticGrid.displayName = "Kinetic Grid"
+
+
+卡片展示：// Magnetic Carousel — Originkit
+// Using component defaults.
+
+const RenderTarget = {
+    current: () => "preview",
+    canvas: "canvas",
+    export: "export",
+    thumbnail: "thumbnail",
+    preview: "preview",
+}
+import { useEffect, useRef, useState } from "react"
+
+const EASE_PRESETS: Record<string, string> = {
+    linear: "linear",
+    easeIn: "ease-in",
+    easeOut: "ease-out",
+    easeInOut: "ease-in-out",
+}
+
+// Shown when the user hasn't added their own Content images.
+const DEFAULT_IMAGES = [
+    {
+        src: "https://imagedelivery.net/IEUjvl3YUlxY-MrTpOAWDQ/612d1402-0ad9-4135-3bbc-a30a6a252b00/w=800",
+    },
+    {
+        src: "https://imagedelivery.net/IEUjvl3YUlxY-MrTpOAWDQ/6d2ad64a-102d-4eab-0efe-31479e34b500/w=800",
+    },
+    {
+        src: "https://imagedelivery.net/IEUjvl3YUlxY-MrTpOAWDQ/be854dd1-37aa-4fc7-f569-fdb948109300/w=800",
+    },
+    {
+        src: "https://imagedelivery.net/IEUjvl3YUlxY-MrTpOAWDQ/51984031-9176-484b-f5e0-4af9a8e9ed00/w=800",
+    },
+    {
+        src: "https://imagedelivery.net/IEUjvl3YUlxY-MrTpOAWDQ/34ce1842-4b7a-4d52-0302-38582c341700/w=800",
+    },
+    {
+        src: "https://imagedelivery.net/IEUjvl3YUlxY-MrTpOAWDQ/88369c6d-00cc-4ac9-74ca-0f0965e06300/w=800",
+    },
+    {
+        src: "https://imagedelivery.net/IEUjvl3YUlxY-MrTpOAWDQ/aeaa0756-9647-4f6c-d900-204bd25e4a00/w=800",
+    },
+    {
+        src: "https://imagedelivery.net/IEUjvl3YUlxY-MrTpOAWDQ/316d1761-fd79-4ca9-b8d4-f2bb20521a00/w=800",
+    },
+]
+
+// Turn a Framer Transition object into { dur, ease } for CSS.
+function parseTransition(t: any) {
+    const dur = Math.max(0.05, (t && t.duration) || 0.5)
+    let ease = "cubic-bezier(0.44, 0, 0.56, 1)"
+    if (t && Array.isArray(t.ease) && t.ease.length === 4) {
+        ease = `cubic-bezier(${t.ease.join(", ")})`
+    } else if (t && typeof t.ease === "string" && EASE_PRESETS[t.ease]) {
+        ease = EASE_PRESETS[t.ease]
+    } else if (t && t.type === "spring") {
+        ease = "cubic-bezier(0.34, 1.56, 0.64, 1)" // overshoot approximation
+    }
+    return { dur, ease }
+}
+
+/**
+ * Magnetic Carousel
+ * A row of thin image bars that magnify (width + height) as the cursor nears,
+ * macOS-dock style — the bar under the cursor grows most, neighbors taper off
+ * by distance. Click a bar to open it as a large square; the other bars blur.
+ * Click again (or the backdrop) to collapse. Pure React, no external libs.
+ *
+ * The hover magnify is animated with a continuous JS easing loop (no CSS
+ * transition) so it tracks the cursor smoothly; open/close uses the Transition.
+ *
+ * @framerSupportedLayoutWidth any-prefer-fixed
+ * @framerSupportedLayoutHeight any-prefer-fixed
+ * @framerIntrinsicWidth 600
+ * @framerIntrinsicHeight 388
+ * @framerDisableUnlink
+ */
+export default function MagneticCarousel(props: any) {
+    props = { ...COMPONENT_DEFAULTS, ...props }
+    const {
+        images = DEFAULT_IMAGES,
+        collapsedWidth = 100,
+        hoverWidth = 200,
+        collapsedHeight = 340,
+        hoverHeight = 400,
+        openSize = 600,
+        gap = 16,
+        influence = 200,
+        blur = 2,
+        transition = { type: "tween", duration: 0.3, ease: "easeInOut" },
+        style = {},
+    } = props
+
+    const items: any[] =
+        Array.isArray(images) && images.length > 0 ? images : DEFAULT_IMAGES
+    const count = items.length
+
+    const containerRef = useRef<HTMLDivElement>(null)
+    const [factors, setFactors] = useState<number[]>(() => items.map(() => 0))
+    const [open, setOpen] = useState<number | null>(null)
+    const [closing, setClosing] = useState(false)
+
+    const isCanvas = RenderTarget.current() === RenderTarget.canvas
+
+    // Continuous easing loop: cur eases toward target each frame.
+    const targetRef = useRef<number[]>(items.map(() => 0))
+    const curRef = useRef<number[]>(items.map(() => 0))
+    const loopRef = useRef(0)
+    const closeTimer = useRef<any>(0)
+
+    useEffect(() => {
+        targetRef.current = items.map(() => 0)
+        curRef.current = items.map(() => 0)
+        setFactors(items.map(() => 0))
+    }, [count])
+
+    useEffect(
+        () => () => {
+            cancelAnimationFrame(loopRef.current)
+            clearTimeout(closeTimer.current)
+        },
+        []
+    )
+
+    const startLoop = () => {
+        if (loopRef.current) return
+        const step = () => {
+            const tgt = targetRef.current
+            const cur = curRef.current
+            let moving = false
+            for (let i = 0; i < cur.length; i++) {
+                const d = (tgt[i] ?? 0) - cur[i]
+                if (Math.abs(d) > 0.001) {
+                    cur[i] += d * 0.2 // lerp toward target
+                    moving = true
+                } else {
+                    cur[i] = tgt[i] ?? 0
+                }
+            }
+            setFactors([...cur])
+            loopRef.current = moving ? requestAnimationFrame(step) : 0
+        }
+        loopRef.current = requestAnimationFrame(step)
+    }
+
+    const setTargetFromCursor = (clientX: number) => {
+        const el = containerRef.current
+        if (!el) return
+        const rect = el.getBoundingClientRect()
+        const cx = clientX - rect.left
+        const n = items.length
+        // Stable collapsed-layout slot centers so the magnify peak tracks the
+        // cursor without feedback jitter.
+        const totalBase = n * collapsedWidth + (n - 1) * gap
+        const startX = (rect.width - totalBase) / 2
+        targetRef.current = items.map((_, i) => {
+            const center =
+                startX + i * (collapsedWidth + gap) + collapsedWidth / 2
+            const dist = Math.abs(cx - center)
+            const f = Math.max(0, 1 - dist / influence)
+            return f * f * (3 - 2 * f) // smoothstep falloff
+        })
+        startLoop()
+    }
+
+    const onMove = (e: React.MouseEvent) => {
+        if (isCanvas || open !== null) return
+        setTargetFromCursor(e.clientX)
+    }
+
+    const onLeave = () => {
+        if (open !== null) return
+        targetRef.current = items.map(() => 0)
+        startLoop()
+    }
+
+    const close = () => {
+        targetRef.current = items.map(() => 0)
+        curRef.current = items.map(() => 0)
+        setFactors(items.map(() => 0))
+        setClosing(true)
+        clearTimeout(closeTimer.current)
+        closeTimer.current = setTimeout(() => setClosing(false), dur * 1000)
+        setOpen(null)
+    }
+
+    const sizeFor = (i: number) => {
+        if (open !== null) {
+            return i === open
+                ? { width: openSize, height: openSize }
+                : { width: collapsedWidth, height: collapsedHeight }
+        }
+        const f = factors[i] ?? 0
+        return {
+            width: collapsedWidth + (hoverWidth - collapsedWidth) * f,
+            height: collapsedHeight + (hoverHeight - collapsedHeight) * f,
+        }
+    }
+
+    const { dur, ease } = parseTransition(transition)
+    // Open/close eases via the Transition prop (also animates the blur).
+    // Hover has NO CSS transition — the JS loop above drives it smoothly.
+    const openEase = `width ${dur}s ${ease}, height ${dur}s ${ease}, filter ${dur}s ${ease}, opacity ${dur}s ${ease}`
+    const barTransition = open !== null || closing ? openEase : "none"
+
+    return (
+        <div
+            ref={containerRef}
+            style={{
+                ...style,
+                width: "100%",
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap,
+                position: "relative",
+                overflow: "visible",
+            }}
+            onMouseMove={onMove}
+            onMouseLeave={onLeave}
+        >
+            {/* Transparent backdrop — click to close when a bar is open. */}
+            <div
+                style={{
+                    position: "absolute",
+                    inset: 0,
+                    zIndex: 1,
+                    pointerEvents: open !== null ? "auto" : "none",
+                }}
+                onClick={close}
+            />
+            {items.map((img, i) => {
+                const { width, height } = sizeFor(i)
+                const blurred = open !== null && i !== open
+                return (
+                    <div
+                        key={i}
+                        onClick={(e) => {
+                            if (isCanvas) return
+                            e.stopPropagation()
+                            if (open === i) close()
+                            else setOpen(i)
+                        }}
+                        style={{
+                            flex: "none",
+                            width,
+                            height,
+                            overflow: "hidden",
+                            cursor: isCanvas ? "default" : "pointer",
+                            transition: barTransition,
+                            willChange: "width, height",
+                            position: "relative",
+                            zIndex: open === i ? 3 : 2,
+                            filter: blurred ? `blur(${blur}px)` : "none",
+                            opacity: blurred ? 0.6 : 1,
+                            backgroundColor: img
+                                ? "transparent"
+                                : `hsl(${(i * 360) / count}, 70%, 58%)`,
+                            backgroundImage: img
+                                ? `url(${img.src})`
+                                : undefined,
+                            backgroundSize: "cover",
+                            backgroundPosition: "center",
+                            backgroundRepeat: "no-repeat",
+                        }}
+                    />
+                )
+            })}
+        </div>
+    )
+}
+
+const COMPONENT_DEFAULTS = {
+    images: DEFAULT_IMAGES,
+    collapsedWidth: 100,
+    hoverWidth: 200,
+    collapsedHeight: 340,
+    hoverHeight: 400,
+    openSize: 600,
+    gap: 16,
+    influence: 200,
+    blur: 2,
+    transition: {
+        type: "tween",
+        duration: 0.3,
+        delay: 0,
+        ease: "easeInOut",
+    },
+}
+
+MagneticCarousel.displayName = "Magnetic Carousel"
+

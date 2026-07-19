@@ -1,0 +1,1495 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>specmate — BSV 编码知识引擎</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: #06060e;
+    color: #e2e8f0; line-height: 1.6; overflow-x: hidden;
+  }
+  ::selection{background: rgba(59,130,246,0.4)}
+
+  /* ===== SCROLL PROGRESS BAR ===== */
+  #scroll-progress{
+    position:fixed;top:0;left:0;height:2px;z-index:1000;
+    background:linear-gradient(90deg,#3b82f6,#8b5cf6,#22c55e);
+    width:0%; transition:width 0.1s linear;
+    box-shadow: 0 0 8px rgba(99,102,241,0.5);
+  }
+
+  /* ===== ANIMATED BG ===== */
+  .bg-glow{
+    position:fixed;inset:0;z-index:-2;
+    background:
+      radial-gradient(ellipse 80% 60% at 20% 10%, rgba(59,130,246,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 80% at 80% 50%, rgba(139,92,246,0.06) 0%, transparent 60%),
+      radial-gradient(ellipse 70% 50% at 50% 90%, rgba(34,197,94,0.04) 0%, transparent 50%);
+    animation:bgShift 12s ease-in-out infinite alternate;
+  }
+  @keyframes bgShift{0%{opacity:0.6;transform:scale(1)}100%{opacity:1;transform:scale(1.05)}}
+
+  /* ===== NOISE OVERLAY ===== */
+  #noise-overlay{
+    position:fixed;inset:0;z-index:998;pointer-events:none;opacity:0.025;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    background-repeat:repeat;background-size:256px 256px;
+    animation:noiseShift 0.5s steps(3) infinite;
+  }
+  @keyframes noiseShift{0%,100%{transform:translate(0,0)}33%{transform:translate(-1px,1px)}66%{transform:translate(1px,-1px)}}
+
+  /* ===== MORPHING BLOB ===== */
+  .blob-container{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:-1}
+  .blob-svg{position:absolute;width:600px;height:600px;opacity:0.15;filter:blur(60px)}
+  .blob-svg.blob-1{top:-15%;left:-10%;animation:blobFloat 18s ease-in-out infinite,blobMorph1 8s ease-in-out infinite}
+  .blob-svg.blob-2{bottom:-20%;right:-10%;animation:blobFloat 22s ease-in-out infinite reverse,blobMorph2 10s ease-in-out infinite}
+  @keyframes blobFloat{
+    0%,100%{transform:translate(0,0) rotate(0deg) scale(1)}
+    25%{transform:translate(60px,-40px) rotate(5deg) scale(1.1)}
+    50%{transform:translate(-20px,30px) rotate(-3deg) scale(0.9)}
+    75%{transform:translate(-40px,-20px) rotate(2deg) scale(1.05)}
+  }
+  @keyframes blobMorph1{
+    0%,100%{border-radius:60% 40% 30% 70%/60% 30% 70% 40%}
+    50%{border-radius:30% 60% 70% 40%/50% 60% 30% 60%}
+  }
+  @keyframes blobMorph2{
+    0%,100%{border-radius:40% 60% 70% 30%/50% 50% 40% 60%}
+    50%{border-radius:70% 30% 40% 60%/30% 60% 70% 40%}
+  }
+
+  /* ===== FLOATING ORBS ===== */
+  .orb{position:fixed;border-radius:50%;z-index:-1;pointer-events:none;filter:blur(80px)}
+  .orb-1{
+    width:400px;height:400px;
+    background:rgba(59,130,246,0.06);
+    animation:orbFloat1 20s ease-in-out infinite;
+  }
+  .orb-2{
+    width:350px;height:350px;
+    background:rgba(139,92,246,0.05);
+    animation:orbFloat2 25s ease-in-out infinite;
+  }
+  .orb-3{
+    width:300px;height:300px;
+    background:rgba(34,197,94,0.04);
+    animation:orbFloat3 22s ease-in-out infinite;
+  }
+  @keyframes orbFloat1{
+    0%{top:10%;left:5%}25%{top:30%;left:25%}50%{top:50%;left:15%}75%{top:20%;left:40%}100%{top:10%;left:5%}
+  }
+  @keyframes orbFloat2{
+    0%{top:60%;left:70%}25%{top:40%;left:50%}50%{top:70%;left:30%}75%{top:50%;left:60%}100%{top:60%;left:70%}
+  }
+  @keyframes orbFloat3{
+    0%{top:80%;left:20%}33%{top:60%;left:10%}66%{top:85%;left:35%}100%{top:80%;left:20%}
+  }
+
+  /* ===== PARTICLES ===== */
+  #particles{position:fixed;inset:0;z-index:-1;pointer-events:none}
+
+  /* ===== NAV ===== */
+  nav{
+    position:fixed;top:0;left:0;right:0;z-index:100;
+    padding:16px 32px;
+    backdrop-filter:blur(20px) saturate(180%);
+    -webkit-backdrop-filter:blur(20px) saturate(180%);
+    background:rgba(6,6,14,0.7);
+    border-bottom:1px solid rgba(255,255,255,0.06);
+    display:flex;align-items:center;justify-content:space-between;
+    transition:all 0.3s ease;
+  }
+  nav.hidden{transform:translateY(-100%)}
+  .nav-brand{
+    display:flex;align-items:center;gap:10px;
+    font-weight:700;font-size:1.15rem;color:#f1f5f9;
+    text-decoration:none;position:relative;
+  }
+  .nav-brand:hover{animation:glitch 0.3s ease}
+  @keyframes glitch{
+    0%{transform:translate(0)}
+    20%{transform:translate(-2px,1px)}
+    40%{transform:translate(2px,-1px)}
+    60%{transform:translate(-1px,-1px)}
+    80%{transform:translate(1px,2px)}
+    100%{transform:translate(0)}
+  }
+  .nav-dot{
+    width:10px;height:10px;border-radius:50%;
+    background:linear-gradient(135deg,#3b82f6,#8b5cf6);
+    box-shadow:0 0 12px rgba(99,102,241,0.5);
+    animation:pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot{0%,100%{box-shadow:0 0 8px rgba(99,102,241,0.4)}50%{box-shadow:0 0 20px rgba(99,102,241,0.8)}}
+  .nav-links{display:flex;gap:24px;list-style:none}
+  .nav-links a{color:#94a3b8;text-decoration:none;font-size:0.85rem;transition:color 0.2s;font-weight:500;position:relative}
+  .nav-links a::after{
+    content:'';position:absolute;bottom:-4px;left:0;width:0;height:1.5px;
+    background:linear-gradient(90deg,#3b82f6,#8b5cf6);
+    transition:width 0.3s ease;
+  }
+  .nav-links a:hover{color:#e2e8f0}
+  .nav-links a:hover::after{width:100%}
+  .nav-status{display:flex;align-items:center;gap:6px;font-size:0.8rem;color:#22c55e}
+  .nav-status-dot{width:6px;height:6px;border-radius:50%;background:#22c55e}
+
+  /* ===== HERO ===== */
+  .hero{
+    min-height:100vh;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;
+    padding:120px 24px 80px;position:relative;
+  }
+  .hero-badge{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:6px 16px;border-radius:999px;
+    border:1px solid rgba(139,92,246,0.3);
+    background:rgba(139,92,246,0.08);
+    font-size:0.8rem;color:#a78bfa;margin-bottom:32px;
+    animation:fadeInUp 0.8s ease both;
+    backdrop-filter:blur(10px);
+  }
+  .hero-badge-dot{width:6px;height:6px;border-radius:50%;background:#a78bfa;animation:pulse-dot 2s infinite}
+  .hero h1{
+    font-size:clamp(2.5rem,6vw,4.5rem);
+    font-weight:800;letter-spacing:-0.03em;
+    background:linear-gradient(135deg,#e2e8f0 0%,#94a3b8 30%,#3b82f6 55%,#8b5cf6 80%,#e2e8f0 100%);
+    background-size:200% 200%;
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    background-clip:text;
+    animation:fadeInUp 0.8s 0.1s ease both,gradientShift 4s ease-in-out infinite;
+    margin-bottom:20px;
+  }
+  @keyframes gradientShift{
+    0%,100%{background-position:0% 50%}
+    50%{background-position:100% 50%}
+  }
+  .hero p.subtitle{
+    font-size:clamp(1rem,2.5vw,1.3rem);
+    color:#9ca3af;max-width:680px;
+    margin-bottom:16px;visibility:hidden;line-height:1.8;
+  }
+  .hero p.analogy{
+    font-size:0.9rem;color:#64748b;max-width:700px;
+    margin-bottom:40px;line-height:1.6;
+    animation:fadeInUp 0.8s 0.35s ease both;
+  }
+  .analogy-highlight{color:#a78bfa;font-weight:600}
+  .hero-actions{
+    display:flex;gap:12px;flex-wrap:wrap;justify-content:center;
+    animation:fadeInUp 0.8s 0.3s ease both;
+  }
+
+  /* ===== MAGNETIC BUTTONS ===== */
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:12px 24px;border-radius:10px;
+    font-size:0.9rem;font-weight:600;cursor:pointer;
+    text-decoration:none;transition:all 0.3s cubic-bezier(0.16,1,0.3,1);
+    border:1px solid transparent;position:relative;overflow:hidden;
+  }
+  .btn-primary{
+    background:linear-gradient(135deg,#3b82f6,#6366f1);
+    color:#fff;border-color:transparent;
+    box-shadow:0 4px 20px rgba(59,130,246,0.3);
+  }
+  .btn-primary:hover{box-shadow:0 6px 32px rgba(59,130,246,0.5)}
+  .btn-secondary{
+    background:rgba(255,255,255,0.04);color:#94a3b8;
+    border-color:rgba(255,255,255,0.1);
+  }
+  .btn-secondary:hover{background:rgba(255,255,255,0.08);color:#e2e8f0}
+  .btn-ghost{
+    background:transparent;color:#94a3b8;
+    border-color:rgba(255,255,255,0.08);
+  }
+  .btn-ghost:hover{background:rgba(255,255,255,0.04);color:#e2e8f0;border-color:rgba(255,255,255,0.15)}
+  .btn .ripple{
+    position:absolute;border-radius:50%;
+    background:rgba(255,255,255,0.3);
+    transform:scale(0);animation:rippleEffect 0.6s ease-out forwards;
+    pointer-events:none;
+  }
+  @keyframes rippleEffect{to{transform:scale(4);opacity:0}}
+
+  @keyframes fadeInUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+
+  /* ===== SECTIONS ===== */
+  section{padding:100px 32px}
+  .section-inner{max-width:1200px;margin:0 auto}
+  .section-label{
+    display:inline-block;font-size:0.75rem;font-weight:600;
+    letter-spacing:0.1em;text-transform:uppercase;
+    color:#6366f1;margin-bottom:12px;
+  }
+  .section-title{font-size:clamp(1.5rem,3vw,2rem);font-weight:700;color:#f1f5f9;margin-bottom:16px}
+  .section-subtitle{font-size:0.95rem;color:#64748b;margin-bottom:40px;line-height:1.6;max-width:720px}
+
+  /* ===== WHAT SECTION (2-col comparison) ===== */
+  .what-grid{
+    display:grid;grid-template-columns:1fr 1fr;
+    gap:32px;margin-top:24px;
+  }
+  .what-col{
+    border-radius:20px;padding:36px 32px;
+    border:1px solid rgba(255,255,255,0.05);
+    background:rgba(255,255,255,0.015);
+    transition:transform 0.3s ease,box-shadow 0.3s ease;
+  }
+  .what-col:hover{transform:translateY(-3px);box-shadow:0 16px 48px rgba(0,0,0,0.3)}
+  .what-col.is-col{border-left:3px solid #22c55e;background:rgba(34,197,94,0.025)}
+  .what-col.not-col{border-left:3px solid #ef4444;background:rgba(239,68,68,0.025)}
+  .what-col h3{font-size:1.1rem;font-weight:700;margin-bottom:20px;color:#f1f5f9}
+  .what-col ul{list-style:none;display:flex;flex-direction:column;gap:14px}
+  .what-col li{font-size:0.9rem;color:#94a3b8;line-height:1.6;padding-left:22px;position:relative}
+  .what-col li::before{
+    content:'';position:absolute;left:0;top:8px;
+    width:7px;height:7px;border-radius:50%;
+  }
+  .what-col.is-col li::before{background:rgba(34,197,94,0.5)}
+  .what-col.not-col li::before{background:rgba(239,68,68,0.5)}
+  .noise-curse{
+    margin-top:32px;padding:24px 28px;
+    border-radius:14px;
+    background:rgba(245,158,11,0.04);
+    border:1px solid rgba(245,158,11,0.12);
+    font-size:0.88rem;color:#94a3b8;line-height:1.75;
+  }
+  .noise-curse strong{color:#fcd34d}
+
+  /* ===== STATS BAR ===== */
+  .stats-bar{
+    display:grid;grid-template-columns:repeat(4,1fr);
+    gap:24px;padding:0 32px 60px;max-width:1200px;margin:0 auto;
+  }
+  .stat-card{
+    background:rgba(255,255,255,0.02);
+    border:1px solid rgba(255,255,255,0.05);
+    border-radius:16px;padding:28px 24px;text-align:center;
+    transition:all 0.4s cubic-bezier(0.16,1,0.3,1);
+    animation:fadeInUp 0.6s ease both;backdrop-filter:blur(10px);
+    transform-style:preserve-3d;perspective:800px;
+  }
+  .stat-card:nth-child(1){animation-delay:0s}
+  .stat-card:nth-child(2){animation-delay:0.1s}
+  .stat-card:nth-child(3){animation-delay:0.2s}
+  .stat-card:nth-child(4){animation-delay:0.3s}
+  .stat-value{
+    font-size:2.5rem;font-weight:800;
+    background:linear-gradient(135deg,#e2e8f0,#a5b4fc);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    background-clip:text;
+  }
+  .stat-label{font-size:0.85rem;color:#64748b;margin-top:4px;transition:color 0.3s}
+
+  /* ===== TOOLS TABLE ===== */
+  .tools-table{width:100%;border-collapse:collapse;font-size:0.88rem}
+  .tools-table th{
+    text-align:left;padding:14px 16px;font-size:0.75rem;color:#64748b;
+    font-weight:600;text-transform:uppercase;letter-spacing:0.05em;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+  }
+  .tools-table td{padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.03);color:#cbd5e1}
+  .tools-table tbody tr{transition:all 0.25s ease}
+  .tools-table tbody tr:hover{
+    background:rgba(255,255,255,0.03);
+    transform:translateX(4px);
+  }
+  .tool-status{display:inline-flex;align-items:center;gap:6px;font-size:0.78rem;font-weight:600}
+  .status-active{color:#22c55e}
+  .status-active::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;animation:pulse-dot 2s infinite}
+  .status-deprecated{color:#ef4444}
+  .status-deprecated::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:#ef4444}
+  .status-cli{color:#f59e0b}
+  .status-cli::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:#f59e0b}
+  .table-footnote{
+    margin-top:16px;padding:12px 16px;
+    border-radius:10px;
+    background:rgba(255,255,255,0.015);
+    border:1px solid rgba(255,255,255,0.04);
+    font-size:0.8rem;color:#64748b;line-height:1.7;
+  }
+  .table-footnote .mcp-badge{
+    display:inline-block;padding:2px 8px;border-radius:4px;
+    background:rgba(99,102,241,0.12);color:#a5b4fc;
+    font-size:0.72rem;font-weight:600;margin-right:4px;
+  }
+
+  /* ===== KNOWLEDGE LOOP ===== */
+  .loop-container{
+    display:flex;align-items:center;justify-content:center;
+    flex-wrap:wrap;gap:0;padding:40px 0;
+  }
+  .loop-step{
+    display:flex;flex-direction:column;align-items:center;
+    text-align:center;padding:20px;position:relative;
+    animation:fadeInUp 0.6s ease both;
+  }
+  .loop-step:nth-child(1){animation-delay:0s}
+  .loop-step:nth-child(2){animation-delay:0.15s}
+  .loop-step:nth-child(3){animation-delay:0.3s}
+  .loop-step:nth-child(4){animation-delay:0.45s}
+  .loop-icon{
+    width:56px;height:56px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-size:1.4rem;margin-bottom:10px;
+    border:1px solid rgba(255,255,255,0.08);
+    transition:transform 0.3s ease,box-shadow 0.3s ease;
+  }
+  .loop-step:hover .loop-icon{
+    transform:scale(1.15);
+    box-shadow:0 0 32px rgba(99,102,241,0.25);
+  }
+  .loop-step:nth-child(1) .loop-icon{background:rgba(239,68,68,0.12);border-color:rgba(239,68,68,0.2)}
+  .loop-step:nth-child(2) .loop-icon{background:rgba(245,158,11,0.12);border-color:rgba(245,158,11,0.2)}
+  .loop-step:nth-child(3) .loop-icon{background:rgba(59,130,246,0.12);border-color:rgba(59,130,246,0.2)}
+  .loop-step:nth-child(4) .loop-icon{background:rgba(34,197,94,0.12);border-color:rgba(34,197,94,0.2)}
+  .loop-step strong{font-size:0.9rem;color:#e2e8f0;margin-bottom:4px}
+  .loop-step span{font-size:0.78rem;color:#64748b}
+  .loop-arrow{
+    font-size:1.5rem;color:#334155;margin:0 8px;
+    animation:arrowPulse 2s ease-in-out infinite;
+  }
+  .loop-arrow:nth-child(2){animation-delay:0.5s}
+  .loop-arrow:nth-child(4){animation-delay:1s}
+  .loop-arrow:nth-child(6){animation-delay:1.5s}
+  @keyframes arrowPulse{0%,100%{opacity:0.3;transform:translateX(0)}50%{opacity:0.8;transform:translateX(4px)}}
+
+  /* ===== HIGHLIGHT CARDS (knowledge highlights) ===== */
+  .highlight-grid{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+    gap:20px;margin-top:24px;
+  }
+  .highlight-card{
+    background:rgba(255,255,255,0.02);
+    border:1px solid rgba(255,255,255,0.05);
+    border-radius:18px;padding:28px 24px;
+    transition:all 0.35s ease;
+    position:relative;overflow:hidden;
+  }
+  .highlight-card::before{
+    content:'';position:absolute;top:0;left:0;right:0;height:2px;
+    background:linear-gradient(90deg,#3b82f6,#8b5cf6);
+    opacity:0;transition:opacity 0.3s;
+  }
+  .highlight-card:hover::before{opacity:1}
+  .highlight-card:hover{
+    border-color:rgba(99,102,241,0.2);
+    transform:translateY(-3px);
+    box-shadow:0 12px 40px rgba(0,0,0,0.3);
+  }
+  .highlight-card h4{font-size:0.95rem;font-weight:700;color:#e2e8f0;margin-bottom:8px}
+  .highlight-card p{font-size:0.85rem;color:#94a3b8;line-height:1.6}
+  .highlight-card .hl-icon{
+    display:inline-flex;align-items:center;gap:8px;
+    font-size:0.75rem;font-weight:600;
+    padding:3px 10px;border-radius:999px;
+    margin-bottom:12px;
+  }
+  .hl-auto{background:rgba(34,197,94,0.1);color:#4ade80}
+  .hl-cluster{background:rgba(139,92,246,0.1);color:#c4b5fd}
+  .moat-sentence{
+    text-align:center;color:#64748b;font-size:0.9rem;
+    margin-top:28px;padding:0 16px;line-height:1.7;
+    max-width:680px;margin-left:auto;margin-right:auto;
+  }
+  .moat-sentence strong{color:#a78bfa}
+
+  /* ===== TRAP CARDS ===== */
+  .trap-grid{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+    gap:24px;margin-top:24px;
+  }
+  .trap-card{
+    background:rgba(255,255,255,0.015);
+    border:1px solid rgba(255,255,255,0.05);
+    border-radius:16px;padding:28px 24px;
+    position:relative;overflow:hidden;
+    transition:all 0.35s cubic-bezier(0.16,1,0.3,1);
+    transform-style:preserve-3d;perspective:800px;
+  }
+  .trap-card::after{
+    content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
+  }
+  .trap-card.severe::after{background:#ef4444}
+  .trap-card.warning::after{background:#f59e0b}
+  .trap-card:hover{
+    border-color:rgba(99,102,241,0.2);
+    transform:translateY(-4px);
+    box-shadow:0 16px 48px rgba(0,0,0,0.35);
+  }
+  .trap-code{
+    display:inline-block;font-size:0.72rem;font-weight:700;
+    padding:2px 10px;border-radius:4px;margin-bottom:10px;
+    font-family:'SF Mono','Fira Code','Consolas',monospace;
+    letter-spacing:0.03em;
+  }
+  .trap-card.severe .trap-code{background:rgba(239,68,68,0.12);color:#fca5a5}
+  .trap-card.warning .trap-code{background:rgba(245,158,11,0.12);color:#fcd34d}
+  .trap-card h4{font-size:1rem;font-weight:700;color:#f1f5f9;margin-bottom:8px}
+  .trap-card p.desc{font-size:0.85rem;color:#94a3b8;line-height:1.65;margin-bottom:12px}
+  .trap-severity{
+    display:inline-block;font-size:0.7rem;font-weight:700;
+    padding:2px 10px;border-radius:999px;
+    letter-spacing:0.04em;text-transform:uppercase;
+  }
+  .sev-severe{background:rgba(239,68,68,0.1);color:#f87171}
+  .sev-warning{background:rgba(245,158,11,0.1);color:#fbbf24}
+  .traps-footer{
+    text-align:center;margin-top:28px;padding:14px 20px;
+    border-radius:10px;background:rgba(99,102,241,0.04);
+    border:1px solid rgba(99,102,241,0.1);
+    font-size:0.85rem;color:#94a3b8;
+  }
+  .traps-footer strong{color:#a5b4fc}
+
+  /* ===== MODE CARDS ===== */
+  .mode-grid{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+    gap:24px;margin-top:24px;
+  }
+  .mode-card{
+    background:rgba(255,255,255,0.015);
+    border:1px solid rgba(255,255,255,0.05);
+    border-radius:18px;padding:32px 24px;
+    transition:all 0.35s ease;text-align:center;
+    position:relative;overflow:hidden;
+  }
+  .mode-card:hover{
+    border-color:rgba(99,102,241,0.15);
+    transform:translateY(-4px);
+    box-shadow:0 16px 48px rgba(0,0,0,0.3);
+  }
+  .mode-card.default{
+    border-color:rgba(59,130,246,0.25);
+    background:rgba(59,130,246,0.04);
+  }
+  .mode-card .mode-emoji{font-size:2.4rem;margin-bottom:12px;display:block}
+  .mode-card h4{font-size:1.15rem;font-weight:700;color:#f1f5f9;margin-bottom:4px}
+  .mode-card .mode-level{
+    font-size:0.75rem;color:#64748b;font-family:'SF Mono','Fira Code','Consolas',monospace;
+    margin-bottom:12px;display:block;
+  }
+  .mode-card p.desc{font-size:0.85rem;color:#94a3b8;line-height:1.6;margin-bottom:16px}
+  .mode-badge{
+    display:inline-block;font-size:0.7rem;font-weight:700;
+    padding:3px 12px;border-radius:999px;letter-spacing:0.03em;
+  }
+  .mode-badge.current{
+    background:rgba(59,130,246,0.15);color:#60a5fa;
+  }
+  .mode-badge.other{
+    background:rgba(255,255,255,0.04);color:#64748b;
+  }
+  .env-note{
+    text-align:center;margin-top:20px;font-size:0.8rem;color:#475569;
+    font-family:'SF Mono','Fira Code','Consolas',monospace;
+  }
+
+  /* ===== TIMELINE (roadmap) ===== */
+  .timeline{
+    position:relative;margin-top:24px;
+    padding-left:36px;
+  }
+  .timeline::before{
+    content:'';position:absolute;left:11px;top:4px;bottom:4px;
+    width:2px;background:linear-gradient(180deg,rgba(99,102,241,0.3),rgba(99,102,241,0.05));
+    border-radius:1px;
+  }
+  .timeline-item{
+    position:relative;padding-bottom:28px;
+  }
+  .timeline-item:last-child{padding-bottom:0}
+  .timeline-item::before{
+    content:'';position:absolute;left:-30px;top:6px;
+    width:10px;height:10px;border-radius:50%;
+    background:#6366f1;z-index:1;
+    box-shadow:0 0 12px rgba(99,102,241,0.4);
+  }
+  .timeline-item.future::before{
+    background:transparent;border:2px solid #475569;
+    box-shadow:none;
+  }
+  .timeline-period{
+    font-size:0.72rem;font-weight:700;color:#6366f1;
+    letter-spacing:0.06em;text-transform:uppercase;margin-bottom:4px;
+  }
+  .timeline-item.future .timeline-period{color:#64748b}
+  .timeline-item h4{font-size:0.95rem;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+  .timeline-item p{font-size:0.84rem;color:#94a3b8;line-height:1.55}
+  .timeline-badge{
+    display:inline-block;font-size:0.65rem;font-weight:700;
+    padding:1px 8px;border-radius:999px;margin-left:8px;vertical-align:middle;
+  }
+  .badge-done{background:rgba(34,197,94,0.1);color:#4ade80}
+  .badge-planned{background:rgba(100,116,139,0.12);color:#94a3b8}
+
+  /* ===== AUDIENCE CARDS ===== */
+  .audience-grid{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+    gap:24px;margin-top:24px;
+  }
+  .audience-card{
+    background:rgba(255,255,255,0.015);
+    border:1px solid rgba(255,255,255,0.05);
+    border-radius:18px;padding:36px 28px;
+    transition:all 0.35s ease;text-align:center;
+    display:flex;flex-direction:column;align-items:center;
+  }
+  .audience-card:hover{
+    border-color:rgba(99,102,241,0.2);
+    transform:translateY(-4px);
+    box-shadow:0 16px 48px rgba(0,0,0,0.3);
+  }
+  .audience-icon{
+    width:64px;height:64px;border-radius:16px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:1.8rem;margin-bottom:16px;
+    background:rgba(99,102,241,0.08);
+    border:1px solid rgba(99,102,241,0.12);
+  }
+  .audience-card h4{font-size:1.1rem;font-weight:700;color:#f1f5f9;margin-bottom:8px}
+  .audience-card p{font-size:0.85rem;color:#94a3b8;line-height:1.6;margin-bottom:20px;flex:1}
+  .audience-cta{
+    display:inline-flex;align-items:center;gap:6px;
+    padding:8px 20px;border-radius:8px;
+    font-size:0.82rem;font-weight:600;text-decoration:none;
+    transition:all 0.25s ease;
+    background:rgba(59,130,246,0.1);color:#60a5fa;
+    border:1px solid rgba(59,130,246,0.15);
+  }
+  .audience-cta:hover{
+    background:rgba(59,130,246,0.2);color:#93c5fd;
+    border-color:rgba(59,130,246,0.3);
+  }
+
+  /* ===== REVEAL ===== */
+  .reveal{opacity:0;transform:translateY(30px);transition:all 0.7s cubic-bezier(0.16,1,0.3,1)}
+  .reveal.visible{opacity:1;transform:translateY(0)}
+
+  /* ===== FOOTER ===== */
+  footer{
+    border-top:1px solid rgba(255,255,255,0.05);
+    padding:40px 24px;text-align:center;color:#475569;font-size:0.8rem;
+  }
+  footer a{color:#6366f1;text-decoration:none}
+
+  /* ===== RESPONSIVE ===== */
+  @media(max-width:768px){
+    nav{padding:12px 16px}
+    .nav-links{display:none}
+    .hero{padding:100px 16px 60px}
+    section{padding:60px 16px}
+    .loop-arrow{transform:rotate(90deg)}
+    .loop-container{flex-direction:column}
+    .stats-bar{grid-template-columns:repeat(2,1fr)}
+    .what-grid{grid-template-columns:1fr}
+    .trap-grid{grid-template-columns:1fr}
+    .mode-grid{grid-template-columns:1fr}
+    .audience-grid{grid-template-columns:1fr}
+    .highlight-grid{grid-template-columns:1fr}
+    .timeline{padding-left:28px}
+  }
+
+  /* ===== KINETIC GRID ===== */
+  #kinetic-grid{position:absolute;inset:0;z-index:-1;pointer-events:none;width:100%;height:100%}
+  .hero-content{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;width:100%}
+</style>
+</head>
+<body>
+
+<!-- Scroll Progress -->
+<div id="scroll-progress"></div>
+
+<!-- Floating Orbs -->
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+
+<!-- Noise Overlay -->
+<div id="noise-overlay"></div>
+
+<!-- Background -->
+<div class="bg-glow"></div>
+<canvas id="particles"></canvas>
+
+<!-- Navigation -->
+<nav id="navbar">
+  <a href="#" class="nav-brand">
+    <span class="nav-dot"></span> specmate
+  </a>
+  <ul class="nav-links">
+    <li><a href="#what">定位</a></li>
+    <li><a href="#capabilities">能力</a></li>
+    <li><a href="#knowledge">知识闭环</a></li>
+    <li><a href="#traps">陷阱</a></li>
+    <li><a href="#roadmap">路线图</a></li>
+  </ul>
+  <div class="nav-status"><span class="nav-status-dot"></span> 活跃</div>
+</nav>
+
+<!-- 1. Hero -->
+<section class="hero">
+  <div class="blob-container">
+    <svg class="blob-svg blob-1" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><path fill="#3b82f6" d="M44.7,-76.4C58.8,-69.2,71.8,-59.1,79.6,-45.8C87.4,-32.5,90,-16.3,88.5,-0.8C87,14.6,81.4,29.2,72.8,41.7C64.2,54.2,52.6,64.6,39.1,71.7C25.7,78.8,10.4,82.6,-4.2,79.4C-18.8,76.2,-33.5,66,-46.1,55.1C-58.7,44.2,-69.2,32.6,-76.4,18.4C-83.6,4.2,-87.5,-12.6,-82.3,-27.3C-77.1,-42,-62.8,-54.6,-47.6,-61.3C-32.5,-68,-16.3,-68.7,-0.3,-68.1C15.6,-67.5,30.5,-83.7,44.7,-76.4Z" transform="translate(100 100)"/></svg>
+    <svg class="blob-svg blob-2" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><path fill="#8b5cf6" d="M39.5,-65.2C54.4,-58.7,72.1,-52.7,79.2,-40.5C86.3,-28.3,82.8,-9.9,78.1,7.6C73.4,25.1,67.5,41.7,56.5,52.9C45.5,64.1,29.4,69.9,13.3,74.5C-2.8,79.1,-18.9,82.5,-33.7,78.2C-48.5,73.9,-62,61.9,-71.2,47.5C-80.4,33.1,-85.3,16.3,-83.8,0.8C-82.3,-14.7,-74.4,-29.4,-63.7,-40.9C-53,-52.4,-39.5,-60.7,-26,-67.5C-12.5,-74.3,1,-79.6,15.1,-76.8C29.2,-74,39.5,-71.7,39.5,-65.2Z" transform="translate(100 100)"/></svg>
+  </div>
+  <canvas id="kinetic-grid"></canvas>
+  <div class="hero-content">
+  <div class="hero-badge"><span class="hero-badge-dot"></span>Kova 框架 · 首个 DKE 实例</div>
+  <h1>specmate</h1>
+  <p class="subtitle" id="hero-subtitle"></p>
+  <p class="analogy" id="hero-analogy"></p>
+  <div class="hero-actions">
+    <a href="#capabilities" class="btn btn-primary">了解能力</a>
+    <a href="https://github.com/alele496/bsv-specmate" class="btn btn-secondary">GitHub</a>
+  </div>
+  </div>
+</section>
+
+<!-- 2. 定位陈述区 -->
+<section id="what">
+<div class="section-inner">
+  <div class="section-label reveal">定位</div>
+  <h2 class="section-title reveal">specmate 是什么——以及它不是什么</h2>
+  <div class="what-grid reveal" id="what-grid"></div>
+  <div class="noise-curse reveal">
+    <strong>噪声诅咒</strong>：BSV 硬件设计中，许多静态检查工具的误报率居高不下。每一次误报都在消耗开发者的信任——就像"狼来了"。specmate 选择了完全不同的路线：用轻量正则 + tree-sitter 快速筛查可疑模式，但永远把<strong>最终裁决权交给 BSC 编译器</strong>。不做 BSC 已经在做的事，只做 BSC 不做的。
+  </div>
+</div>
+</section>
+
+<!-- 3. 能力快照区 -->
+<section id="capabilities">
+<div class="section-inner">
+  <div class="section-label reveal">活跃能力</div>
+  <h2 class="section-title reveal">当前能力一览</h2>
+  <p class="section-subtitle reveal">8 个 MCP 工具组成完整闭环，覆盖从编码前扫描到编译后诊断的全周期。</p>
+</div>
+</section>
+
+<!-- Stats Bar -->
+<div class="stats-bar reveal">
+  <div class="stat-card"><div class="stat-value" data-count="8">0</div><div class="stat-label">MCP 工具</div></div>
+  <div class="stat-card"><div class="stat-value" data-count="29">0</div><div class="stat-label">知识条目</div></div>
+  <div class="stat-card"><div class="stat-value" data-count="41">0</div><div class="stat-label">陷阱覆盖</div></div>
+  <div class="stat-card"><div class="stat-value" data-count="158">0</div><div class="stat-label">自动化测试</div></div>
+</div>
+
+<!-- Tools Table -->
+<section style="padding-top:0">
+<div class="section-inner">
+  <div class="reveal" style="overflow-x:auto">
+  <table class="tools-table">
+    <thead><tr><th>工具</th><th>阶段</th><th>状态</th><th>说明</th></tr></thead>
+    <tbody id="tools-tbody"></tbody>
+  </table>
+  </div>
+  <div class="table-footnote reveal" id="table-footnote"></div>
+</div>
+</section>
+
+<!-- 4. 知识积累引擎 -->
+<section id="knowledge">
+<div class="section-inner">
+  <div class="section-label reveal">知识积累闭环</div>
+  <h2 class="section-title reveal">不更新也能持续成长</h2>
+  <p class="section-subtitle reveal">只要有人在用 specmate 写 BSV，知识就在持续增长——代码停更，经验不停。</p>
+  <div class="loop-container reveal">
+    <div class="loop-step">
+      <div class="loop-icon">&#x26A0;</div>
+      <strong>Capture</strong>
+      <span>编译报错→自动入库<br/>dedup: repeat_count+1</span>
+    </div>
+    <span class="loop-arrow">→</span>
+    <div class="loop-step">
+      <div class="loop-icon">&#x1F50D;</div>
+      <strong>Diagnose</strong>
+      <span>查知识库匹配方案<br/>相似度匹配未知码</span>
+    </div>
+    <span class="loop-arrow">→</span>
+    <div class="loop-step">
+      <div class="loop-icon">&#x1F3AF;</div>
+      <strong>Resolve</strong>
+      <span>修复→固化根因+方案<br/>errors 表 +1 篇</span>
+    </div>
+    <span class="loop-arrow">→</span>
+    <div class="loop-step">
+      <div class="loop-icon">&#x1F4AA;</div>
+      <strong>下次命中</strong>
+      <span>同 code→直接返回方案<br/>count 自动累积</span>
+    </div>
+  </div>
+
+  <!-- Highlight cards -->
+  <div class="highlight-grid reveal" id="highlight-grid"></div>
+
+  <p class="moat-sentence reveal" id="moat-sentence"></p>
+</div>
+</section>
+
+<!-- 5. 陷阱展示区 -->
+<section id="traps">
+<div class="section-inner">
+  <div class="section-label reveal">编码陷阱</div>
+  <h2 class="section-title reveal">精选 BSV 编码陷阱</h2>
+  <p class="section-subtitle reveal">这些是 BSV 编译器不会报错、但会导致硬件行为异常的隐蔽问题。</p>
+  <div class="trap-grid reveal" id="trap-grid"></div>
+  <div class="traps-footer reveal" id="traps-footer"></div>
+</div>
+</section>
+
+<!-- 6. SPECMATE_LEVEL 模式 -->
+<section id="modes">
+<div class="section-inner">
+  <div class="section-label reveal">运行模式</div>
+  <h2 class="section-title reveal">三种模式，适配不同场景</h2>
+  <p class="section-subtitle reveal">通过环境变量 <code>SPECMATE_LEVEL</code> 控制 specmate 的干预程度。</p>
+  <div class="mode-grid reveal" id="mode-grid"></div>
+  <p class="env-note reveal" id="env-note"></p>
+</div>
+</section>
+
+<!-- 7. 路线图 -->
+<section id="roadmap">
+<div class="section-inner">
+  <div class="section-label reveal">路线图</div>
+  <h2 class="section-title reveal">已经完成的 · 正在规划的</h2>
+  <div class="timeline reveal" id="timeline-container"></div>
+</div>
+</section>
+
+<!-- 8. 受众入口 -->
+<section id="audience">
+<div class="section-inner">
+  <div class="section-label reveal">开始使用</div>
+  <h2 class="section-title reveal">无论你的角色是什么</h2>
+  <div class="audience-grid reveal" id="audience-grid"></div>
+</div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <p>specmate · BSV 编码知识引擎 · Kova 框架 DKE 实例</p>
+  <p style="margin-top:4px">
+    <a href="https://github.com/alele496/bsv-specmate">GitHub</a> ·
+    MCP stdio / <a href="#">HTTP :9339/mcp</a> ·
+    SPECMATE_LEVEL: develop ·
+    SQLite ~/.specmate/data/
+  </p>
+</footer>
+
+<script src="data.js"></script>
+<script>
+// ============================================================
+// DATA-DRIVEN RENDERING — all content from data.js
+// ============================================================
+
+function renderHero() {
+  if (typeof SITEDATA === 'undefined' || !SITEDATA.hero) return;
+  var subtitle = document.getElementById('hero-subtitle');
+  if (subtitle) subtitle.textContent = SITEDATA.hero.subtitle;
+  var analogy = document.getElementById('hero-analogy');
+  if (analogy && SITEDATA.hero.analogy) {
+    analogy.innerHTML = SITEDATA.hero.analogy
+      .replace(/ESLint/g, '<span class="analogy-highlight">ESLint</span>')
+      .replace(/rust-analyzer/g, '<span class="analogy-highlight">rust-analyzer</span>')
+      .replace(/specmate/g, '<span class="analogy-highlight">specmate</span>')
+      .replace(/Bluespec SystemVerilog/g, '<span class="analogy-highlight">Bluespec SystemVerilog</span>');
+  }
+}
+
+function renderStats() {
+  if (typeof SITEDATA === 'undefined' || !SITEDATA.stats) return;
+  var keys = ['tools', 'errors', 'traps', 'tests'];
+  var values = document.querySelectorAll('.stat-card .stat-value');
+  values.forEach(function(el, i) {
+    var val = SITEDATA.stats[keys[i]];
+    if (val !== undefined) {
+      el.setAttribute('data-count', val);
+      el.textContent = '0';
+    }
+  });
+}
+
+function renderToolsTable() {
+  if (typeof SITEDATA === 'undefined' || !SITEDATA.tools) return;
+  var tbody = document.getElementById('tools-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = SITEDATA.tools.map(function(t) {
+    var statusHtml, statusClass;
+    if (t.status === 'active') { statusClass = 'status-active'; statusHtml = '活跃'; }
+    else if (t.status === 'deprecated') { statusClass = 'status-deprecated'; statusHtml = '已弃用'; }
+    else if (t.status === 'cli') { statusClass = 'status-cli'; statusHtml = '仅 CLI'; }
+    else { statusClass = 'status-active'; statusHtml = t.status; }
+    var star = t.star ? ' ⭐' : '';
+    return '<tr><td><strong>' + t.name + '</strong>' + star + '</td><td>' + t.phase + '</td><td><span class="tool-status ' + statusClass + '">' + statusHtml + '</span></td><td>' + t.desc + '</td></tr>';
+  }).join('');
+  renderTableFootnote();
+}
+
+function renderTableFootnote() {
+  var footnote = document.getElementById('table-footnote');
+  if (!footnote || typeof SITEDATA === 'undefined' || !SITEDATA.tools) return;
+  var deprecated = SITEDATA.tools.filter(function(t) { return t.status === 'deprecated'; });
+  var cliTools = SITEDATA.tools.filter(function(t) { return t.status === 'cli'; });
+  var html = '<p><span class="mcp-badge">MCP</span> 所有 Agent 通过 MCP 协议调用，支持 stdio 和 <code>HTTP :9339/mcp</code> 双通道。</p>';
+  if (deprecated.length > 0 || cliTools.length > 0) {
+    html += '<p style="margin-top:6px">';
+    deprecated.forEach(function(t) {
+      html += '<span class="tool-status status-deprecated" style="font-size:0.75rem"></span> ' + t.name + '（' + t.desc + '）&nbsp;&nbsp;';
+    });
+    if (deprecated.length > 0 && cliTools.length > 0) html += '|&nbsp;&nbsp;';
+    cliTools.forEach(function(t) {
+      html += '<span class="tool-status status-cli" style="font-size:0.75rem"></span> ' + t.name + '（' + t.desc + '）';
+    });
+    html += '</p>';
+  }
+  footnote.innerHTML = html;
+}
+
+function renderWhatIs() {
+  if (typeof SITEDATA === 'undefined' || !SITEDATA.whatIs) return;
+  var grid = document.getElementById('what-grid');
+  if (!grid) return;
+  var leftItems = (SITEDATA.whatIs.left || []).map(function(item) {
+    return '<li><strong>' + item.title + '</strong>——' + item.desc + '</li>';
+  }).join('');
+  var rightItems = (SITEDATA.whatIs.right || []).map(function(item) {
+    return '<li><strong>' + item.title + '</strong>——' + item.desc + '</li>';
+  }).join('');
+  grid.innerHTML =
+    '<div class="what-col is-col">' +
+      '<h3>specmate 是</h3>' +
+      '<ul>' + leftItems + '</ul>' +
+    '</div>' +
+    '<div class="what-col not-col">' +
+      '<h3>specmate 不是</h3>' +
+      '<ul>' + rightItems + '</ul>' +
+    '</div>';
+}
+
+function renderKnowledgeHighlights() {
+  if (typeof SITEDATA === 'undefined' || !SITEDATA.knowledgeHighlights) return;
+  var grid = document.getElementById('highlight-grid');
+  if (!grid) return;
+  var iconClasses = ['hl-auto', 'hl-cluster'];
+  var emojis = ['&#x2728;', '&#x1F9E9;'];
+  grid.innerHTML = SITEDATA.knowledgeHighlights.map(function(h, i) {
+    return '<div class="highlight-card">' +
+      '<div class="hl-icon ' + (iconClasses[i] || iconClasses[0]) + '">' + (emojis[i] || emojis[0]) + ' ' + h.title + '</div>' +
+      '<h4>' + h.title + '</h4>' +
+      '<p>' + h.desc + '</p>' +
+    '</div>';
+  }).join('');
+}
+
+function renderKnowledgeFooter() {
+  if (typeof SITEDATA === 'undefined' || !SITEDATA.knowledgeFooter) return;
+  var el = document.getElementById('moat-sentence');
+  if (!el) return;
+  var parts = SITEDATA.knowledgeFooter.split('——');
+  if (parts.length >= 2) {
+    el.innerHTML = '<strong>' + parts[0] + '</strong>——' + parts.slice(1).join('——');
+  } else {
+    el.innerHTML = SITEDATA.knowledgeFooter;
+  }
+}
+
+function renderTraps() {
+  if (typeof SITEDATA === 'undefined' || !SITEDATA.traps) return;
+  var grid = document.getElementById('trap-grid');
+  if (!grid) return;
+  grid.innerHTML = SITEDATA.traps.map(function(t) {
+    var sevClass = t.severity === 'critical' ? 'severe' : 'warning';
+    var sevLabel = t.severity === 'critical' ? '严重' : '警告';
+    var sevBadge = t.severity === 'critical' ? 'sev-severe' : 'sev-warning';
+    return '<div class="trap-card ' + sevClass + '">' +
+      '<span class="trap-code">' + t.code + '</span>' +
+      '<h4>' + t.title + '</h4>' +
+      '<p class="desc">' + t.desc + '</p>' +
+      '<span class="trap-severity ' + sevBadge + '">' + sevLabel + '</span>' +
+    '</div>';
+  }).join('');
+  var footer = document.getElementById('traps-footer');
+  if (footer && SITEDATA.stats) {
+    footer.innerHTML = '<strong>' + SITEDATA.stats.traps + ' 个陷阱覆盖</strong> · 编码前运行 <code>specmate_scan</code> 即可自动扫描全部已知陷阱';
+  }
+}
+
+function renderModes() {
+  if (typeof SITEDATA === 'undefined' || !SITEDATA.modes) return;
+  var grid = document.getElementById('mode-grid');
+  if (!grid) return;
+  var emojis = { verify: '&#x1F389;', develop: '&#x2696;', tapeout: '&#x1F512;' };
+  grid.innerHTML = SITEDATA.modes.map(function(m) {
+    var defaultClass = m.current ? ' default' : '';
+    var badgeClass = m.current ? 'current' : 'other';
+    var badgeText = m.current ? '当前默认' : (m.name === 'verify' ? 'CI 友好' : '流片级');
+    return '<div class="mode-card' + defaultClass + '">' +
+      '<span class="mode-emoji">' + (emojis[m.name] || '') + '</span>' +
+      '<h4>' + m.name + '</h4>' +
+      '<span class="mode-level">' + m.label + '</span>' +
+      '<p class="desc">' + m.desc + '</p>' +
+      '<span class="mode-badge ' + badgeClass + '">' + badgeText + '</span>' +
+    '</div>';
+  }).join('');
+  var envNote = document.getElementById('env-note');
+  if (envNote) {
+    var currentMode = SITEDATA.modes.find(function(m) { return m.current; });
+    if (currentMode) {
+      envNote.textContent = '$Env:SPECMATE_LEVEL = "' + currentMode.name + '"';
+    }
+  }
+}
+
+function renderRoadmap() {
+  if (typeof SITEDATA === 'undefined' || !SITEDATA.roadmap) return;
+  var container = document.getElementById('timeline-container');
+  if (!container) return;
+  var html = '';
+  if (SITEDATA.roadmap.done) {
+    var done = SITEDATA.roadmap.done;
+    html += '<div class="timeline-item">' +
+      '<div class="timeline-period">' + done.label + '</div>' +
+      '<h4>' + done.items.slice(0, 3).join(' + ') + ' <span class="timeline-badge badge-done">已完成</span></h4>' +
+      '<p>' + done.items.join('；') + '。</p>' +
+    '</div>';
+  }
+  if (SITEDATA.roadmap.planned) {
+    var planned = SITEDATA.roadmap.planned;
+    html += '<div class="timeline-item future">' +
+      '<div class="timeline-period">' + planned.label + '</div>' +
+      '<h4>' + planned.items.slice(0, 3).join(' + ') + ' <span class="timeline-badge badge-planned">规划中</span></h4>' +
+      '<p>' + planned.items.join('；') + '。</p>' +
+    '</div>';
+  }
+  container.innerHTML = html;
+}
+
+function renderAudience() {
+  if (typeof SITEDATA === 'undefined' || !SITEDATA.audience) return;
+  var grid = document.getElementById('audience-grid');
+  if (!grid) return;
+  grid.innerHTML = SITEDATA.audience.map(function(a) {
+    return '<div class="audience-card">' +
+      '<div class="audience-icon">' + a.icon + '</div>' +
+      '<h4>' + a.title + '</h4>' +
+      '<p>' + a.desc + '</p>' +
+      '<a href="' + a.href + '" class="audience-cta">' + a.cta + '</a>' +
+    '</div>';
+  }).join('');
+}
+
+// Subtitle stagger reveal — deferred until after renderHero populates text
+function initSubtitleStagger() {
+  var el = document.getElementById('hero-subtitle');
+  if (!el) return;
+  var text = el.textContent;
+  if (!text) return;
+  el.textContent = '';
+  el.style.visibility = 'visible';
+  var chars = [];
+  for (var i = 0; i < text.length; i++) {
+    var span = document.createElement('span');
+    span.textContent = text[i] === ' ' ? '\u00A0' : text[i];
+    span.style.opacity = '0';
+    span.style.display = 'inline-block';
+    span.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+    span.style.transform = 'translateY(12px)';
+    el.appendChild(span);
+    chars.push(span);
+  }
+  setTimeout(function() {
+    chars.forEach(function(span, i) {
+      setTimeout(function() {
+        span.style.opacity = '1';
+        span.style.transform = 'translateY(0)';
+      }, i * 18);
+    });
+  }, 600);
+}
+
+// Trap card magnetic effect — deferred until after renderTraps creates cards
+function initTrapCardMagnetic() {
+  var grid = document.querySelector('.trap-grid');
+  if (!grid) return;
+  var cardList = grid.querySelectorAll('.trap-card');
+  if (cardList.length === 0) return;
+  var cards = [];
+  for (var i = 0; i < cardList.length; i++) { cards.push(cardList[i]); }
+
+  var INFLUENCE = 250;
+  var COLLAPSED_SCALE = 1.0;
+  var HOVER_SCALE = 1.08;
+  var EASING = 0.2;
+
+  var targetFactors = cards.map(function() { return 0; });
+  var currentFactors = cards.map(function() { return 0; });
+  var rafId = 0;
+
+  function smoothstep(t) { return t * t * (3 - 2 * t); }
+
+  function setTargets(clientX) {
+    var gridRect = grid.getBoundingClientRect();
+    var cx = clientX - gridRect.left;
+    targetFactors = cards.map(function(card) {
+      var cardRect = card.getBoundingClientRect();
+      var cardCenter = cardRect.left - gridRect.left + cardRect.width / 2;
+      var dist = Math.abs(cx - cardCenter);
+      var f = Math.max(0, 1 - dist / INFLUENCE);
+      return smoothstep(f);
+    });
+    startLoop();
+  }
+
+  function startLoop() {
+    if (rafId) return;
+    var step = function() {
+      var moving = false;
+      for (var i = 0; i < currentFactors.length; i++) {
+        var d = targetFactors[i] - currentFactors[i];
+        if (Math.abs(d) > 0.001) {
+          currentFactors[i] += d * EASING;
+          moving = true;
+        } else {
+          currentFactors[i] = targetFactors[i];
+        }
+      }
+      cards.forEach(function(card, i) {
+        var s = COLLAPSED_SCALE + (HOVER_SCALE - COLLAPSED_SCALE) * currentFactors[i];
+        card.style.transform = 'scale(' + s + ')';
+        card.style.transition = 'none';
+      });
+
+      if (moving) {
+        rafId = requestAnimationFrame(step);
+      } else {
+        if (currentFactors.every(function(f) { return Math.abs(f) < 0.001; })) {
+          cards.forEach(function(card) {
+            card.style.transform = '';
+            card.style.transition = '';
+          });
+        }
+        rafId = 0;
+      }
+    };
+    rafId = requestAnimationFrame(step);
+  }
+
+  grid.addEventListener('mousemove', function(e) { setTargets(e.clientX); });
+  grid.addEventListener('mouseleave', function() {
+    targetFactors = cards.map(function() { return 0; });
+    startLoop();
+  });
+}
+
+function renderPage() {
+  if (typeof SITEDATA === 'undefined') return;
+  renderHero();
+  renderStats();
+  renderWhatIs();
+  renderToolsTable();
+  renderKnowledgeHighlights();
+  renderKnowledgeFooter();
+  renderTraps();
+  renderModes();
+  renderRoadmap();
+  renderAudience();
+  // Deferred interactive effects that depend on dynamically rendered content
+  initSubtitleStagger();
+  initTrapCardMagnetic();
+}
+
+document.addEventListener('DOMContentLoaded', renderPage);
+
+// ============================================================
+// 1. SCROLL PROGRESS BAR
+// ============================================================
+const progressBar = document.getElementById('scroll-progress');
+window.addEventListener('scroll', () => {
+  const h = document.documentElement.scrollHeight - window.innerHeight;
+  progressBar.style.width = h > 0 ? (window.scrollY / h * 100) + '%' : '0%';
+});
+
+// ============================================================
+// 3. 3D CARD TILT — perspective transform based on cursor position
+// ============================================================
+document.querySelectorAll('[data-tilt]').forEach(card => {
+  card.addEventListener('mousemove', e => {
+    const rect = card.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width - 0.5;
+    const y = (e.clientY - rect.top) / rect.height - 0.5;
+    card.style.transform = `perspective(1000px) rotateY(${x * 8}deg) rotateX(${-y * 8}deg) translateY(-4px)`;
+    card.style.setProperty('--mx', (e.clientX - rect.left) + 'px');
+    card.style.setProperty('--my', (e.clientY - rect.top) + 'px');
+    card.style.setProperty('--angle', Math.atan2(y, x) * 180 / Math.PI + 90 + 'deg');
+  });
+  card.addEventListener('mouseleave', () => {
+    card.style.transform = 'perspective(1000px) rotateY(0) rotateX(0) translateY(0)';
+    card.style.setProperty('--angle', '135deg');
+  });
+});
+
+// Subtle tilt for architecture diagram (less rotation)
+const archEl = document.querySelector('[data-tilt-subtle]');
+if (archEl) {
+  archEl.addEventListener('mousemove', e => {
+    const rect = archEl.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width - 0.5;
+    const y = (e.clientY - rect.top) / rect.height - 0.5;
+    archEl.style.transform = `perspective(800px) rotateY(${x * 3}deg) rotateX(${-y * 3}deg)`;
+  });
+  archEl.addEventListener('mouseleave', () => {
+    archEl.style.transform = 'perspective(800px) rotateY(0) rotateX(0)';
+  });
+}
+
+// ============================================================
+// 4. MAGNETIC BUTTONS — slight pull toward cursor
+// ============================================================
+document.querySelectorAll('.btn').forEach(btn => {
+  btn.addEventListener('mousemove', e => {
+    const rect = btn.getBoundingClientRect();
+    const x = e.clientX - rect.left - rect.width / 2;
+    const y = e.clientY - rect.top - rect.height / 2;
+    btn.style.transform = `translate(${x * 0.15}px, ${y * 0.15}px)`;
+  });
+  btn.addEventListener('mouseleave', () => {
+    btn.style.transform = 'translate(0, 0)';
+  });
+  // Ripple effect on click
+  btn.addEventListener('click', function(e) {
+    const ripple = document.createElement('span');
+    ripple.className = 'ripple';
+    const rect = btn.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height);
+    ripple.style.width = ripple.style.height = size + 'px';
+    ripple.style.left = (e.clientX - rect.left - size/2) + 'px';
+    ripple.style.top = (e.clientY - rect.top - size/2) + 'px';
+    btn.appendChild(ripple);
+    ripple.addEventListener('animationend', () => ripple.remove());
+  });
+});
+
+// ============================================================
+// 5. SPRING COUNTER — bouncy number animation
+// ============================================================
+function springCounter(el, target) {
+  if (el.dataset.animated) return;
+  el.dataset.animated = '1';
+  let current = 0;
+  let velocity = 0;
+  const stiffness = 0.035;
+  const damping = 0.82;
+
+  function step() {
+    const force = (target - current) * stiffness;
+    velocity = (velocity + force) * damping;
+    current += velocity;
+    if (Math.abs(velocity) < 0.05 && Math.abs(target - current) < 0.05) {
+      el.textContent = target;
+      return;
+    }
+    el.textContent = Math.round(current);
+    requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+function animateCounters() {
+  document.querySelectorAll('.stat-value[data-count]').forEach(el => {
+    springCounter(el, parseInt(el.dataset.count));
+  });
+}
+
+// ============================================================
+// 6. SCROLL REVEAL + COUNTER TRIGGER
+// ============================================================
+const revealObserver = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('visible');
+      if (e.target.classList.contains('stats-bar') || e.target.closest('.stats-bar')) {
+        animateCounters();
+      }
+    }
+  });
+}, { threshold: 0.15 });
+
+document.querySelectorAll('.reveal, .stats-bar').forEach(el => revealObserver.observe(el));
+
+// ============================================================
+// 7. PARTICLES — floating dots
+// ============================================================
+(function() {
+  const canvas = document.getElementById('particles');
+  const ctx = canvas.getContext('2d');
+  let w, h, particles = [];
+
+  function resize() { w = canvas.width = window.innerWidth; h = canvas.height = window.innerHeight; }
+  resize();
+  window.addEventListener('resize', resize);
+
+  for (let i = 0; i < 60; i++) {
+    particles.push({
+      x: Math.random() * w, y: Math.random() * h,
+      vx: (Math.random() - 0.5) * 0.4, vy: (Math.random() - 0.5) * 0.4,
+      r: Math.random() * 1.5 + 0.5,
+      o: Math.random() * 0.4 + 0.08
+    });
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+    particles.forEach(p => {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0) p.x = w; if (p.x > w) p.x = 0;
+      if (p.y < 0) p.y = h; if (p.y > h) p.y = 0;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(99,102,241,${p.o})`;
+      ctx.fill();
+    });
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+// ============================================================
+// 8. NAV SCROLL HIDE + LINK UNDERLINE
+// ============================================================
+let lastScroll = 0;
+window.addEventListener('scroll', () => {
+  const nav = document.getElementById('navbar');
+  const current = window.scrollY;
+  if (current > lastScroll && current > 200) nav.classList.add('hidden');
+  else nav.classList.remove('hidden');
+  lastScroll = current;
+});
+
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    const target = document.querySelector(a.getAttribute('href'));
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
+
+// ============================================================
+// 10. TABLE ROW STAGGER REVEAL
+// ============================================================
+const tableObserver = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      const rows = e.target.querySelectorAll('tbody tr');
+      rows.forEach((row, i) => {
+        row.style.opacity = '0';
+        row.style.transform = 'translateX(-12px)';
+        row.style.transition = `all 0.4s ${i * 0.05}s ease`;
+        requestAnimationFrame(() => {
+          row.style.opacity = '1';
+          row.style.transform = 'translateX(0)';
+        });
+      });
+    }
+  });
+}, { threshold: 0.2 });
+
+const table = document.querySelector('.tools-table');
+if (table) tableObserver.observe(table);
+
+// ============================================================
+// 11. KINETIC GRID — reactive dot grid in hero section
+// ============================================================
+(function() {
+  const hero = document.querySelector('.hero');
+  const canvas = document.getElementById('kinetic-grid');
+  if (!hero || !canvas) return;
+
+  const ctx = canvas.getContext('2d');
+
+  const SPACING = 30;
+  const RADIUS = 400;
+  const PULL = 1.6;
+  const DOT_COLOR = '#6366f1';
+  const LINE_COLOR = '#6366f1';
+  const TRAIL_COLOR = '#6366f1';
+
+  let W = 1, H = 1, dpr = 1;
+  let nCols = 0, nRows = 0;
+  let dots = [];
+  const mouse = { x: -9999, y: -9999, active: false };
+  const trail = [];
+  let raf = 0;
+  let visible = true;
+
+  function build() {
+    const rect = hero.getBoundingClientRect();
+    W = Math.max(1, Math.floor(rect.width));
+    H = Math.max(1, Math.floor(rect.height));
+    dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(W * dpr);
+    canvas.height = Math.floor(H * dpr);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    dots = [];
+    nCols = Math.floor(W / SPACING) + 2;
+    nRows = Math.floor(H / SPACING) + 2;
+    for (let c = 0; c < nCols; c++) {
+      for (let r = 0; r < nRows; r++) {
+        const hx = c * SPACING;
+        const hy = r * SPACING;
+        dots.push({ hx: hx, hy: hy, x: hx, y: hy, vx: 0, vy: 0 });
+      }
+    }
+  }
+
+  build();
+
+  var ro = typeof ResizeObserver !== 'undefined'
+    ? new ResizeObserver(function() { build(); })
+    : null;
+  if (ro) ro.observe(hero);
+
+  var io = new IntersectionObserver(function(entries) {
+    entries.forEach(function(e) {
+      visible = e.isIntersecting;
+      if (visible && !raf) {
+        raf = requestAnimationFrame(frame);
+      }
+    });
+  }, { threshold: 0 });
+  io.observe(hero);
+
+  function setMouse(clientX, clientY) {
+    var r = canvas.getBoundingClientRect();
+    mouse.x = clientX - r.left;
+    mouse.y = clientY - r.top;
+    mouse.active = true;
+    var now = performance.now();
+    trail.push({ x: mouse.x, y: mouse.y, t: now });
+    if (trail.length > 80) trail.shift();
+  }
+
+  hero.addEventListener('mousemove', function(e) { setMouse(e.clientX, e.clientY); });
+  hero.addEventListener('mouseleave', function() {
+    mouse.active = false;
+    mouse.x = -9999;
+    mouse.y = -9999;
+  });
+  hero.addEventListener('touchmove', function(e) {
+    var t = e.touches[0];
+    if (t) setMouse(t.clientX, t.clientY);
+  }, { passive: true });
+  hero.addEventListener('touchend', function() {
+    mouse.active = false;
+    mouse.x = -9999;
+    mouse.y = -9999;
+  });
+
+  function frame() {
+    if (!visible) { raf = 0; return; }
+
+    var m = mouse;
+    ctx.clearRect(0, 0, W, H);
+
+    // Update physics
+    for (var i = 0; i < dots.length; i++) {
+      var d = dots[i];
+      var ax = (d.hx - d.x) * 0.08;
+      var ay = (d.hy - d.y) * 0.08;
+      if (m.active) {
+        var dx = m.x - d.x;
+        var dy = m.y - d.y;
+        var dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < RADIUS && dist > 0.001) {
+          var f = (1 - dist / RADIUS) * PULL;
+          ax += (dx / dist) * f;
+          ay += (dy / dist) * f;
+        }
+      }
+      d.vx = (d.vx + ax) * 0.82;
+      d.vy = (d.vy + ay) * 0.82;
+      d.x += d.vx;
+      d.y += d.vy;
+    }
+
+    // Draw grid lines
+    for (var r = 0; r < nRows; r++) {
+      for (var c = 0; c < nCols; c++) {
+        var idx = r * nCols + c;
+        var d = dots[idx];
+        var right = c + 1 < nCols ? dots[r * nCols + c + 1] : null;
+        var down = r + 1 < nRows ? dots[(r + 1) * nCols + c] : null;
+        var prox = m.active
+          ? Math.max(0, 1 - Math.sqrt(Math.pow(m.x - d.x, 2) + Math.pow(m.y - d.y, 2)) / RADIUS)
+          : 0;
+
+        if (right) {
+          ctx.globalAlpha = 0.06 + prox * 0.7;
+          ctx.strokeStyle = LINE_COLOR;
+          ctx.lineWidth = 0.5 + prox * 1.5;
+          ctx.beginPath();
+          ctx.moveTo(d.x, d.y);
+          ctx.lineTo(right.x, right.y);
+          ctx.stroke();
+        }
+        if (down) {
+          ctx.globalAlpha = 0.06 + prox * 0.7;
+          ctx.strokeStyle = LINE_COLOR;
+          ctx.lineWidth = 0.5 + prox * 1.5;
+          ctx.beginPath();
+          ctx.moveTo(d.x, d.y);
+          ctx.lineTo(down.x, down.y);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Draw dots
+    for (var i = 0; i < dots.length; i++) {
+      var d = dots[i];
+      var prox = m.active
+        ? Math.max(0, 1 - Math.sqrt(Math.pow(m.x - d.x, 2) + Math.pow(m.y - d.y, 2)) / RADIUS)
+        : 0;
+      ctx.globalAlpha = 0.22 + prox * 0.78;
+      ctx.fillStyle = DOT_COLOR;
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, 0.8 + prox * 2.2, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+
+    // Draw cursor trail
+    var now = performance.now();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (var i = 1; i < trail.length; i++) {
+      var a = trail[i - 1];
+      var b = trail[i];
+      var age = now - b.t;
+      if (age > 260) continue;
+      ctx.globalAlpha = Math.max(0, 1 - age / 260) * 0.85;
+      ctx.strokeStyle = TRAIL_COLOR;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+
+    ctx.globalAlpha = 1;
+    raf = requestAnimationFrame(frame);
+  }
+
+  raf = requestAnimationFrame(frame);
+})();
+
+</script>
+</body>
+</html>
