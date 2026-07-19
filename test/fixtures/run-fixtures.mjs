@@ -29,6 +29,7 @@ const EXPECTED_CHECKS = {
     'P0200': ['P0200'],
     'synthesize-annotation-order': ['G0010'],
     'G0004': ['G0004'],
+    'G0004-false-positive': ['G0004'],
 };
 
 function runFixtures() {

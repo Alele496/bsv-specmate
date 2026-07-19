@@ -247,6 +247,12 @@ function checkRuleDoubleWrite(filename, content, issues) {
             if (regWrites[reg] === undefined) {
                 regWrites[reg] = 1;
             } else {
+                // Check if this is a false positive: case(reg) FSM pattern
+                // where all writes to 'reg' are within case branches.
+                if (isCaseFsmPattern(ruleBlock, reg)) {
+                    continue; // Skip — mutually exclusive writes via case branches
+                }
+
                 const ruleName = ruleBlock.match(/rule\s+(\w+)/)[1];
                 const lineEstimate = content.substring(0, content.indexOf(ruleBlock)).split('\n').length + 1;
                 issues.push({
@@ -261,6 +267,43 @@ function checkRuleDoubleWrite(filename, content, issues) {
             }
         }
     }
+}
+
+/**
+ * Check if multiple writes to `regName` are all inside a `case(regName)` block.
+ * This is the standard BSV FSM pattern — each case branch is mutually exclusive,
+ * so the writes are not truly conflicting. BSC handles this correctly.
+ * Returns true if: (a) there is a case(regName) block, and (b) ALL <= writes
+ * to regName within this rule fall inside that case block.
+ */
+export function isCaseFsmPattern(ruleBlock, regName) {
+    // Find all case(expr) ... endcase blocks
+    // Use a loop to handle multiple case blocks (though typically there's one per FSM rule)
+    const caseBlockRe = /case\s*\((\w+)\)([\s\S]*?)endcase/g;
+    let caseMatch;
+
+    while ((caseMatch = caseBlockRe.exec(ruleBlock)) !== null) {
+        if (caseMatch[1] !== regName) continue;
+
+        // Found case(regName) — verify all writes to regName are inside it
+        const caseStartIdx = caseMatch.index;
+        const caseEndIdx = caseStartIdx + caseMatch[0].length;
+
+        const writeRe = new RegExp(`\\b${regName}\\s*<=\\s*`, 'g');
+        let writeMatch;
+        let allInsideCase = true;
+
+        while ((writeMatch = writeRe.exec(ruleBlock)) !== null) {
+            if (writeMatch.index < caseStartIdx || writeMatch.index > caseEndIdx) {
+                allInsideCase = false;
+                break;
+            }
+        }
+
+        if (allInsideCase) return true;
+    }
+
+    return false;
 }
 
 function checkVecUsage(filename, lines, issues) {

@@ -37,6 +37,7 @@
 import { readFileSync, existsSync } from 'fs';
 import Parser from 'tree-sitter';
 import BSV from 'tree-sitter-bsv';
+import { isCaseFsmPattern } from './check_style.mjs';
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -429,8 +430,15 @@ export function findConflictPairs(tree, source, file) {
             writes[reg].push(fmtLine(nb));
         }
 
+        // Get the full rule block text for FSM pattern detection
+        const ruleText = textOf(rn, source);
+
         for (const [reg, lines] of Object.entries(writes)) {
             if (lines.length > 1) {
+                // Skip if all writes are inside a case(reg) block (mutually exclusive FSM pattern)
+                if (isCaseFsmPattern(ruleText, reg)) {
+                    continue;
+                }
                 conflicts.push({ rule: ruleName, moduleName, reg, lines });
             }
         }
