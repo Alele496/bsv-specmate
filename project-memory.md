@@ -1,6 +1,6 @@
 # specmate 项目记忆
 
-> 最后更新：2026-07-18（全貌知识债分析 + 状态同步至最新提交 `906c275`）
+> 最后更新：2026-07-18（Q3 路线图全部完成 + Q4 路线图启动 — Streaming 流式输出 + MCP Registry 注册）
 > 维护者：specmate 负责人 + ops
 
 ## 项目背景
@@ -321,9 +321,10 @@ specmate 是 **Kova**（领域知识引擎框架）在 BSV 领域的第一个实
 - **服务器**：运行中，端口 9339，默认 stdio 传输
 - **SPECMATE_LEVEL**：develop（suggestive 模式）
 - **数据库**：SQLite，含 26 个错误码（P/T/G/BSV 系列）
-- **最近分支**：master，HEAD = `906c275`（husky pre-commit hook）
+- **最近分支**：master，HEAD = `245fbfd`（Agent B 模板速查表新增 specmate_diagnose 工具行）
 - **架构裁定（议会 S02E03，2026-07-14）**：CLI 降级为人类调试辅助，MCP 为 Agent 唯一正式通道。specmate_scan 为推荐统一入口（替代旧的三步调用）
 - **MCP 工具**：8 个（新增 specmate_diagnose 编译日志全量诊断工具，`eea5048`）
+- **Q3 路线图**：✅ **全部完成**（2026-07-18）。MCP Elicitation（`src/elicitation/elicit-phase.mjs`）+ BSC Orchestration（`src/compile/bsc-runner.mjs`）+ 未知错误 LLM 分析（`src/tools/_similarity.mjs` + `_context.mjs`）
 - **TRAPS 统一知识基**：12 条已验证 trap（替代旧 UNIVERSAL_TRAPS 2 条），全部 `verified: true`，覆盖 P0030/P0005/Bool vs Bit/G0004/G0053/interface Bool/always_ready guard/P0022/Vector构造/PulseWire/urgency/跨时钟域
 - **GRAPH 节点**：30 个领域节点 — 22 个 traps 数组为空（知识体系重构后移除未验证内容），8 个节点已回填已验证 trap（fifo/fsm/schedule/arbiter/interrupt/gpio/crc/uart/spi/bram）。53 条未验证 trap 在 backlog 待推进
 - **trap 验证进度**：backlog 65 条，已验证 12 条 GRAPH trap（fifo-1/fsm-1/axi-1/fsm-2/schedule-1/arbiter-1/interrupt-2/gpio-2/crc-2/uart-1/spi-1/bram-1）+ 12 条已升至 TRAPS 数组（代码验证+fixture），P0 backlog 剩余 2 条（schedule-2/arbiter-2）
@@ -601,14 +602,78 @@ Co-Authored-By: 台阁 <armada@bsv-agent>
 - [x] **parser 双格式兼容** — heading 格式 error doc 可解析（`183bc3f`）
 - [x] **db:seed auto-guardrail** — 重建前自动检查 parser 能解析多少篇 doc（`b45deeb`）
 - [x] **全貌知识债分析（2026-07-18）** — project-memory.md 同步至最新提交，识别所有 P1/P2 待办项
+- [x] **Q3 路线图全部完成（2026-07-18）** — MCP Elicitation + BSC Orchestration + 未知错误 LLM 自动分析，三个方向全部实施
 
 ### 进行中
 - [ ] **trap 每日验证 pipeline（2026-07-14 启动）** — 65 条未验证 trap 已导出到 `docs/trap-verification-backlog.md`，按 P0(8)/P1(16)/P2(41) 分级。**已验证 12 条 GRAPH trap**（fifo-1/fsm-1/axi-1 ≈ 07-14；fsm-2/schedule-1/arbiter-1/interrupt-2/gpio-2/crc-2/uart-1/spi-1/bram-1 ≈ 07-18），P0 剩余 2 条（schedule-2/arbiter-2）。另外 12 条 TRAPS 数组条目已代码验证通过（verified: true + fixture）。每日验证要求：每天至少验证 3 条 trap。目标：两个月清空 backlog。
 - [ ] **bench 重跑** — 用修复后的 specmate 重跑实验，验证知识盲区修复和 12 条已验证 trap 的效果
 
+### Q4 路线图（2026-07-18 启动）
+
+> Q4 两个方向（议会已确认）：Streaming 流式输出 + MCP Registry 注册。
+
+#### 方向 1：Streaming 流式输出
+
+**目标**：`specmate_diagnose` 从 `async function → Promise<string>` 改为 async generator，每处理完一个错误码就 yield 一个 chunk，不等全部处理完，减少 Agent 等待时间。
+
+**主要改动**：
+- `src/tools/specmate_diagnose.mjs`：新增 `diagnoseStream()` async generator，保留 `diagnose()` 向后兼容
+- `bin/server.mjs`：`specmate_diagnose` 工具定义改为 stream 模式
+
+**子任务**：
+
+- [x] **1.1 `diagnoseStream()` async generator** — `src/tools/specmate_diagnose.mjs` 新增 `export async function* diagnoseStream()`，按错误码分组逐条 yield。Header → per-code chunks → unknown section → footer
+- [x] **1.2 `diagnose()` 向后兼容包装** — 保留原 `diagnose()` 函数签名（`Promise<string>`），内部调用 `diagnoseStream()` 收集全部 chunk 后 join 返回。现有调用方无感知
+- [x] **1.3 `server.mjs` stream 模式** — `specmate_diagnose` handler 改为使用 `diagnoseStream()` 迭代 accumulate。架构已为 HTTP/SSE streaming 准备就绪
+- [x] **1.4 评估其他工具** — `specmate_scan` 输出较小（陷阱提醒 + preflight + NEXT STEPS），不需要流式；`specmate_analyze` 输出多为结构化矩阵，当前返回量可控。两个工具暂不改造，维持现状
+- [ ] **1.5 测试验证** — `npm test` 全部通过（安全分类器故障，待恢复后执行）
+
+**改造成本估算**：200-400 行
+
+---
+
+#### 方向 2：MCP Registry 注册
+
+**目标**：将 specmate 注册到 MCP Registry，让 Agent/用户可以通过 Registry 发现和安装 specmate MCP 服务。
+
+**子任务**：
+
+- [x] **2.1 MCP Registry 规范调研** — MCP Registry 即 `modelcontextprotocol/servers` GitHub 仓库：每个 server 一个目录 + README.md，根 README 按类别（Official/Community）列出。注册通过提交 PR 添加服务器到对应类别
+- [x] **2.2 准备 Registry 条目** — 名称: `bsv-specmate` | 描述: BSV (Bluespec SystemVerilog) Coding Knowledge Engine | 标签: bluespec, bsv, hardware, verilog, mcp | 类别: Developer Tools / Hardware Design | 传输: stdio (primary), HTTP:9339 (optional) | 运行时: Node.js >= 18 | 包: `npx bsv-specmate` | 配置模板已完成（见下）
+- [x] **2.3 项目文档更新** — `README.md` "配置 MCP" 节已添加 MCP Registry 发现说明，包含 Registry 链接和 `mcp add bsv-specmate` 一键安装提示
+
+#### Registry 配置模板
+
+**Claude Desktop / Claude Code (stdio)**:
+```json
+{
+  "mcpServers": {
+    "bsv-specmate": {
+      "command": "npx",
+      "args": ["-y", "bsv-specmate"],
+      "env": {
+        "SPECMATE_LEVEL": "develop"
+      }
+    }
+  }
+}
+```
+
+**Claude Code (HTTP)**:
+```json
+{
+  "mcpServers": {
+    "bsv-specmate": {
+      "url": "http://127.0.0.1:9339/mcp",
+      "transport": "http"
+    }
+  }
+}
+```
+
+---
+
 ### 计划中（短期）
-- [x] ~~通用陷阱层扩展~~ — 不再单独追踪。已通过 TRAPS 数组（12 条已验证条目）实现，UNIVERSAL_TRAPS 概念已合并入统一 TRAPS 数组。
-- [x] **docs/internal-overview.md 更新** — 2026-07-18 已同步至最新状态
 - [ ] **SHOWDOWN.md 考虑归档** — 675 行旧实验报告，`docs/experiments/` 已有更完整记录
 - [ ] **错误码 bsc 2025.07 兼容性审查** — P0005 "let 绑定" 建议在新版 bsc 中可能不可用（P2）
 
@@ -616,6 +681,97 @@ Co-Authored-By: 台阁 <armada@bsv-agent>
 - [ ] **16 个知识图谱节点补 pattern 字段** — 当前 30 个 GRAPH 节点中有 16 个缺 pattern（reset/struct/union/attribute/interface/rule/method/types/vector/schedule/dma/decoder/timer/gpio/synthesize）
 - [ ] **26 个知识图谱节点补 style 字段** — 当前仅 4 个节点有 style（fifo/pipeline/axi/fsm）
 - [ ] **62 条 backlog trap 逐步验证回填至 GRAPH 节点** — 29 个 GRAPH 节点 traps 数组当前为空（知识体系重构后移除未验证内容），需按每日 pipeline 逐步回填
+
+### Q3 路线图（2026-07-18 议会确认 — ✅ 已完成 2026-07-18）
+
+> 议会完成了 specmate 后续发展讨论，三个方向确认进入 Q3 计划。**全部已实施。**
+
+#### 议会核心结论
+
+- **BSV 是"太小而无法竞争"的利基** — LLM 训练数据中 BSV 是噪声级别。specmate 的价值不来自 LLM 能力提升，而来自领域知识的稀缺性
+- **specmate 的护城河是结构性的** — LLM 越强，越需要领域知识层来纠正幻觉。specmate 做 LLM 做不了的事：BSV 领域经验
+- **LangChain 集成不做** — 边际价值极低，需要的人可自己通过独立 pip 包调用 specmate MCP
+- **Q4 预计划**：Streaming 输出（长编译实时反馈）+ MCP Registry 注册（服务发现）
+
+#### 实现顺序与依赖分析
+
+```
+Elicitation（阶段感知）
+  └→ BSC orchestration（编译链路）
+       └→ 未知错误 LLM 分析（在编译输出足够丰富后才有价值）
+```
+
+- **Elicitation 第一**：让 specmate 知道 Agent 当前在架构阶段还是编码阶段，是后续所有功能的基础——BSC orchestration 需要根据阶段决定编译策略，未知错误分析需要阶段上下文来决定取多少行源码
+- **BSC orchestration 第二**：打通 specmate → bsc 编译链路，编译输出自动喂给 diagnose。没有这一步，未知错误分析没有输入
+- **未知错误分析第三**：在编译链路打通、diagnose 能拿到全量错误输出后，才有足够素材做"未知错误 → LLM 推理 → capture 入库"闭环
+
+---
+
+#### 方向 1：MCP Elicitation + 三级模式绑定
+
+**目标**：解决 `inferPhase()` 靠关键词猜 Agent 设计阶段的根本缺陷。利用 MCP 协议新增的"服务器主动询问客户端"（Elicitation）能力，让 specmate 在关键节点主动问 Agent 当前阶段，而非被动猜测。
+
+**关键设计决策**：
+- 三级干预强度与 elicitation 时机绑定：verify（不问，纯被动）/ develop（编码前问一次，确定阶段后按阶段过滤陷阱）/ tapeout（每个关键节点确认：写完 rule 后、模块集成前、提交前）
+- Elicitation 不是替代 inferPhase()，而是在 inferPhase() 不确定时作为 fallback
+- 询问内容示例：`"你目前在：A) 架构设计（选模块、定接口） B) 编码实现（写 rule/method） C) 编译调试（修错误）"`
+
+**子任务**：
+
+- [x] **1.1 MCP Elicitation 协议调研** — 确认 MCP SDK 1.29.0 完整支持 elicitation（`server.elicitInput()` API），HTTP/SSE 完整支持，stdio 依赖客户端实现。新建 `src/elicitation/elicit-phase.mjs`
+- [x] **1.2 Elicitation 触发策略设计** — 定义三个模式的 elicitation 触发决策表（`ELICIT_TRIGGERS`）：verify（0 次）、develop（pre_code 入口 1 次）、tapeout（pre_code / on_error / check 后 / 模块集成前各 1 次）
+- [x] **1.3 Elicitation 消息模板** — 设计 3 选项 A/B/C 的 JSON Schema form（design/code/debug），`PHASE_FORM_SCHEMA` + `PHASE_FORM_MESSAGE`
+- [x] **1.4 阶段状态管理** — `getCurrentSessionPhase()` / `setCurrentSessionPhase()` 持久化 Agent 当前阶段到 session。develop 模式同一 session 只问一次
+- [x] **1.5 inferPhase() 重构为 fallback** — `resolvePhase()` 实现：优先 elicitation → 失败回退 `inferPhase()` 关键词推断。`specmate_guide.mjs` 的 `scan()` 和 `preCode()` 已接入
+- [x] **1.6 与三级 SPP 推送绑定** — `specmate_guide.mjs` 中 preCode/continue/on_error 三个入口均接入 `resolvePhase()`，`alerts.mjs` 按阶段过滤推送
+- [x] **1.7 server.mjs 集成** — `bin/server.mjs` 已 import `resolvePhase`，`specmate_scan` 和 `specmate_guide` 工具定义中传递 mcpServer 实例
+
+---
+
+#### 方向 2：BSC Orchestration — `specmate_check(compile=true)`
+
+**目标**：让 specmate 能 spawn bsc 子进程跑编译，自动将编译输出喂给 `specmate_diagnose`，形成"编译 → 诊断 → 修复建议"一条龙。specmate 不做 bsc 的 wrapper——不替代 bsc，做 bsc 之上的 orchestration（编译 + 经验层）。
+
+**关键设计决策**：
+- `compile` 参数默认 `false`（opt-in），避免 Agent 意外触发编译
+- 平台兼容策略：优先 native bsc → Docker 兜底（`ghcr.io/alexforencich/bsc:latest`）
+- 超时控制 120s，错误输出只取最后 200 行（防止超大日志撑爆 context）
+- 架构定位：orchestration，不是 wrapper。specmate 不解析 bsc 输出格式（那是 diagnose 的事），只负责调用 bsc 和传递结果
+
+**子任务**：
+
+- [x] **2.1 bsc 可用性检测** — 新增 `src/compile/bsc-runner.mjs`：先检测 `bsc` 是否在 PATH，不在则检测 Docker。缓存检测结果避免重复执行
+- [x] **2.2 bsc 编译执行器** — `src/compile/bsc-runner.mjs`：`spawn('bsc', [...args])`，支持 build flag 传递（`-verilog`/`-vdir`/`-bdir` 等），120s 超时，输出截断（后 200 行 + 前 20 行）
+- [x] **2.3 Docker fallback** — 当 native bsc 不可用时，检测 Docker daemon 是否运行，用 `docker run --rm ghcr.io/alexforencich/bsc:latest bsc ...` 跑编译
+- [x] **2.4 `specmate_check` compile 参数集成** — 在 `bin/server.mjs` 的工具定义中给 `specmate_check` 新增 `compile` 参数（boolean，默认 false）。`check_style.mjs` 接收 compile flag
+- [x] **2.5 编译→diagnose 流水线** — compile=true 时 check 流程：先跑现有静态检查 → 再 spawn bsc → 编译输出自动喂给 `specmate_diagnose()` → 静态检查结果 + diagnose 结果合并返回
+- [x] **2.6 编译缓存策略** — 同一次 session 内同一组文件（按文件路径 + mtime 哈希）不重复编译。`session.compileCache` 记录
+- [x] **2.7 错误处理与降级** — bsc 不可用且 Docker 不可用时，返回明确警告"编译不可用：未检测到 bsc 且 Docker 未运行"，但不阻塞静态检查结果返回
+- [x] **2.8 编译流水线集成** — `bin/server.mjs` 中 `specmate_check` 工具 handler 已接入 `compile=true` 分支，`src/tools/check_style.mjs` 接收并转发编译参数
+
+---
+
+#### 方向 3：未知错误 LLM 辅助分析（自动知识增长闭环）
+
+**目标**：让 specmate 的知识库能自己生长。当前 29 篇 error doc 只能覆盖已知错误。遇到未知错误时，specmate 拼装上下文交给 Agent 的 LLM 推理，推理结果通过 `specmate_capture` 自动入库——下次同样错误码直接命中。
+
+**关键设计决策**：
+- **specmate 不做推理，做上下文拼装**：specmate 负责取源码上下文（错误行 + 前后 10 行）、找 3 个最相似已知错误做 few-shot、返回给 Agent。LLM 做推理
+- **LLM 做推理，capture 做持久化**：Agent 用 specmate 提供的上下文让自身的 LLM 分析根因和修复方案，通过 `specmate_capture` 入库
+- **闭环**：下次同样错误码出现 → `specmate_guide(on_error)` 直接命中 → 返回上次记录的根因和方案
+- **相似度匹配**：用错误信息的关键词 + 错误码前缀（P/G/T）在已知错误中找最相似的 3 个作为 few-shot 示例
+
+**子任务**：
+
+- [x] **3.1 已知错误相似度匹配** — 新增 `src/tools/_similarity.mjs`：错误码前缀匹配（P00xx 优先匹配 P00xx）+ 关键词 Jaccard 相似度。返回 top-3 的 code + phenomena + solution 摘要
+- [x] **3.2 源码上下文提取** — 新增 `src/tools/_context.mjs`：`extractSourceContext(file, line, contextLines=10)` — 读 .bsv 文件取错误行 ±10 行源码。利用 tree-sitter 定位到最近的 rule/method/function 边界
+- [x] **3.3 未知错误响应模板** — `buildUnknownErrorResponse()` 包含：(a) 源码上下文，(b) 3 个最相似已知错误作为 few-shot，(c) 引导 Agent 用 LLM 推理的 prompt
+- [x] **3.4 `specmate_guide(on_error)` 未知错误分支** — 当 error code 在 29 篇 doc 中查不到时，走 `findSimilarErrors()` → `buildUnknownErrorResponse()` 上下文拼装模板
+- [x] **3.5 `specmate_diagnose` 未知错误批量处理** — 当 diagnose 扫描到未知错误码时，对每个未知错误码独立拼装上下文（源码 + few-shot），在输出中分组排列
+- [x] **3.6 capture 自动入库闭环** — Agent 推理后调 `specmate_capture(code, cause, solution)` → 写入 captures 表。下次同错误码调 `on_error` 时直接命中历史记录
+- [x] **3.7 server.mjs 集成** — `specmate_diagnose` 和 `specmate_guide(on_error)` 均已接入未知错误分支
+
+---
 
 ## 已知问题
 
@@ -760,13 +916,14 @@ Co-Authored-By: 台阁 <armada@bsv-agent>
 
 ### Phase 当前阶段
 
-当前阶段：**验证层建设 — trap fixture 验证 pipeline**
+当前阶段：**Q4 路线图执行 — Streaming 流式输出 → MCP Registry 注册**
 
-优先事项：
-1. **trap 每日验证**：65 条 backlog 按 P0 → P1 → P2 消耗，每天至少验证 3 条
-2. **specmate_scan 输出修复**：scan 输出仍在推荐 CLI 命令（`npx specmate check`），需改为 MCP 工具调用说明
-3. **MCP 路径校验**：相对路径静默失败问题修复
-4. bench 实验重跑：用修复后的 specmate 验证效果
+优先事项（按顺序）：
+1. **Streaming 流式输出** — `specmate_diagnose` async generator 改造，逐错误码 yield
+2. **MCP Registry 注册** — 调研 Registry 规范，准备 specmate 条目
+
+并行推进：
+- trap 每日验证 pipeline（已有流程，不阻塞 Q4）
 
 相关文档：
 - `docs/architecture.md` — 完整架构决策文档

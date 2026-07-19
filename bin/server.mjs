@@ -13,7 +13,7 @@ import { getLevel, LEVEL_LIMITS } from "../src/config.mjs";
 import { hitError, addCapture, getLatestCaptureByCode, queryCapturesByCode, resolveCaptureById, saveWarningSnapshot, diffWarnings, queryLatestSnapshots, ensureSession, getSessionId, endCurrentSession, querySessionStats, queryStubbornErrors, queryFixRate, queryErrorCodeStats, queryTopErrorCodes, queryUnresolvedCount, getCurrentSessionPhase, setCurrentSessionPhase } from "../src/db/query.mjs";
 import { resolvePhase } from "../src/elicitation/elicit-phase.mjs";
 import { parseBSCWarnings } from "../src/tools/warning_diff.mjs";
-import { diagnose } from "../src/tools/specmate_diagnose.mjs";
+import { diagnose, diagnoseStream } from "../src/tools/specmate_diagnose.mjs";
 import { parseFile, extractAll, analyzeScheduling, buildCallGraph, buildDependencyGraph, findConflictPairs, extractMethods, extractRegWrites, extractRegDeclarations, queryNodeAt, analyzeRuleConflicts, analyzeMethodOrder, findImplicitConflicts } from "../src/tools/ast_query.mjs";
 import { existsSync } from "fs";
 import { isAbsolute } from "path";
@@ -863,7 +863,12 @@ server.tool(
         // Lazily create session (idempotent)
         const session_id = await ensureSession();
 
-        const result = await diagnose(bsc_output, session_id, files || null);
+        // Q4: Streaming mode — 逐错误码 yield，减少 Agent 等待时间
+        // 当前 stdio 传输下累积后返回，架构已为 HTTP/SSE streaming 准备就绪
+        const chunks = [];
+        for await (const chunk of diagnoseStream(bsc_output, session_id, files || null)) {
+            chunks.push(chunk);
+        }
 
         // Push alerts for captured errors
         try {
@@ -874,7 +879,7 @@ server.tool(
             }
         } catch (_) { /* push is non-critical */ }
 
-        return { content: [{ type: "text", text: result }] };
+        return { content: [{ type: "text", text: chunks.join('\n') }] };
     }
 );
 

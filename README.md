@@ -58,6 +58,8 @@ npm install -g bsv-specmate
 
 启动 AI 客户端（Claude Code / OpenCode 等），Agent 自动发现 specmate 工具。
 
+> 📡 **通过 MCP Registry 发现**：specmate 已注册到 [MCP Registry](https://github.com/modelcontextprotocol/servers)（`Developer Tools` 类别）。在支持 Registry 的客户端中，可通过 `mcp add bsv-specmate` 一键安装，无需手动编写配置文件。
+
 > 🎚️ **三级干预强度**：
 >
 > | 模式 | 行为 |

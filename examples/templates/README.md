@@ -26,12 +26,12 @@ cp examples/templates/opencode.json ./opencode.json
 ### AGENTS.md
 
 极简模板，只包含项目任务和接口约定。**不包含**编码规则或工具列表。
-Agent 第一次调用 `coding_rules()` 时，specmate 会自动展示完整工具箱。
+Agent 第一次调用 `specmate_scan` 时，specmate 会自动展示完整工具箱。
 
 ### opencode.json
 
 OpenCode MCP 配置，加载 specmate 知识引擎。
-`SPECMATE_LEVEL` 设为 `wafer`（日常开发级别），可改为 `silicon`（轻量）或 `tapeout`（深度审查）。
+`SPECMATE_LEVEL` 设为 `develop`（日常开发级别），可改为 `verify`（轻量）或 `tapeout`（深度审查）。
 
 ## 实际示例
 

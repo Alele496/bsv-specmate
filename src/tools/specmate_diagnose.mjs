@@ -175,14 +175,17 @@ function detectAutoFixability(rules, code) {
 }
 
 /**
- * specmate_diagnose 主函数。
+ * specmate_diagnose 流式生成器（Q4: Streaming 流式输出）。
+ *
+ * 与 diagnose() 逻辑完全相同，但逐错误码 yield chunk 而非累积后一次返回。
+ * 每处理完一个错误码就 yield 该错误码的诊断结果，不等全部处理完。
  *
  * @param {string} bscOutput - BSC 编译器完整输出
  * @param {string} sessionId - 当前 session ID
  * @param {string[]|null} files - 可选的相关 .bsv 文件路径
- * @returns {Promise<string>} Markdown 格式的诊断报告
+ * @yields {string} Markdown 格式的诊断 chunk（header / per-code / unknown / footer）
  */
-export async function diagnose(bscOutput, sessionId, files = null) {
+export async function* diagnoseStream(bscOutput, sessionId, files = null) {
     const entries = parseBSCDiagnostics(bscOutput);
 
     // ── 按错误码分组 ──
@@ -198,11 +201,11 @@ export async function diagnose(bscOutput, sessionId, files = null) {
     const totalWarnings = entries.filter(e => e.severity === 'warning').length;
     const uniqueCodes = groups.size;
 
-    // ── 构建报告 ──
-    const lines = [];
+    // ── 构建报告头部 ──
+    const headerLines = [];
 
-    lines.push('## 编译诊断报告');
-    lines.push('');
+    headerLines.push('## 编译诊断报告');
+    headerLines.push('');
 
     // 概览
     if (totalErrors > 0 || totalWarnings > 0) {
@@ -210,17 +213,17 @@ export async function diagnose(bscOutput, sessionId, files = null) {
         if (totalErrors > 0) overviewParts.push(`错误: ${totalErrors} 个`);
         if (totalWarnings > 0) overviewParts.push(`警告: ${totalWarnings} 个`);
         overviewParts.push(`涉及 ${uniqueCodes} 种错误码`);
-        lines.push(`### 概览`);
-        lines.push(`- ${overviewParts.join('，')}`);
-        lines.push('');
+        headerLines.push(`### 概览`);
+        headerLines.push(`- ${overviewParts.join('，')}`);
+        headerLines.push('');
     } else if (entries.length === 0) {
         // 尝试宽松检测：bsc_output 非空但没解析到标准格式
         const hasErrorLike = /error|warning/i.test(bscOutput);
         if (hasErrorLike) {
-            lines.push('### 概览');
-            lines.push('- 检测到编译输出，但未解析到标准 BSC 错误格式。');
-            lines.push('- 原始输出已自动记录（code=UNKNOWN）供后续分析。');
-            lines.push('');
+            headerLines.push('### 概览');
+            headerLines.push('- 检测到编译输出，但未解析到标准 BSC 错误格式。');
+            headerLines.push('- 原始输出已自动记录（code=UNKNOWN）供后续分析。');
+            headerLines.push('');
 
             // Auto-capture as UNKNOWN
             try {
@@ -234,38 +237,41 @@ export async function diagnose(bscOutput, sessionId, files = null) {
             } catch (_) { /* non-critical */ }
 
             if (bscOutput.length > 0) {
-                lines.push('### 原始输出（前 20 行）');
-                lines.push('```');
+                headerLines.push('### 原始输出（前 20 行）');
+                headerLines.push('```');
                 const preview = bscOutput.split('\n').slice(0, 20).join('\n');
-                lines.push(preview);
-                if (bscOutput.split('\n').length > 20) lines.push('... (截断)');
-                lines.push('```');
-                lines.push('');
-                lines.push('> 调 `mcp__bsv-specmate__specmate_capture` 重新捕获，或手动调 `specmate_resolve` 固化经验。');
+                headerLines.push(preview);
+                if (bscOutput.split('\n').length > 20) headerLines.push('... (截断)');
+                headerLines.push('```');
+                headerLines.push('');
+                headerLines.push('> 调 `mcp__bsv-specmate__specmate_capture` 重新捕获，或手动调 `specmate_resolve` 固化经验。');
             }
 
-            return lines.join('\n');
+            yield headerLines.join('\n');
+            return;
         } else {
-            lines.push('### 概览');
-            lines.push('- 未在输出中检测到编译错误或警告。');
-            lines.push('- 编译可能已成功，0 Error 0 Warning。');
-            return lines.join('\n');
+            headerLines.push('### 概览');
+            headerLines.push('- 未在输出中检测到编译错误或警告。');
+            headerLines.push('- 编译可能已成功，0 Error 0 Warning。');
+            yield headerLines.join('\n');
+            return;
         }
     }
 
     // 没有解析到条目但有一定数量的 Error/Warning 关键词
     if (entries.length === 0) {
-        return lines.join('\n');
+        yield headerLines.join('\n');
+        return;
     }
 
     // ── 按错误码分类展示 ──
     const knownCodes = [];
     const unknownCodes = [];
 
-    lines.push('---');
-    lines.push('');
-    lines.push('### 按错误码分类');
-    lines.push('');
+    headerLines.push('---');
+    headerLines.push('');
+    headerLines.push('### 按错误码分类');
+    headerLines.push('');
 
     // 先查询所有已知码的知识库条目（并行）
     const allCodes = [...groups.keys()];
@@ -296,7 +302,10 @@ export async function diagnose(bscOutput, sessionId, files = null) {
         }
     }
 
-    // ── 已知错误码 ──
+    // Yield header (overview + classification header)
+    yield headerLines.join('\n');
+
+    // ── 已知错误码 ── 逐错误码 yield
     for (const code of knownCodes) {
         const err = kbResults.get(code);
         const stats = statsResults.get(code);
@@ -322,29 +331,31 @@ export async function diagnose(bscOutput, sessionId, files = null) {
         const count = groupEntries.length;
         const xLabel = count > 1 ? ` ×${count}` : '';
 
-        lines.push(`#### ${code} (${severity})${xLabel}`);
-        lines.push(`- **位置**: ${locStr}`);
-        lines.push(`- **现象**: ${err.phenomena || '(未记录)'}`);
-        lines.push(`- **根因**: ${err.cause || '(未记录)'}`);
-        lines.push(`- **修复**: ${err.solution || '(未记录)'}`);
+        const codeLines = [];
+        codeLines.push(`#### ${code} (${severity})${xLabel}`);
+        codeLines.push(`- **位置**: ${locStr}`);
+        codeLines.push(`- **现象**: ${err.phenomena || '(未记录)'}`);
+        codeLines.push(`- **根因**: ${err.cause || '(未记录)'}`);
+        codeLines.push(`- **修复**: ${err.solution || '(未记录)'}`);
         if (err.rules) {
-            lines.push(`- **规则**: ${err.rules}`);
+            codeLines.push(`- **规则**: ${err.rules}`);
         }
 
         // 跨 session 统计
         if (stats.totalCount > 0) {
-            lines.push(`- **历史**: 累计 ${stats.totalCount} 次（跨 ${stats.sessionCount} 个 session）`);
+            codeLines.push(`- **历史**: 累计 ${stats.totalCount} 次（跨 ${stats.sessionCount} 个 session）`);
         }
 
         // 自动修复能力
         const autoFix = detectAutoFixability(err.rules, code);
         if (autoFix === 'auto') {
-            lines.push(`- **可自动修复**: 是`);
+            codeLines.push(`- **可自动修复**: 是`);
         } else {
-            lines.push(`- **可自动修复**: 否（需要人工判断设计意图）`);
+            codeLines.push(`- **可自动修复**: 否（需要人工判断设计意图）`);
         }
 
-        lines.push('');
+        codeLines.push('');
+        yield codeLines.join('\n');
     }
 
     // ── 未知错误码（Q3 Direction 3: similarity matching + LLM guidance）──
@@ -359,13 +370,14 @@ export async function diagnose(bscOutput, sessionId, files = null) {
             extractSourceContext = ctxMod.extractSourceContext;
         } catch (_) { /* similarity matching is non-critical */ }
 
-        lines.push('---');
-        lines.push('');
-        lines.push('### 知识库未覆盖（需要 LLM 分析）');
-        lines.push('');
-        lines.push('以下错误码不在 specmate 知识库中。请使用你的 LLM 推理能力分析根因，');
-        lines.push('修复后调 `specmate_capture` + `specmate_resolve` 入库，下次同样错误直接命中。');
-        lines.push('');
+        const unkHeaderLines = [];
+        unkHeaderLines.push('---');
+        unkHeaderLines.push('');
+        unkHeaderLines.push('### 知识库未覆盖（需要 LLM 分析）');
+        unkHeaderLines.push('');
+        unkHeaderLines.push('以下错误码不在 specmate 知识库中。请使用你的 LLM 推理能力分析根因，');
+        unkHeaderLines.push('修复后调 `specmate_capture` + `specmate_resolve` 入库，下次同样错误直接命中。');
+        unkHeaderLines.push('');
 
         for (const code of unknownCodes) {
             const groupEntries = groups.get(code);
@@ -373,10 +385,10 @@ export async function diagnose(bscOutput, sessionId, files = null) {
 
             // unique locations
             const uniqueLocs = [];
-            const seen = new Set();
+            const seen2 = new Set();
             for (const loc of locations) {
-                if (!seen.has(loc)) {
-                    seen.add(loc);
+                if (!seen2.has(loc)) {
+                    seen2.add(loc);
                     uniqueLocs.push(loc);
                 }
             }
@@ -387,18 +399,18 @@ export async function diagnose(bscOutput, sessionId, files = null) {
             const count = groupEntries.length;
             const xLabel = count > 1 ? ` ×${count}` : '';
 
-            lines.push(`#### ${code}${xLabel}`);
-            lines.push(`- **位置**: ${locStr}`);
-            lines.push(`- **消息示例**: "${sampleMsg}"`);
+            unkHeaderLines.push(`#### ${code}${xLabel}`);
+            unkHeaderLines.push(`- **位置**: ${locStr}`);
+            unkHeaderLines.push(`- **消息示例**: "${sampleMsg}"`);
 
             // ── Q3: Similarity matching for few-shot context ──
             if (findSimilarErrors) {
                 try {
                     const similar = findSimilarErrors(code, sampleMsg);
                     if (similar.length > 0) {
-                        lines.push(`- **参考已知错误**:`);
+                        unkHeaderLines.push(`- **参考已知错误**:`);
                         for (const se of similar.slice(0, 2)) {
-                            lines.push(`  - \`${se.code}\`: ${se.title} (相似度 ${(se.score * 100).toFixed(0)}%)`);
+                            unkHeaderLines.push(`  - \`${se.code}\`: ${se.title} (相似度 ${(se.score * 100).toFixed(0)}%)`);
                         }
                     }
                 } catch (_) { /* non-critical */ }
@@ -415,10 +427,10 @@ export async function diagnose(bscOutput, sessionId, files = null) {
                             const ctxPath = typeof filePath === 'string' ? filePath : filePath.text;
                             const ctx = extractSourceContext(ctxPath, firstEntry.line, 6);
                             if (ctx && ctx.text) {
-                                lines.push(`- **源码上下文** (\`${firstEntry.file}:${firstEntry.line}\`):`);
-                                lines.push('  ```bsv');
-                                lines.push(ctx.text.split('\n').map(l => '  ' + l).join('\n'));
-                                lines.push('  ```');
+                                unkHeaderLines.push(`- **源码上下文** (\`${firstEntry.file}:${firstEntry.line}\`):`);
+                                unkHeaderLines.push('  ```bsv');
+                                unkHeaderLines.push(ctx.text.split('\n').map(l => '  ' + l).join('\n'));
+                                unkHeaderLines.push('  ```');
                             }
                         }
                     }
@@ -428,14 +440,16 @@ export async function diagnose(bscOutput, sessionId, files = null) {
             // 跨 session 统计
             const stats = statsResults.get(code);
             if (stats && stats.totalCount > 0) {
-                lines.push(`- **历史**: 累计 ${stats.totalCount} 次（跨 ${stats.sessionCount} 个 session）`);
+                unkHeaderLines.push(`- **历史**: 累计 ${stats.totalCount} 次（跨 ${stats.sessionCount} 个 session）`);
             }
 
-            lines.push(`- **分析要求**: 请根据以上上下文，推理${code}的根因和修复方案。`);
-            lines.push(`- **入库**: 调 \`specmate_capture(code="${code}", cause="<根因>", solution="<修复方案>")\` 记录`);
-            lines.push(`- **固化**: 调 \`specmate_resolve(code="${code}", cause="<根因>", solution="<修复方案>")\` 固化经验`);
-            lines.push('');
+            unkHeaderLines.push(`- **分析要求**: 请根据以上上下文，推理${code}的根因和修复方案。`);
+            unkHeaderLines.push(`- **入库**: 调 \`specmate_capture(code="${code}", cause="<根因>", solution="<修复方案>")\` 记录`);
+            unkHeaderLines.push(`- **固化**: 调 \`specmate_resolve(code="${code}", cause="<根因>", solution="<修复方案>")\` 固化经验`);
+            unkHeaderLines.push('');
         }
+
+        yield unkHeaderLines.join('\n');
     }
 
     // ── Auto-capture (batch) ──
@@ -466,32 +480,52 @@ export async function diagnose(bscOutput, sessionId, files = null) {
         try { await addCapturesBatch(batchEntries); } catch (_) { /* non-critical */ }
     }
 
-    // ── 下一步建议 ──
-    lines.push('---');
-    lines.push('');
-    lines.push('### 下一步');
-    lines.push('');
+    // ── 下一步建议（footer chunk）──
+    const footerLines = [];
+    footerLines.push('---');
+    footerLines.push('');
+    footerLines.push('### 下一步');
+    footerLines.push('');
 
     const autoFixable = knownCodes.filter(code => detectAutoFixability(kbResults.get(code)?.rules, code) === 'auto');
     const manualFix = knownCodes.filter(code => detectAutoFixability(kbResults.get(code)?.rules, code) === 'manual');
 
     if (autoFixable.length > 0) {
         const autoCounts = autoFixable.map(code => `${code} ×${groups.get(code).length}`).join(', ');
-        lines.push(`- **[可自动修复]** ${autoCounts}: 语法级别的修复，按知识库建议操作即可`);
+        footerLines.push(`- **[可自动修复]** ${autoCounts}: 语法级别的修复，按知识库建议操作即可`);
     }
 
     if (manualFix.length > 0) {
         const manualCounts = manualFix.map(code => `${code} ×${groups.get(code).length}`).join(', ');
-        lines.push(`- **[需手动]** ${manualCounts}: 涉及设计决策，需分析代码逻辑后确定修复方案`);
+        footerLines.push(`- **[需手动]** ${manualCounts}: 涉及设计决策，需分析代码逻辑后确定修复方案`);
     }
 
     if (unknownCodes.length > 0) {
         const unkCounts = unknownCodes.map(code => `${code} ×${groups.get(code).length}`).join(', ');
-        lines.push(`- **[知识库未覆盖]** ${unkCounts}: 修复后请调 specmate_resolve 固化经验`);
+        footerLines.push(`- **[知识库未覆盖]** ${unkCounts}: 修复后请调 specmate_resolve 固化经验`);
     }
 
-    lines.push(`- **[建议]** 修复后调 \`mcp__bsv-specmate__specmate_diff(action="snapshot")\` 存快照，追踪 warning 变化`);
-    lines.push(`- **[建议]** 全部修复后调 \`mcp__bsv-specmate__specmate_check\` 做预编译静态检查`);
+    footerLines.push(`- **[建议]** 修复后调 \`mcp__bsv-specmate__specmate_diff(action="snapshot")\` 存快照，追踪 warning 变化`);
+    footerLines.push(`- **[建议]** 全部修复后调 \`mcp__bsv-specmate__specmate_check\` 做预编译静态检查`);
 
-    return lines.join('\n');
+    yield footerLines.join('\n');
+}
+
+/**
+ * specmate_diagnose 主函数（向后兼容包装）。
+ *
+ * 内部使用 diagnoseStream() 生成器，收集全部 chunk 后一次返回。
+ * 现有调用方（server.mjs、测试等）无需修改。
+ *
+ * @param {string} bscOutput - BSC 编译器完整输出
+ * @param {string} sessionId - 当前 session ID
+ * @param {string[]|null} files - 可选的相关 .bsv 文件路径
+ * @returns {Promise<string>} Markdown 格式的诊断报告
+ */
+export async function diagnose(bscOutput, sessionId, files = null) {
+    const chunks = [];
+    for await (const chunk of diagnoseStream(bscOutput, sessionId, files)) {
+        chunks.push(chunk);
+    }
+    return chunks.join('\n');
 }
