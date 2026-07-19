@@ -169,12 +169,13 @@ server.tool(
 
 server.tool(
     "specmate_check",
-    "接收 .bsv 文件路径，返回静态检查结果（位宽溢出/Bool误用/调度冲突等 11 项，full=true 追加 8 项）。注意：不运行 bsc 编译器，不能替代编译。调度类规则约 40% 误报，需人工甄别。",
+    "接收 .bsv 文件路径+可选 compile 编译。返回静态检查+可选编译诊断结果。compile=true 时先跑 static check，再 spawn bsc 编译，编译输出自动喂给 diagnose 诊断。BSC 不可用时仅返回静态检查结果。",
     {
         files: z.array(z.string()).describe("要检查的 .bsv 文件路径列表"),
         full: z.boolean().optional().default(false).describe("设为 true 运行全部 19 项检查（含正则类深度规则）。默认运行 11 项高精度 always-on 规则。"),
+        compile: z.boolean().optional().default(false).describe("Q3: 设为 true 时，静态检查之后 spawn bsc 编译，自动将编译输出喂给 diagnose 诊断。默认 false（仅静态检查）。"),
     },
-    async ({ files, full }) => {
+    async ({ files, full, compile }) => {
         // P0: 路径校验 — 必须绝对路径，文件必须存在
         const pathCheck = validateFilePaths(files);
         if (!pathCheck.valid) {
@@ -197,7 +198,6 @@ server.tool(
         [...new Set(results.map(r => r.check))].forEach(c => hitError(c).catch(err => console.error('[specmate] hitError failed:', err.message)));
 
         // Auto-capture check findings into captures table (source='check')
-        // so check discoveries join the unified pipeline alongside bsc captures
         for (const r of results) {
             await addCapture({
                 code: r.check,
@@ -210,21 +210,81 @@ server.tool(
             }).catch(err => console.error('[specmate] addCapture(check) failed:', err.message));
         }
 
+        const staticResultLines = [];
         if (results.length === 0) {
             const msg = cfg.collabHint
-                ? "没有发现问题。写得好。继续的话调 specmate_guide(phase=\"continue\")。"
+                ? "没有发现问题。写得好。"
                 : "没有发现问题。";
-            return { content: [{ type: "text", text: msg }] };
+            staticResultLines.push(msg);
+        } else {
+            const text = results.map(r =>
+                `[${r.check}] ${r.file}:${r.line} — ${r.message}\n  建议: ${r.suggestion}`
+            ).join("\n\n");
+            staticResultLines.push(`发现 ${results.length} 个问题:\n\n${text}`);
         }
 
-        const text = results.map(r =>
-            `[${r.check}] ${r.file}:${r.line} — ${r.message}\n  建议: ${r.suggestion}`
-        ).join("\n\n");
+        // ── Q3 Direction 2: compile=true — BSC compilation + diagnose pipeline (2.4, 2.5) ──
+        let compileResult = '';
+        if (compile) {
+            try {
+                const fs = await import('fs');
+                const { runBSC } = await import('../src/compile/bsc-runner.mjs');
 
-        const parts = [`发现 ${results.length} 个问题:\n\n${text}`];
+                // ── Compile cache check (子任务 2.6): skip if same files + same mtime ──
+                const cacheKey = files.map(f => {
+                    try {
+                        const stat = fs.statSync(f);
+                        return `${f}:${stat.mtimeMs}`;
+                    } catch (_) { return f; }
+                }).join('|');
 
-        if (cfg.crossRef) {
-            const hooks = [];
+                if (globalThis.__specmateCompileCache && globalThis.__specmateCompileCache.sessionId === session_id &&
+                    globalThis.__specmateCompileCache.key === cacheKey) {
+                    compileResult = `\n---\n### 🔄 编译已缓存 (BSC)\n\n(同一 session 内相同文件未变化，跳过编译)\n${globalThis.__specmateCompileCache.result}`;
+                } else {
+                    const topModule = files[0].replace(/^.*[\\/]/, '').replace(/\.bsv$/i, '');
+                    const bscResult = await runBSC({
+                        files,
+                        topModule,
+                        flags: ['-verilog'],
+                    });
+
+                    if (bscResult.success) {
+                        compileResult = `\n---\n### 🔧 编译通过 (BSC ${bscResult.bscType})\n\nBSC 编译成功，无错误。\n`;
+                    } else if (bscResult.bscType === 'unavailable') {
+                        compileResult = `\n---\n### ⚠ 编译跳过\n\n${bscResult.combined}\n`;
+                    } else {
+                        // Feed compile output to diagnose (2.5: compile→diagnose pipeline)
+                        let diagnoseText = '';
+                        try {
+                            diagnoseText = await diagnose(bscResult.combined, session_id, files);
+                        } catch (_) { /* diagnose is non-critical */ }
+
+                        compileResult = `\n---\n### 🔧 编译结果 (BSC ${bscResult.bscType})\n\n${bscResult.timedOut ? '⚠ 编译超时 (120s)\n\n' : ''}${bscResult.combined}${diagnoseText ? '\n\n' + diagnoseText : ''}`;
+                    }
+
+                    // Cache the result (子任务 2.6)
+                    globalThis.__specmateCompileCache = {
+                        sessionId: session_id,
+                        key: cacheKey,
+                        result: compileResult,
+                    };
+                }
+            } catch (err) {
+                // 子任务 2.7: graceful degradation
+                compileResult = `\n---\n### ⚠ 编译执行失败\n\nspecmate 无法运行 BSC 编译: ${err.message}\n静态检查结果仍然可用。\n`;
+            }
+        }
+
+        // Build final output: static check results + optional compile results
+        const parts = [`### 📋 静态检查${compile ? ' + BSC编译' : ''}\n\n${staticResultLines.join('\n')}`];
+
+        if (compileResult) {
+            parts.push(compileResult);
+        }
+
+        // Cross-reference hints
+        if (results.length > 0 && cfg.crossRef) {
             const checks = [...new Set(results.map(r => r.check))];
             const topicHints = {
                 P0032: "module", P0030: "module", P0005: "keywords", T0011: "keywords",
@@ -237,11 +297,9 @@ server.tool(
             };
             for (const c of checks) {
                 if (topicHints[c]) {
-                    hooks.push(`specmate_guide(phase="decide", input="${c} 怎么修")`);
+                    parts.push(`\n💡 不确定怎么修? 调 specmate_guide(phase="decide", input="${c} 怎么修")`);
+                    break;
                 }
-            }
-            if (hooks.length > 0) {
-                parts.push(`\n💡 不确定怎么修? 调 ${hooks[0]}`);
             }
         }
 
