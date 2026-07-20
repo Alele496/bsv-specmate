@@ -195,6 +195,14 @@ export async function ensureDB() {
             rules       TEXT,
             count       INTEGER DEFAULT 1
         )`);
+        // Migration: add severity and source columns to errors (Agent experience import, 2026-07-20)
+        const migrateErrorsCols = [
+            "ALTER TABLE errors ADD COLUMN severity TEXT DEFAULT 'compile'",
+            "ALTER TABLE errors ADD COLUMN source TEXT DEFAULT 'specmate'",
+        ];
+        for (const sql of migrateErrorsCols) {
+            try { db.run(sql); } catch (_) { /* column already exists */ }
+        }
         // Auto-seed errors table if empty (e.g. migrated from old schema)
         const seeded = await autoSeedIfEmpty(db);
         // Only assign to _db after ALL migration steps succeed, so a failed

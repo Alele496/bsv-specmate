@@ -8,7 +8,9 @@ CREATE TABLE IF NOT EXISTS errors (
     cause       TEXT NOT NULL,
     solution    TEXT NOT NULL,
     rules       TEXT,
-    count       INTEGER DEFAULT 1
+    count       INTEGER DEFAULT 1,
+    severity    TEXT DEFAULT 'compile',
+    source      TEXT DEFAULT 'specmate'
 );
 
 CREATE TABLE IF NOT EXISTS ref_hits (
@@ -83,11 +85,11 @@ export function initDB(db) {
     db.run(SCHEMA);
 }
 
-export function insertError(db, { code, title, keywords, phenomena, cause, solution, rules = '', count = 1 }) {
+export function insertError(db, { code, title, keywords, phenomena, cause, solution, rules = '', count = 1, severity = 'compile', source = 'specmate' }) {
     db.run(
-        `INSERT OR REPLACE INTO errors (code, title, keywords, phenomena, cause, solution, rules, count)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [code, title, keywords, phenomena, cause, solution, rules, count]
+        `INSERT OR REPLACE INTO errors (code, title, keywords, phenomena, cause, solution, rules, count, severity, source)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [code, title, keywords, phenomena, cause, solution, rules, count, severity, source]
     );
 }
 
@@ -841,6 +843,25 @@ export function getWeeklyTopErrors(db, topN = 5, weeks = 4) {
     return results;
 }
 
+// ── Agent experience import (2026-07-20) ──
+export function upsertError(db, { code, title, keywords, phenomena, cause, solution, rules = '', count = 1, severity = 'compile', source = 'specmate' }) {
+    db.run(
+        `INSERT INTO errors (code, title, keywords, phenomena, cause, solution, rules, count, severity, source)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(code) DO UPDATE SET
+           title = excluded.title,
+           keywords = excluded.keywords,
+           phenomena = excluded.phenomena,
+           cause = excluded.cause,
+           solution = excluded.solution,
+           rules = excluded.rules,
+           count = excluded.count,
+           severity = excluded.severity,
+           source = excluded.source`,
+        [code, title, keywords, phenomena, cause, solution, rules, count, severity, source]
+    );
+}
+
 // ── Dashboard: session listing, capture pagination, error CRUD, import/export ──
 
 export function listSessions(db) {
@@ -984,11 +1005,11 @@ export function importKnowledge(db, { errors, captures }) {
     try {
         if (errors && errors.length > 0) {
             const insertStmt = db.prepare(
-                `INSERT OR REPLACE INTO errors (code, title, keywords, phenomena, cause, solution, rules, count)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+                `INSERT OR REPLACE INTO errors (code, title, keywords, phenomena, cause, solution, rules, count, severity, source)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
             );
             for (const e of errors) {
-                insertStmt.bind([e.code, e.title, e.keywords || '', e.phenomena || '', e.cause || '', e.solution || '', e.rules || '', e.count || 1]);
+                insertStmt.bind([e.code, e.title, e.keywords || '', e.phenomena || '', e.cause || '', e.solution || '', e.rules || '', e.count || 1, e.severity || 'compile', e.source || 'specmate']);
                 insertStmt.step();
                 insertStmt.reset();
                 errorsImported++;

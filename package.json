@@ -49,6 +49,7 @@
     "knowledge:snapshot": "node src/tools/knowledge_snapshot.mjs",
     "knowledge:validate": "node --test test/knowledge-validation.test.mjs",
     "verify-traps": "node scripts/verify-traps.mjs",
+    "import-experience": "node scripts/import-agent-experience.mjs",
     "prepare": "husky",
     "prepublishOnly": "npm test"
   },
