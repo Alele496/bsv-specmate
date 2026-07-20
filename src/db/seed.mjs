@@ -2,7 +2,8 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import initSqlJs from 'sql.js';
-import { initDB, insertError } from './schema.mjs';
+import { initDB } from './schema.mjs';
+import { insertError } from './operations.mjs';
 import { getDBPath, initDataDir } from '../config.mjs';
 import { collectErrorFiles, parseErrorFile } from './parser.mjs';
 

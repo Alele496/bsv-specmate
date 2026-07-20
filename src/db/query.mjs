@@ -2,7 +2,8 @@ import { readFileSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import initSqlJs from 'sql.js';
 import { initDataDir, getDBPath } from '../config.mjs';
-import { initDB, insertError, getError, getAllErrors, getTopRules, searchErrors, incrementCount, getHotTopics, incrementRefHit, insertCapture, upsertCapture, resolveCapture, getCapturesByCode, getRecentCaptures, getUnresolvedCaptures, getLatestUnresolvedByCode, insertWarning, getWarningsBySnapshot, getLatestSnapshots, createSession, endSession, getSessionStats, getStubbornErrors, getFixRate, getErrorCodeStats, getTopErrorCodes, getFileTopErrors, getUnresolvedCount, getClusteredCaptures, setCaptureReviewStatus, getAllCapturesByCode, setSessionPhase, getSessionPhase, getReportSummary, getErrorTrend, getFileHotspots, getFixRateTrend, getKnowledgeGrowth, getWeeklyTopErrors, listSessions, listCaptures, countCaptures, updateError, deleteError, deleteCapture, exportKnowledge, importKnowledge, CAPTURES_DDL } from './schema.mjs';
+import { initDB, CAPTURES_DDL } from './schema.mjs';
+import { insertError, getError, getAllErrors, getTopRules, searchErrors, incrementCount, getHotTopics, incrementRefHit, insertCapture, upsertCapture, resolveCapture, getCapturesByCode, getRecentCaptures, getUnresolvedCaptures, getLatestUnresolvedByCode, insertWarning, getWarningsBySnapshot, getLatestSnapshots, createSession, endSession, getSessionStats, getStubbornErrors, getFixRate, getErrorCodeStats, getTopErrorCodes, getFileTopErrors, getUnresolvedCount, getClusteredCaptures, setCaptureReviewStatus, getAllCapturesByCode, setSessionPhase, getSessionPhase, getReportSummary, getErrorTrend, getFileHotspots, getFixRateTrend, getKnowledgeGrowth, getWeeklyTopErrors, listSessions, listCaptures, countCaptures, updateError, deleteError, deleteCapture, exportKnowledge, importKnowledge } from './operations.mjs';
 import { collectErrorFiles, parseErrorFile } from './parser.mjs';
 
 let _db = null;

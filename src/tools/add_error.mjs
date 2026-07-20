@@ -2,7 +2,7 @@ import initSqlJs from 'sql.js';
 import { readFileSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { getDBPath, initDataDir } from '../config.mjs';
-import { insertError } from '../db/schema.mjs';
+import { insertError } from '../db/operations.mjs';
 
 export async function addError({ code, title, bsc_output, cause, solution, rules = '' }) {
     if (!code || !title || !bsc_output || !cause || !solution) {

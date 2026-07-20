@@ -30,7 +30,8 @@ import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import initSqlJs from 'sql.js';
-import { initDB, getError, upsertError } from '../src/db/schema.mjs';
+import { initDB } from '../src/db/schema.mjs';
+import { getError, upsertError } from '../src/db/operations.mjs';
 import { getDBPath, initDataDir } from '../src/config.mjs';
 
 // ── YAML frontmatter 解析（零外部依赖，简单行解析） ──
