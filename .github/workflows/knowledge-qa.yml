@@ -51,6 +51,7 @@ jobs:
   compile-fixtures:
     name: Compile Fixtures (BSC)
     runs-on: ubuntu-latest
+    continue-on-error: true  # BSC 镜像非必需，拉取失败不阻塞 CI
     container:
       image: ghcr.io/alexforencich/bsc:latest
     steps:
