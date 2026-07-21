@@ -600,6 +600,125 @@ endmodule`,
         bscVersions: ['2025.07'],
         verified: false,
     },
+    // ═══ Batch 2: 4 GRAPH 节点回填 (2026-07-20) ═══
+    {
+        id: 'types-1',
+        name: 'T0020 — Bool 用 ! 不用 ~，Bit#(n) 用 ~ 不用 !',
+        oneLiner: '对 Bool 值用 ~（按位取反）触发 T0020 操作符类型不匹配。! 用于 Bool，~ 用于 Bit#(n)',
+        why: 'BSV 类型系统中 ~ 是位级操作符，应用于 Bit#(n)。Bool 只能用逻辑操作符 !、&&、||。对 Bool 用 ~ 或对 Bit#(1) 用 ! 均触发 T0020，因为 BSC 2025.07 的类型检查器已严格区分逻辑类型和位级类型。',
+        severity: 'hard',
+        bscDetectable: true,
+        stage: 'code',
+        pushTier: 'matched',
+        keywords: ['Bool', 'bool', 'Bit#(1)', '!', '~', 'T0020', '操作符', 'operator', 'not', '逻辑非', '按位非', 'bitwise'],
+        wrongCode: `Bool done = True;
+Bool done_inv = ~done;  // T0020: ~ expects Bit#(n), not Bool`,
+        correctCode: `Bool done = True;
+Bool done_inv = !done;  // correct: ! for Bool`,
+        docRef: 'docs/traps/trap-types-1.md',
+        related: ['trap-bool-vs-bit', 'trap-interface-bool'],
+        source: 'NEW — Batch 2 GRAPH backfill',
+        bscVersions: ['2025.07'],
+        verified: false,
+    },
+    {
+        id: 'types-2',
+        name: 'T0060 — Bit#(n) 位宽必须显式对齐',
+        oneLiner: '表达式左右两侧位宽不匹配（如 Bit#(8) + Bit#(4)）触发 T0060。用 extend/truncate/zeroExtend/signExtend 对齐',
+        why: 'BSV 编译器要求算术和逻辑表达式的操作数位宽匹配。与 Verilog 的隐式扩展不同，BSV 不自动扩展窄位宽操作数。所有操作数位宽不一致的情况必须用 zeroExtend、signExtend、truncate 或 extend 显式对齐。',
+        severity: 'hard',
+        bscDetectable: true,
+        stage: 'code',
+        pushTier: 'matched',
+        keywords: ['位宽', 'width', 'T0060', 'extend', 'truncate', 'zeroExtend', 'signExtend', 'Bit#', '类型', 'type', 'mismatch'],
+        wrongCode: `Reg#(Bit#(8)) a <- mkReg(0);
+Reg#(Bit#(4)) b <- mkReg(0);
+rule compute;
+    a <= a + b;  // T0060: Bit#(8) + Bit#(4) width mismatch
+endrule`,
+        correctCode: `Reg#(Bit#(8)) a <- mkReg(0);
+Reg#(Bit#(4)) b <- mkReg(0);
+rule compute;
+    a <= a + zeroExtend(b);  // correct: zeroExtend b to Bit#(8)
+endrule`,
+        docRef: 'docs/traps/trap-types-2.md',
+        related: ['trap-bool-vs-bit'],
+        source: 'NEW — Batch 2 GRAPH backfill',
+        bscVersions: ['2025.07'],
+        verified: false,
+    },
+    {
+        id: 'regfile-1',
+        name: 'G0002 — mkRegFile 最多 5 读端口，超出用 mkRegFileFull',
+        oneLiner: 'mkRegFile 的 maxReadPorts 硬限制为 5 个 sub 端口，超过触发 G0002。需更多端口用 mkRegFileFull',
+        why: 'mkRegFile 内部实现使用有限数量的 BRAM 读端口，maxReadPorts 参数硬编码为 5。当模块中调用超过 5 个 rf.sub(N) 方法时，BSC 调度器检测到资源超额分配并报告 G0002。mkRegFileFull 使用不同的内部实现（更多 BRAM 资源消耗），无端口计数限制。',
+        severity: 'hard',
+        bscDetectable: true,
+        stage: 'design',
+        pushTier: 'matched',
+        keywords: ['RegFile', 'mkRegFile', 'mkRegFileFull', 'mkRegFileWCF', 'G0002', '读端口', 'read port', 'sub', 'BRAM'],
+        wrongCode: `RegFile#(Bit#(5), Bit#(32)) rf <- mkRegFile(0, 31);
+// 6 个 rf.sub() 调用 → G0002: 超出 5 读端口限制`,
+        correctCode: `RegFile#(Bit#(5), Bit#(32)) rf <- mkRegFileFull;
+// mkRegFileFull: 无读端口限制（更多 BRAM 资源）`,
+        docRef: 'docs/traps/trap-regfile-1.md',
+        related: ['trap-g0053'],
+        source: 'NEW — Batch 2 GRAPH backfill',
+        bscVersions: ['2025.07'],
+        verified: false,
+    },
+    {
+        id: 'synthesize-1',
+        name: 'T0030 — 多态模块不能直接 synthesize，需用具体类型包裹',
+        oneLiner: '带 type parameter 的模块加上 (* synthesize *) 触发 T0030。用具体类型的包装模块包裹多态模块',
+        why: 'BSC 综合工具要求顶层模块的所有类型参数在编译时完全确定。多态模块（带 provisos 的 type t）的类型在实例化前不确定，综合工具无法生成具体 Verilog 网表。需要用具体类型（如 Bit#(32)）的 wrapper 包裹多态模块，或使用库中的具体版本。',
+        severity: 'hard',
+        bscDetectable: true,
+        stage: 'design',
+        pushTier: 'matched',
+        keywords: ['synthesize', 'T0030', '多态', 'polymorphic', 'type parameter', '类型参数', 'provisos', 'wrapper'],
+        wrongCode: `(* synthesize *)  // T0030: polymorphic module cannot synthesize
+module mkQueue(FIFO#(t)) provisos (Bits#(t, sz_t));
+    FIFO#(t) f <- mkFIFO;
+    // ...
+endmodule`,
+        correctCode: `(* synthesize *)  // correct: concrete type wrapper
+module mkQueue_32(FIFO#(Bit#(32)));
+    FIFO#(Bit#(32)) f <- mkFIFO;
+    // ...
+endmodule`,
+        docRef: 'docs/traps/trap-synthesize-1.md',
+        related: ['synthesize-2', 'trap-p0022'],
+        source: 'NEW — Batch 2 GRAPH backfill',
+        bscVersions: ['2025.07'],
+        verified: false,
+    },
+    {
+        id: 'synthesize-2',
+        name: '顶层模块加 (* synthesize *) — 缺失不报错但不生成 Verilog',
+        oneLiner: '顶层模块缺少 (* synthesize *) pragma 时 bsc 静默不生成 .v 文件（编译无报错），导致硬件综合失败',
+        why: 'BSC 编译器只对带 (* synthesize *) pragma 的模块生成 Verilog 输出。不带该 pragma 的模块仅生成 .bo（Bluesim 对象）文件。这是 bsc 的设计选择——testbench 等仿真模块不需要 Verilog 输出。但缺少 synthesize 不会触发编译错误或警告，是静默失败。',
+        severity: 'hard',
+        bscDetectable: false,
+        stage: 'code',
+        pushTier: 'matched',
+        keywords: ['synthesize', 'verilog', '.v', '生成', 'generate', '顶层', 'top', 'module', 'pragma', '静默'],
+        wrongCode: `// Missing (* synthesize *) → compiles OK, no .v file generated
+module mkMyTop(Empty);
+    Reg#(Bit#(8)) r <- mkReg(0);
+    // ...
+endmodule`,
+        correctCode: `(* synthesize *)  // correct: ensures .v generation
+module mkMyTop(Empty);
+    Reg#(Bit#(8)) r <- mkReg(0);
+    // ...
+endmodule`,
+        docRef: 'docs/traps/trap-synthesize-2.md',
+        related: ['synthesize-1', 'trap-attribute-1'],
+        source: 'NEW — Batch 2 GRAPH backfill',
+        bscVersions: ['2025.07'],
+        verified: false,
+    },
 ];
 
 
@@ -758,14 +877,19 @@ const GRAPH = {
         ],
     },
     types: {
-        errors: ['T0061', 'T0051', 'T0060', 'T0132'],
+        errors: ['T0061', 'T0051', 'T0060', 'T0132', 'T0020'],
         refs: ['types'],
-        traps: [],
+        traps: [
+            { text: 'Bool 用 ! 不用 ~ — 对 Bool 值用 ~ 触发 T0020。! 用于 Bool，~ 用于 Bit#(n)。对 Bit#(1) 用 ! 同样触发 T0020', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: false },
+            { text: 'Bit#(n) 位宽必须显式对齐 — 表达式左右侧位宽不匹配触发 T0060，用 zeroExtend/signExtend/truncate/extend 显式对齐', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: false },
+        ],
     },
     vector: {
         errors: ['T0004'],
         refs: ['stdlib', 'types'],
-        traps: [],
+        traps: [
+            { text: 'vec() 在 BSC 2025.07 已移除 — 构造 Vector 用 replicateM(mkReg(0)) 或 genWith。旧版 BSV 代码中的 vec(element1, element2, ...) 触发 T0004', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: true, verifiedAt: '2026-07-17' },
+        ],
     },
     schedule: {
         errors: ['G0004', 'G0010', 'G0030', 'G0040', 'G0054', 'G0005', 'G0036'],
@@ -779,7 +903,9 @@ const GRAPH = {
         errors: ['G0002', 'G0053'],
         refs: ['stdlib'],
         pattern: 'regfile',
-        traps: [],
+        traps: [
+            { text: 'mkRegFile 最多 5 读端口 — maxReadPorts 硬限制为 5，超出触发 G0002。需要更多读端口时用 mkRegFileFull（无端口限制但更多 BRAM 资源消耗）', severity: 'hard', phase: 'design', bscVersions: ['2025.07'], verified: false },
+        ],
     },
     arbiter: {
         errors: ['G0002', 'G0004'],
@@ -838,7 +964,10 @@ const GRAPH = {
     synthesize: {
         errors: ['T0030', 'P0085', 'T0043', 'G0010'],
         refs: ['module', 'attributes'],
-        traps: [],
+        traps: [
+            { text: '多态模块不能直接 synthesize — 带 type parameter 的模块加 (* synthesize *) 触发 T0030。需用具体类型 wrapper 包裹', severity: 'hard', phase: 'design', bscVersions: ['2025.07'], verified: false },
+            { text: '顶层模块必须加 (* synthesize *) — 缺失时 bsc 静默不生成 .v 文件（编译不报错），导致硬件综合失败', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: false },
+        ],
     },
 };
 
