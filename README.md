@@ -36,11 +36,23 @@ AI 写 Python 很顺手。写 BSV？一编译满屏红——不是 AI 笨，是 
 
 ### 安装
 
+specmate 有两个发布渠道，根据你的需求选择：
+
+**GitHub Packages**（推荐） — 主力发布渠道，每个版本都第一时间发布，始终最新：
+
+```bash
+npm install @Alele496/bsv-specmate@0.2.0
+```
+
+**npm** — 稳定发行版，仅在经过充分验证后发布，版本更新可能滞后：
+
 ```bash
 npm install -g bsv-specmate
 ```
 
-需要 Node.js >= 18。
+> **如何选择？** 追求新功能和最新陷阱知识选 GitHub Packages；在关键项目中使用、优先稳定性选 npm。两者功能完全一致，区别仅在于发布节奏。
+
+需要 Node.js >= 18。使用 GitHub Packages 前需要先配置 npm registry，见 [新手指南](docs/getting-started.md)。
 
 ### 配置 MCP
 
@@ -139,7 +151,7 @@ specmate 通过 8 个 MCP 工具供 AI Agent 调用。
 
 ## 📈 当前状态
 
-- 版本 0.1.1，已发布到 npm（`npm install -g bsv-specmate`）
+- 版本 0.2.0，通过 GitHub Packages 主力发布（`@Alele496/bsv-specmate@0.2.0`），npm 频道发布经过验证的稳定版本
 - 8 个 MCP 工具全部可用，CI 自动化验证
 - 12 条 BSV 陷阱已验证（fixture 文件 + bsc 编译双重验证），62 条 backlog 按天推进
 - 29 篇编码记忆覆盖常见 BSC 编译错误
