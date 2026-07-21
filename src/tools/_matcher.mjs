@@ -719,6 +719,130 @@ endmodule`,
         bscVersions: ['2025.07'],
         verified: false,
     },
+    // ═══ Batch 3: 5 GRAPH 节点回填 (2026-07-20) — 中可信度 design-level traps ═══
+    {
+        id: 'serialize-1',
+        name: '串行器移位寄存器位宽对齐',
+        oneLiner: '串行器（serializer）的移位寄存器位宽必须等于并行数据位宽，否则高位截断',
+        why: '串行器使用移位寄存器逐 bit 输出并行数据。若移位寄存器位宽不等于并行数据位宽（如 Bit#(7) 存 8-bit 数据），最高位被截断，导致串行输出丢失最高有效位。这是设计错误，不影响编译，但运行时产生错误输出。',
+        severity: 'quality',
+        bscDetectable: false,
+        stage: 'design',
+        pushTier: 'matched',
+        keywords: ['serialize', 'serializer', 'shift', 'shiftreg', '移位寄存器', '串行', '位宽', 'width'],
+        wrongCode: `Reg#(Bit#(8)) data <- mkReg(0);
+Reg#(Bit#(7)) shift <- mkReg(0);   // WRONG: 7-bit shift reg for 8-bit data → MSB lost
+rule do_serialize;
+    shift <= {1'b0, data[7:1]};
+endrule`,
+        correctCode: `Reg#(Bit#(8)) data <- mkReg(0);
+Reg#(Bit#(8)) shift <- mkReg(0);   // CORRECT: shift reg width == data width
+rule do_serialize;
+    shift <= {1'b0, data[7:1]};
+endrule`,
+        docRef: 'docs/traps/trap-serialize-1.md',
+        related: ['trap-types-2'],
+        source: 'NEW — Batch 3 GRAPH backfill',
+        bscVersions: ['2025.07'],
+        verified: false,
+    },
+    {
+        id: 'dma-1',
+        name: 'DMA 描述符链用 FIFO 传递',
+        oneLiner: 'DMA 引擎中跨 rule 描述符指针传递用 FIFO 而非 Wire——Wire 仅当前 cycle 有效',
+        why: 'DMA 引擎描述符链表需要在多个 rule 之间传递当前描述符指针。Wire 是组合逻辑，仅在当前时钟周期有效；跨 cycle 传递必须用 FIFO（至少 2 深度）保存数据。用 Wire 会导致下游 rule 读到不定态或过期数据。与本知识库中 trap-pulsewire-reg 是同一原理。',
+        severity: 'quality',
+        bscDetectable: false,
+        stage: 'design',
+        pushTier: 'matched',
+        keywords: ['dma', '描述符', 'descriptor', '链表', 'pointer', 'FIFO', 'wire', '跨 cycle', '跨周期'],
+        wrongCode: `// Wire passes descriptor pointer — only valid in current cycle
+Wire#(DescriptorPtr) next_ptr <- mkWire;
+// next_ptr 在下个 cycle 失效，下游 rule 读到错误值`,
+        correctCode: `// FIFO preserves descriptor pointer across cycles
+FIFO#(DescriptorPtr) f <- mkFIFO;  // at least depth 2
+// enq in producer rule, deq in consumer rule → data preserved`,
+        docRef: 'docs/traps/trap-dma-1.md',
+        related: ['trap-pulsewire-reg'],
+        source: 'NEW — Batch 3 GRAPH backfill',
+        bscVersions: ['2025.07'],
+        verified: false,
+    },
+    {
+        id: 'encoder-1',
+        name: '优先编码器输出位宽 = ceil(log2(input_width))',
+        oneLiner: '优先编码器的输出位宽计算错误导致编码结果截断。输出位宽必须 ≥ ceil(log2(输入位宽))',
+        why: '优先编码器输出的是最高有效位的二进制索引。8-bit 输入需要 3-bit 输出（ceil(log2(8))=3），但 9-bit 输入需要 4-bit 输出（ceil(log2(9))=4）。位宽不足时编码结果截断，丢失高位索引信息。这是设计错误，BSC 编译器不检测。',
+        severity: 'quality',
+        bscDetectable: false,
+        stage: 'design',
+        pushTier: 'matched',
+        keywords: ['encoder', '编码器', '优先级', 'priority', 'ceil', 'log2', '位宽', 'width'],
+        wrongCode: `// 9-bit input, 3-bit output → ceiling(log2(9)) = 4, only 3 bits given
+method Bit#(3) encode(Bit#(9) in);
+    // highest bit index 8 needs 4 bits → truncation
+endmethod`,
+        correctCode: `// Use valueOf + log2 to compute correct output width
+// output_width = ceil(log2(input_width)) = ceil(log2(9)) = 4
+method Bit#(4) encode(Bit#(9) in);
+    // 4-bit output can represent indices 0-8
+endmethod`,
+        docRef: 'docs/traps/trap-encoder-1.md',
+        related: ['trap-types-2'],
+        source: 'NEW — Batch 3 GRAPH backfill',
+        bscVersions: ['2025.07'],
+        verified: false,
+    },
+    {
+        id: 'decoder-1',
+        name: '译码器输出位宽 = 2^input_width',
+        oneLiner: '译码器（decoder）的 one-hot 输出位宽等于 2^输入位宽，位宽不足导致输出向量长度不足',
+        why: '译码器将 N-bit 二进制输入解码为 one-hot 向量，输出位宽应为 2^N。如 3-bit 输入产生 8-bit 输出（2^3=8），4-bit 输入产生 16-bit 输出（2^4=16）。位宽计算错误导致输出向量截断，丢失对应码位。这是设计错误，BSC 编译器不检测。',
+        severity: 'quality',
+        bscDetectable: false,
+        stage: 'design',
+        pushTier: 'matched',
+        keywords: ['decoder', '译码器', '解码', 'one-hot', '独热', '位宽', 'width'],
+        wrongCode: `// 3-bit input needs 2^3 = 8-bit output, but only 6-bit provided
+method Bit#(6) decode(Bit#(3) addr);
+    // output truncated → some addresses unresolvable
+endmethod`,
+        correctCode: `// Correct: output width = 2^input_width = 2^3 = 8
+// Bit#(8) for one-hot, easy to concatenate downstream
+method Bit#(8) decode(Bit#(3) addr);
+    // full one-hot output covers all 8 addresses
+endmethod`,
+        docRef: 'docs/traps/trap-decoder-1.md',
+        related: ['trap-types-2'],
+        source: 'NEW — Batch 3 GRAPH backfill',
+        bscVersions: ['2025.07'],
+        verified: false,
+    },
+    {
+        id: 'timer-1',
+        name: '计数器位宽 = ceil(log2(max_count))',
+        oneLiner: 'Timer 模块计数寄存器位宽必须覆盖最大计数值。位宽不足导致溢出回卷，错误的中断时机',
+        why: 'Timer 模块通过计数寄存器跟踪到期的周期数。如果寄存器位宽不足（如 Bit#(8) 存 1000 的计数值），计数器会在 255 时溢出回卷到 0，产生错误的中断时机或丢失超时事件。位宽必须覆盖 max_count，即 ceil(log2(max_count)) bits。',
+        severity: 'quality',
+        bscDetectable: false,
+        stage: 'design',
+        pushTier: 'matched',
+        keywords: ['timer', 'counter', 'count', '计数器', '定时器', '计数', 'max_count', '位宽', 'width', '溢出', 'overflow'],
+        wrongCode: `Reg#(Bit#(8)) counter <- mkReg(0);  // WRONG: 8-bit for max 1000 → overflows at 255
+rule tick;
+    counter <= (counter == fromInteger(999)) ? 0 : counter + 1;
+endrule`,
+        correctCode: `// 2^10 = 1024 > 1000, need 10 bits
+Reg#(Bit#(10)) counter <- mkReg(0);  // CORRECT: ceil(log2(1000)) = 10
+rule tick;
+    counter <= (counter == fromInteger(999)) ? 0 : counter + 1;
+endrule`,
+        docRef: 'docs/traps/trap-timer-1.md',
+        related: ['trap-types-2'],
+        source: 'NEW — Batch 3 GRAPH backfill',
+        bscVersions: ['2025.07'],
+        verified: false,
+    },
 ];
 
 
@@ -920,7 +1044,9 @@ const GRAPH = {
         errors: ['T0051', 'T0060'],
         refs: ['types'],
         pattern: 'serialize',
-        traps: [],
+        traps: [
+            { text: '串行器移位寄存器位宽必须等于并行数据位宽 — Bit#(7) 存 8-bit 数据导致最高位截断。用 Bit#(data_width) 确保位宽一致', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: false },
+        ],
     },
     interrupt: {
         errors: ['T0060', 'T0061'],
@@ -934,23 +1060,31 @@ const GRAPH = {
     dma: {
         errors: ['G0010', 'G0004'],
         refs: ['patterns', 'schedule', 'stdlib'],
-        traps: [],
+        traps: [
+            { text: 'DMA 描述符链用 FIFO 传递 — 不用 Wire。Wire 只在当前 cycle 有效，跨 rule 传递用 FIFO（至少 2 深度）确保数据不丢失', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: false },
+        ],
     },
     encoder: {
         errors: ['T0060', 'T0051'],
         refs: ['types', 'stdlib'],
         pattern: 'encoder',
-        traps: [],
+        traps: [
+            { text: '优先编码器输出位宽 = ceil(log2(input_width)) — 8-bit 输入用 3-bit 可，9-bit 输入用 3-bit 溢出。输出位宽必须覆盖最高位索引', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: false },
+        ],
     },
     decoder: {
         errors: ['T0060', 'T0051'],
         refs: ['types', 'patterns'],
-        traps: [],
+        traps: [
+            { text: '译码器（decoder）one-hot 输出位宽 = 2^input_width — 3-bit 输入需 8-bit 输出。位宽不足导致输出向量截断', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: false },
+        ],
     },
     timer: {
         errors: ['T0060', 'T0051', 'G0004'],
         refs: ['stdlib', 'types'],
-        traps: [],
+        traps: [
+            { text: '计数器位宽 = ceil(log2(max_count)) — Timer 计数寄存器位宽不足导致溢出回卷，产生错误中断时机', severity: 'quality', phase: 'design', bscVersions: ['2025.07'], verified: false },
+        ],
     },
     gpio: {
         errors: ['T0061', 'BSV-PORTS'],
