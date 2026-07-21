@@ -1,6 +1,6 @@
 {
   "name": "bsv-specmate",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "BSV Coding Knowledge Engine — domain knowledge layer for AI agents writing Bluespec SystemVerilog",
   "keywords": [
     "bluespec",
