@@ -40,9 +40,8 @@ jobs:
       - run: npm ci
       - name: Verify version consistency
         run: |
-          if [ -n "${{ github.event.release.tag_name }}" ]; then
-            TAG_VERSION=${GITHUB_REF#refs/tags/v}
-          else
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          if [ "$TAG_VERSION" = "$GITHUB_REF" ]; then
             TAG_VERSION="${{ inputs.version }}"
           fi
           PKG_VERSION=$(node -p "require('./package.json').version")
@@ -73,9 +72,8 @@ jobs:
       - run: npm ci
       - name: Verify version consistency
         run: |
-          if [ -n "${{ github.event.release.tag_name }}" ]; then
-            TAG_VERSION=${GITHUB_REF#refs/tags/v}
-          else
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          if [ "$TAG_VERSION" = "$GITHUB_REF" ]; then
             TAG_VERSION="${{ inputs.version }}"
           fi
           PKG_VERSION=$(node -p "require('./package.json').version")
