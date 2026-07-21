@@ -332,6 +332,274 @@ endrule`,
         verified: true,
         verifiedAt: '2026-07-17',
     },
+    // ═══ Batch 1: 6 空 GRAPH 节点回填 (2026-07-20) ═══
+    {
+        id: 'reset-1',
+        name: 'T0051 — Reset 类型需要显式 import Reset :: *',
+        oneLiner: '模块中写 `Reset rst` 但未导入 Reset package，触发 T0051 未定义类型错误',
+        why: 'BSV 中 `Reset` 类型定义在 `Reset` package 中。在 module 接口中使用 `Reset` 类型但不导入 `Reset :: *`，编译器无法识别该类型，触发 T0051 未定义类型错误。',
+        severity: 'hard',
+        bscDetectable: true,
+        stage: 'code',
+        pushTier: 'matched',
+        keywords: ['Reset', 'reset', 'import', 'T0051', '未定义', 'undefined', 'type'],
+        wrongCode: `// 缺少 import Reset :: *
+module mkMod(Empty);
+    Reset rst <- exposeCurrentReset;  // T0051: Reset 类型未定义
+endmodule`,
+        correctCode: `import Reset :: *;
+
+module mkMod(Empty);
+    Reset rst <- exposeCurrentReset;
+endmodule`,
+        docRef: 'docs/traps/trap-reset-1.md',
+        related: ['reset-2'],
+        source: 'NEW — Batch 1 GRAPH backfill',
+        bscVersions: ['2025.07'],
+        verified: false,
+    },
+    {
+        id: 'reset-2',
+        name: 'G0124 — default_reset 期望 RST_N 端口名',
+        oneLiner: 'BVI import 时 `default_reset` 期望 Verilog port 名为 `RST_N`，RTL 中叫 `RST` 导致端口绑定失败',
+        why: 'BVI import 声明 `default_reset` 时，BSC 期望对应的 Verilog port 名为 `RST_N`（低电平有效复位）。如果 RTL 中复位信号名为 `RST`（高电平有效），BSC 无法正确绑定端口，触发 G0124。需要显式指定端口名 `default_reset rst(RST)`。',
+        severity: 'hard',
+        bscDetectable: true,
+        stage: 'code',
+        pushTier: 'matched',
+        keywords: ['default_reset', 'RST_N', 'RST', 'BVI', 'G0124', '复位', 'reset', 'port', '绑定', 'bind'],
+        wrongCode: `import "BVI" MyModule =
+module mkMyModule(MyIFC);
+    default_clock clk(CLK);
+    default_reset rst;  // 期望 Verilog port RST_N，但 RTL 中是 RST
+    method out ready() RDY;
+endmodule`,
+        correctCode: `import "BVI" MyModule =
+module mkMyModule(MyIFC);
+    default_clock clk(CLK);
+    default_reset rst(RST);  // 显式指定端口名为 RST
+    method out ready() RDY;
+endmodule`,
+        docRef: 'docs/traps/trap-reset-2.md',
+        related: ['reset-1', 'bvi-1'],
+        source: 'NEW — Batch 1 GRAPH backfill',
+        bscVersions: ['2025.07'],
+        verified: false,
+    },
+    {
+        id: 'bvi-1',
+        name: 'G0124 — BVI 缺少 default_clock / default_reset',
+        oneLiner: 'BVI import 声明中缺少 `default_clock` 或 `default_reset` 导致 bsc 无法确定时钟/复位端口映射，触发 G0124',
+        why: 'BVI (Bluespec Verilog Interface) import 用于封装 Verilog 模块。`default_clock` 和 `default_reset` 声明告诉 BSC 将哪个 Verilog port 映射到 BSV 的隐式时钟/复位。缺少这两项时 BSC 无法生成正确的实例化代码，触发 G0124。',
+        severity: 'hard',
+        bscDetectable: true,
+        stage: 'code',
+        pushTier: 'matched',
+        keywords: ['BVI', 'bvi', 'default_clock', 'default_reset', 'G0124', 'import', 'Verilog', 'wrapper', '封装'],
+        wrongCode: `import "BVI" MyVerilog =
+module mkMyVerilog(MyIFC);
+    // 缺少 default_clock 和 default_reset → G0124
+    method out ready() RDY;
+endmodule`,
+        correctCode: `import "BVI" MyVerilog =
+module mkMyVerilog(MyIFC);
+    default_clock clk(CLK);
+    default_reset rst(RST_N);
+    method out ready() RDY;
+endmodule`,
+        docRef: 'docs/traps/trap-bvi-1.md',
+        related: ['bvi-2', 'reset-2'],
+        source: 'NEW — Batch 1 GRAPH backfill',
+        bscVersions: ['2025.07'],
+        verified: false,
+    },
+    {
+        id: 'bvi-2',
+        name: 'T0016 — BVI parameter 必须用 valueOf() 包装类型变量',
+        oneLiner: 'BVI interface parameter 中 type variable 必须通过 `valueOf()` 转为 Verilog parameter，直接写 `sz_a` 触发 T0016',
+        why: 'BVI import 中 interface parameter 的类型变量（如 `sz_a`）是 BSV 类型层面的概念，不能直接映射为 Verilog parameter。必须用 `valueOf(sz_a)` 将其转换为可映射的数值表达式。直接写 `parameter width = sz_a` 触发 T0016 类型推导失败。',
+        severity: 'hard',
+        bscDetectable: true,
+        stage: 'code',
+        pushTier: 'matched',
+        keywords: ['valueOf', 'valueof', 'BVI', 'parameter', 'T0016', 'sz_', '类型变量', 'type variable'],
+        wrongCode: `import "BVI" MyModule =
+module mkMyModule#(Bit#(sz_a) val) (MyIFC);
+    default_clock clk(CLK);
+    default_reset rst(RST_N);
+    parameter width = sz_a;  // T0016: 不能直接用类型变量
+    method out ready() RDY;
+endmodule`,
+        correctCode: `import "BVI" MyModule =
+module mkMyModule#(Bit#(sz_a) val) (MyIFC);
+    default_clock clk(CLK);
+    default_reset rst(RST_N);
+    parameter width = valueOf(sz_a);  // 正确：用 valueOf() 转换
+    method out ready() RDY;
+endmodule`,
+        docRef: 'docs/traps/trap-bvi-2.md',
+        related: ['bvi-1', 'trap-p0022'],
+        source: 'NEW — Batch 1 GRAPH backfill',
+        bscVersions: ['2025.07'],
+        verified: false,
+    },
+    {
+        id: 'union-1',
+        name: 'T0144 — tagged 构造带数据的 tag 必须传参',
+        oneLiner: '`union tagged { Valid Bit#(8) data; Invalid; }` 中构造 `tagged Valid` 缺少 data 参数，触发 T0144',
+        why: 'BSV union 有两种 tag：带数据的（如 `Valid Bit#(8) data`）和不带数据的（如 `Invalid`）。构造带数据的 tag 时必须传入对应值：`tagged Valid 8\'h42`。只写 `tagged Valid` 缺少 data 参数触发 T0144。',
+        severity: 'hard',
+        bscDetectable: true,
+        stage: 'code',
+        pushTier: 'matched',
+        keywords: ['union', 'tagged', 'T0144', 'tag', '构造', 'construct', '成员', 'member'],
+        wrongCode: `typedef union tagged {
+    Bit#(8) Valid;
+    void Invalid;
+} Result deriving(Bits, Eq);
+
+// ...
+Result r = tagged Valid;  // T0144: 缺少 data 参数`,
+        correctCode: `typedef union tagged {
+    Bit#(8) Valid;
+    void Invalid;
+} Result deriving(Bits, Eq);
+
+// ...
+Result r = tagged Valid 8'h42;  // 正确：传入 data`,
+        docRef: 'docs/traps/trap-union-1.md',
+        related: [],
+        source: 'NEW — Batch 1 GRAPH backfill',
+        bscVersions: ['2025.07'],
+        verified: false,
+    },
+    {
+        id: 'attribute-1',
+        name: 'P0085 — synthesize 不拼写成 synthesized',
+        oneLiner: '误写为 `(* synthesized *)`（过去分词）触发 P0085 未识别的 attribute pragma，正确写法是 `(* synthesize *)`',
+        why: 'BSV 中 `synthesize` 是关键字形式的 attribute pragma，不是英语单词。过去分词形式 `synthesized` 不是合法的 BSV attribute，编译器将其视为未识别的 pragma 并报告 P0085。',
+        severity: 'hard',
+        bscDetectable: true,
+        stage: 'code',
+        pushTier: 'matched',
+        keywords: ['synthesize', 'synthesized', 'P0085', 'pragma', 'attribute', '拼写', 'spelling'],
+        wrongCode: `(* synthesized *)  // P0085: 非法，应为 synthesize
+module mkMod(Empty);
+endmodule`,
+        correctCode: `(* synthesize *)  // 正确拼写
+module mkMod(Empty);
+endmodule`,
+        docRef: 'docs/traps/trap-attribute-1.md',
+        related: ['attribute-2'],
+        source: 'NEW — Batch 1 GRAPH backfill',
+        bscVersions: ['2025.07'],
+        verified: false,
+    },
+    {
+        id: 'attribute-2',
+        name: 'G0054 — urgency 规则名必须在本模块中存在',
+        oneLiner: '写 `(* descending_urgency = "rl_b, rl_a" *)` 但 `rl_a` 拼写错误或不存在，触发 G0054',
+        why: '`(* descending_urgency *)` pragma 中引用的 rule 名称必须是本模块中实际定义的 rule。引用不存在或拼写错误的 rule 名称触发 G0054：BSC 无法解析 urgency 关系。注意 rule 名称区分大小写。',
+        severity: 'hard',
+        bscDetectable: true,
+        stage: 'code',
+        pushTier: 'matched',
+        keywords: ['urgency', 'descending_urgency', 'G0054', 'attribute', 'pragma', '拼写', 'spelling', 'rule name'],
+        wrongCode: `(* descending_urgency = "rl_b, rl_a" *)
+// rl_a 不存在 → G0054
+rule rl_b;
+    count <= 2;
+endrule`,
+        correctCode: `(* descending_urgency = "rl_b, rl_a" *)
+rule rl_a;
+    count <= 1;
+endrule
+rule rl_b;
+    count <= 2;
+endrule`,
+        docRef: 'docs/traps/trap-attribute-2.md',
+        related: ['attribute-1'],
+        source: 'NEW — Batch 1 GRAPH backfill',
+        bscVersions: ['2025.07'],
+        verified: false,
+    },
+    {
+        id: 'rule-1',
+        name: 'G0004 — 同一 rule 内同一 Reg 只写一次',
+        oneLiner: '一条 rule 内对同一个寄存器执行两次 `<=` 写入，触发 G0004 并行写冲突',
+        why: 'BSC 调度分析器在 rule 粒度上检查寄存器写冲突。一条 rule 内对同一个寄存器执行多次 `<=` 写入，BSC 判定为并行写冲突，触发 G0004。每个寄存器在一 cycle 只能有一个确定的写入值。需拆成多条 rule 或用条件表达式合并写入。',
+        severity: 'hard',
+        bscDetectable: true,
+        stage: 'code',
+        pushTier: 'matched',
+        keywords: ['rule', 'G0004', 'reg', '寄存器', '写', 'write', '两次', 'twice', '并行', 'parallel', '冲突', 'conflict'],
+        wrongCode: `Reg#(Bit#(8)) count <- mkReg(0);
+rule do_work;
+    count <= 1;
+    count <= 2;  // G0004: 同一 rule 写两次
+endrule`,
+        correctCode: `Reg#(Bit#(8)) count <- mkReg(0);
+rule do_work;
+    count <= (cond) ? 1 : 2;  // 正确：单次写入
+endrule`,
+        docRef: 'docs/traps/trap-rule-1.md',
+        related: ['trap-g0004', 'trap-g0036-urgency'],
+        source: 'NEW — Batch 1 GRAPH backfill',
+        bscVersions: ['2025.07'],
+        verified: false,
+    },
+    {
+        id: 'method-1',
+        name: 'P0032 — method 必须在所有 rule 之后',
+        oneLiner: 'BSV module 中 method 定义块必须在所有 rule 定义之后，在 rule 之间或之前定义 method 触发 P0032',
+        why: 'BSV module 有严格的语法结构：子模块实例化 → rule 定义 → method 定义。method 块必须在所有 rule 之后。在 rule 之间或之前定义 method 触发 P0032。此约束源于 BSC 对 module 体内声明顺序的 parser 要求。',
+        severity: 'hard',
+        bscDetectable: true,
+        stage: 'code',
+        pushTier: 'matched',
+        keywords: ['method', 'P0032', 'rule', '顺序', 'order', '定义', 'definition', '位置', 'placement'],
+        wrongCode: `module mkMod(TestIFC);
+    Reg#(Bit#(8)) r <- mkReg(0);
+
+    method Bit#(8) val() = r;  // P0032: method 在 rule 之前
+
+    rule increment;
+        r <= r + 1;
+    endrule
+endmodule`,
+        correctCode: `module mkMod(TestIFC);
+    Reg#(Bit#(8)) r <- mkReg(0);
+
+    rule increment;
+        r <= r + 1;
+    endrule
+
+    method Bit#(8) val() = r;  // 正确：method 在所有 rule 之后
+endmodule`,
+        docRef: 'docs/traps/trap-method-1.md',
+        related: ['method-2', 'trap-p0030'],
+        source: 'NEW — Batch 1 GRAPH backfill',
+        bscVersions: ['2025.07'],
+        verified: false,
+    },
+    {
+        id: 'method-2',
+        name: 'P0030 — value method 用 = 而非 if-return',
+        oneLiner: 'value method 只能用 `= expression` 形式，用 `=` 后跟 `if/return` 块触发 P0030',
+        why: 'BSV value method 使用 `= expression` 语法定义纯组合逻辑。如果用 `method Type name = ...` 后面跟 `if`/`for`/`while` 等控制块和 `return` 语句，BSC parser 将其识别为 action block（需要状态变化），与 value method 的声明冲突，触发 P0030。注意：`= if-return` 在语法上看似合法但语义上不正确，必触发 P0030。',
+        severity: 'hard',
+        bscDetectable: true,
+        stage: 'code',
+        pushTier: 'matched',
+        keywords: ['value method', 'P0030', 'return', 'if', 'for', 'while', '三元', 'ternary', '?'],
+        wrongCode: `method Bit#(1) is_done = if (state == DONE) return 1'd1; else return 1'd0;  // P0030`,
+        correctCode: `method Bit#(1) is_done = (state == DONE) ? 1'd1 : 1'd0;  // 正确：三元表达式`,
+        docRef: 'docs/traps/trap-method-2.md',
+        related: ['method-1', 'trap-p0030'],
+        source: 'NEW — Batch 1 GRAPH backfill',
+        bscVersions: ['2025.07'],
+        verified: false,
+    },
 ];
 
 
@@ -365,9 +633,13 @@ const GRAPH = {
         ],
     },
     reset: {
-        errors: [],
+        errors: ['T0051', 'G0124'],
         refs: ['module'],
-        traps: [],
+        keywords: ['reset', 'rst_n', 'rst', 'default_reset', 'resetn'],
+        traps: [
+            { text: 'Reset 类型需要显式 import Reset :: * —— 模块中写 `Reset rst` 但未导入 Reset package，触发 T0051 未定义类型错误', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: false },
+            { text: 'default_reset 在 BVI 中是 RST_N 而非 RST —— BVI import 时 default_reset 期望 Verilog port 名为 RST_N，RTL 中叫 RST 时需显式指定端口名 default_reset rst(RST)', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: false },
+        ],
     },
     axi: {
         errors: ['BSV-PORTS', 'G0010'],
@@ -401,8 +673,12 @@ const GRAPH = {
     bvi: {
         errors: ['P0005', 'G0124', 'P0022', 'P0200'],
         refs: ['attributes'],
+        keywords: ['bvi', 'default_clock', 'default_reset', 'valueof', 'parameter', 'clocked_by', 'reset_by'],
         pattern: 'bvi',
-        traps: [],
+        traps: [
+            { text: 'default_clock / default_reset 必须写 —— BVI import 声明中缺少 default_clock 或 default_reset 导致 bsc 无法确定 Verilog 模块的时钟/复位端口映射，触发 G0124', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: false },
+            { text: 'parameter width = valueOf(sz_a) —— BVI interface parameter 的 type variable 必须通过 valueOf() 转为 Verilog parameter，直接写 parameter width = sz_a 触发 T0016', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: false },
+        ],
     },
     spi: {
         errors: ['T0051', 'T0060'],
@@ -442,12 +718,19 @@ const GRAPH = {
     union: {
         errors: ['T0144', 'T0016'],
         refs: ['unions', 'types'],
-        traps: [],
+        keywords: ['union', 'tagged'],
+        traps: [
+            { text: 'tagged 构造带数据的 tag 必须传参 —— union tagged { Valid Bit#(8) data; Invalid; } 中构造 tagged Valid 缺少 data 参数，触发 T0144', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: false },
+        ],
     },
     attribute: {
         errors: ['P0085', 'G0054', 'G0030', 'G0040', 'P0022'],
         refs: ['attributes'],
-        traps: [],
+        keywords: ['attribute', 'pragma', 'synthesize', 'annotate', 'urgency'],
+        traps: [
+            { text: 'synthesize 不拼写成 synthesized —— 误写为 (* synthesized *)（过去分词）触发 P0085 未识别的 attribute pragma', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: false },
+            { text: 'urgency 规则名必须在本模块中存在 —— 写 (* descending_urgency = "rl_b, rl_a" *) 但 rl_a 拼写错误或不存在，触发 G0054', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: false },
+        ],
     },
     interface: {
         errors: ['P0073', 'G0010'],
@@ -460,12 +743,19 @@ const GRAPH = {
     rule: {
         errors: ['G0004', 'G0010', 'G0054', 'G0030'],
         refs: ['schedule'],
-        traps: [],
+        keywords: ['rule', 'schedule', 'rule-fire'],
+        traps: [
+            { text: '同一 rule 内同一 Reg 只写一次 —— 一条 rule 内对同一个寄存器执行两次 <= 写入，触发 G0004 并行写冲突', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: false },
+        ],
     },
     method: {
         errors: ['P0032', 'P0030', 'T0011', 'P0022'],
         refs: ['module'],
-        traps: [],
+        keywords: ['method', 'interface'],
+        traps: [
+            { text: 'method 必须在所有 rule 之后 —— BSV module 中 method 定义块必须在所有 rule 定义之后，在 rule 之间或之前定义 method 触发 P0032', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: false },
+            { text: 'value method 用 = 而非 if-return —— value method 只能用 = expression 形式，用 = 后跟 if/return 块触发 P0030', severity: 'hard', phase: 'code', bscVersions: ['2025.07'], verified: false },
+        ],
     },
     types: {
         errors: ['T0061', 'T0051', 'T0060', 'T0132'],
@@ -557,8 +847,17 @@ const KEYWORDS = Object.keys(GRAPH);
 export function extractKeywords(text) {
     const lower = text.toLowerCase();
     const found = [];
-    for (const kw of KEYWORDS) {
-        if (lower.includes(kw)) found.push(kw);
+    for (const [nodeName, node] of Object.entries(GRAPH)) {
+        if (lower.includes(nodeName)) {
+            found.push(nodeName);
+        } else if (node.keywords) {
+            for (const kw of node.keywords) {
+                if (lower.includes(kw.toLowerCase())) {
+                    found.push(nodeName);
+                    break;
+                }
+            }
+        }
     }
     return found;
 }
